@@ -26,12 +26,15 @@ Is the claw grab fun enough to be the core of a monster-building game? [PROTOTYP
 - what the automated tuning found
 - what to do if the answer is yes, or no
 
+[docs/claw-feel.md](docs/claw-feel.md) covers the grab itself: why parts in the middle of the claw used to be ignored, the grip-and-strain model that replaced the dice roll, and the plan for getting the feel right.
+
 ## Build and tools
 
 ```sh
 npm install                     # dev tools only: planck (vendored copy is in vendor/), playwright-core
 node tools/build.mjs            # -> index.html + dev.html
 node tools/tune.mjs 300         # headless claw bot: grab/slip odds per part
+STYLE=hasty node tools/tune.mjs 300   # same, carried carelessly (careful | hasty | reckless)
 node tools/battle_sim.mjs 60    # headless battle balance per stage
 node tools/play.mjs "dev.html?scene=claw" out '[{"hold":"ArrowLeft","ms":800},{"press":"Space"},{"wait":6000},{"shot":"grab"}]'
 ```

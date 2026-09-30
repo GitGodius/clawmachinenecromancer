@@ -312,6 +312,13 @@ const { AudioSys, Sfx, Music } = (() => {
         wire(f, env(v, tn, 0.03, 0.16, d - 0.08, 0.08), v.out);
       }
     },
+    creak: (v, t, o) => { // the claw straining: a wobbling metal groan plus ratchet ticks as the part slides
+      const p = o.p, d = 0.45;
+      const s = tone(v, t, { type: 'sawtooth', f: 150 * p, f1: 112 * p, d, a: 0.05, g: 0.16, lp: 950, q: 6 });
+      lfo(v, 21, 28, t, t + d).connect(s.detune);
+      hiss(v, t, { d: 0.32, a: 0.06, g: 0.1, f: 2300 * p, q: 5 });
+      for (const k of [0.07, 0.18, 0.31]) hiss(v, t + k, { d: 0.02, g: 0.22, f: rr(1800, 3200) * p, q: 3 });
+    },
     miss: (v, t, o) => {
       tone(v, t, { type: 'triangle', f: 440 * o.p, d: 0.16, g: 0.29 });
       const s = tone(v, t + 0.17, { type: 'triangle', f: 349 * o.p, f1: 330 * o.p, d: 0.4, g: 0.29 });
@@ -513,14 +520,14 @@ const { AudioSys, Sfx, Music } = (() => {
   const LIM = {
     bump: [12, 4], ui_hover: [15, 2], coins_count: [20, 3], twitch: [8, 2], heartbeat: [3, 2], chute: [6, 3],
     restock: [1.5, 1], thunder: [0.7, 1], alive: [1, 1], victory: [1, 1], defeat: [1, 1], zap: [8, 3],
-    win_legendary: [1, 1], win_rare: [2, 1], meow: [3, 1], purr: [1, 1],
+    win_legendary: [1, 1], win_rare: [2, 1], meow: [3, 1], purr: [1, 1], creak: [3, 1],
   };
   // Reverb send per sound.
   const WET = {
     transition: 0.2, coin: 0.12, claw_land: 0.08, claw_top: 0.06, grab: 0.15, slip: 0.12, miss: 0.15, chute: 0.08,
     win_common: 0.2, win_uncommon: 0.22, win_rare: 0.28, win_legendary: 0.32, restock: 0.1, heartbeat: 0.12, bump: 0.05,
     stitch: 0.06, unstitch: 0.06, zap: 0.15, thunder: 0.45, alive: 0.4, enemy_die: 0.4, creature_die: 0.12,
-    victory: 0.3, defeat: 0.35, meow: 0.12, page: 0.05, swing: 0.05,
+    victory: 0.3, defeat: 0.35, meow: 0.12, page: 0.05, swing: 0.05, creak: 0.08,
   };
   // These use intensity themselves; the rest just get a mild loudness scale.
   const RAW = { bump: 1, hit: 1, claw_land: 1, swing: 1, heartbeat: 1, enemy_hit: 1, twitch: 1 };

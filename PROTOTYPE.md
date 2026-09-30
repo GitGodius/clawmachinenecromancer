@@ -44,28 +44,37 @@ Handy URL flags for testing:
 
 ## 4. How the claw works (the part that has to feel good)
 
-- **Physics.** The pile, the cable and the claw are real rigid bodies (planck.js, a Box2D port). The claw hangs on a cable that pays out as it drops. It detects landing when the cable goes slack, closes two motor-driven prongs, winches up, and swings as you steer.
-- **Hybrid grip.** Pure friction grip was unplayable (see §6). The prongs still close physically, but whatever ends up inside the claw's cavity can get a springy grip. The chance depends on how centered it is, how big it is, how slippery it is (hearts and eyeballs are wet), and whether the prongs actually closed.
-- **Slips.** Slipping is an explicit, tunable chance:
-  - a small risk every second while carrying
-  - extra risk if the part swings hard
+- **Physics.** The pile, the cable and the claw are real rigid bodies (planck.js, a Box2D port). The claw hangs on a cable that pays out as it drops. It detects landing when the cable goes slack, then closes two motor-driven prongs while its weight digs them into the pile. Then it winches up and swings as you steer.
+- **Hybrid grip.** Pure friction grip was unplayable (see §6). The prongs still close physically, and whatever is in the claw's cavity gets a springy grip. There's no dice roll: a part counts as grabbed when its middle is inside the cavity traced by the prongs' inner edges, or most of it is, or both prongs squeeze it. How well it's held (its *hold*) depends on things you can see:
+  - how much of the part is inside
+  - whether the prongs closed under it (caged) or squeeze it from both sides (pinched)
+  - how slippery it is (hearts and eyeballs are wet)
+
+  The hold is re-measured on the way up, as the prongs close around the part.
+- **Slips.** A slip happens when *strain* beats *hold*. Strain comes from:
+  - the part's weight
+  - the carriage lurching (starting, braking, reversing, hitting the end stop)
+  - the claw swinging
   - a classic arcade "jolt" at the top of the lift
-  - a chance that a living part twitches out of the claw (hands, tentacles, hearts and tails twitch in the pile too)
+  - a living part squirming (hands, tentacles, hearts and tails twitch in the pile too)
+
+  While it's overstrained the part visibly slides down in the claw. Hold still and the claw re-seats it; keep yanking and it drops. While carrying, the carriage has momentum: it speeds up and coasts gently, and brakes hard only when you push against it. [docs/claw-feel.md](docs/claw-feel.md) has the details and the numbers.
 - **Juice.** The key feedback, in the order it happens:
   - **Machine noise:** the motor hum's pitch follows the carriage speed and the load.
   - **Landing:** a thunk, dust and a small screen shake. The prongs ratchet as they close and the winch spins up.
-  - **Held part:** its name and rarity are labelled while you carry it.
+  - **Held part:** a ring flashes around it when the grip takes. Its name, rarity and a **GRIP meter** show while you carry it. The bar's length is how good the grab is, the bright part is what's left after the current strain, and it flashes red while the part slides. The claw's status light follows the grip.
+  - **Slipping:** creak, grit, a shudder, and "It's slipping! Hold still!". "Phew." if you save it.
   - **Win:** the chute catch hit-pauses, the bulbs chase, and the prize flies into your bag. Rare catches get slow-mo; legendaries get a gold flash.
   - **Life in the pile:** eyeballs follow the claw, hearts pulse, and legendaries sparkle.
-  - **The Reaper** comments on everything.
+  - **The Reaper** comments on everything, and names the reason whenever you lose a part ("Just clipped it.", "Only had it by the tips.", "The jolt at the top. Classic.").
 
 ## 5. Tools for finding the fun
 
-- **In-game tuning panel** (the **`** key). Every number in `src/js/01_config.js` gets a live slider: claw speeds and torques, slip odds, twitchiness, pile size, economy and battle multipliers, and juice amounts. **Copy values** puts your changes on the clipboard so you can paste them back into the config. It also has cheats: +5 tokens, refill the machine, drop in a legendary, +6 parts, win the battle.
-- **Playtest report** (the **P** key). It logs grabs, wins, slips (with the reason), misses and doubles. It also counts **one-more-try retries**, meaning the player drops again within 6 seconds of a fail, versus leaving the machine after a fail. Plus creatures made, battles, stages reached, and time spent per scene. Copy it after watching someone play.
-- **`tools/tune.mjs`** runs the *real* claw simulation headless in Node, with a bot that aims with human-like noise. Example: `node tools/tune.mjs 300 '{"gripAssist":0.2}' gripTorque=40,60,80` sweeps any setting.
+- **In-game tuning panel** (the **`** key). Every number in `src/js/01_config.js` gets a live slider: claw speeds and torques, grip and strain (the **Grip** group), twitchiness, pile size, economy and battle multipliers, and juice amounts. **Copy values** puts your changes on the clipboard so you can paste them back into the config. It also has cheats: +5 tokens, refill the machine, drop in a legendary, +6 parts, win the battle. **Draw physics shapes** overlays the collision shapes, the claw's cavity (what counts as "in the claw") and each grip's spring, with live hold and strain numbers.
+- **Playtest report** (the **P** key). It logs grabs, wins, slips (with the reason), misses and doubles, plus how good the grip was when the claw closed, near misses, and slips started versus held on. It also counts **one-more-try retries**, meaning the player drops again within 6 seconds of a fail, versus leaving the machine after a fail. Plus creatures made, battles, stages reached, and time spent per scene. Copy it after watching someone play.
+- **`tools/tune.mjs`** runs the *real* claw simulation headless in Node, with a bot that aims with human-like noise. Example: `node tools/tune.mjs 300 '{"gripAssist":0.2}' gripTorque=40,60,80` sweeps any setting. `STYLE=careful|hasty|reckless` changes how the bot carries (compare them to check that carrying well still pays), and `AIM_NOISE=5` sets its aim error. Every run also reports `in-claw-but-ignored` and `gripped-outside-claw`, a regression guard for the bug in §6.10; both should stay near 0%.
 - **`tools/battle_sim.mjs`** runs the real battle code headless against random parties to check the difficulty curve.
-- **`tools/physdebug.html`** draws a grab as a filmstrip of physics shapes. That's how the grip problems in §6 were found.
+- **`tools/physdebug.html`** draws a grab as a filmstrip of physics shapes, with the claw's cavity and grip springs. That's how the grip problems in §6 were found.
 
 ## 6. What I tested and what happened
 
@@ -75,18 +84,18 @@ These tests were automated (bots and headless simulation), not human playtests. 
 2. **Claw size relative to the parts mattered more than any torque setting.** Doubling the claw's inner cavity took lifts from about 7% to about 30%. Changing the torque from 120 to 700 moved lifts by only about 1 point.
 3. **The machine cuts the claw's power after it closes,** so it closes hard and then holds weakly. That's how real arcade claws behave. It also produces the "it had it, then dropped it at the top" moment.
 4. **"Slips" came mostly from how the sim measured the grip, not from what the player did.** Spinning the winch up smoothly and damping held parts fixed most of it.
-5. **Current baseline** (200 bot grabs, 5 px aim noise):
+5. **Current baseline** (300 bot grabs, 5 px aim noise, after the fix in item 10). "Careful" waits for the grip meter to settle and eases over; "hasty" goes full speed the moment the claw reaches the top:
 
-   | Outcome | Rate |
-   |---|---|
-   | Win something | ~50% |
-   | Lift something | ~63% |
-   | Slip mid-carry | ~12% |
-   | Win two parts at once | ~7% |
-   | Win the exact part aimed at | ~25–28% |
+   | Outcome | Careful | Hasty | Before item 10 |
+   |---|---|---|---|
+   | Win something | 66% | 54% | 57% |
+   | Lift something | 76% | 76% | 65% |
+   | Lift, then lose it | 10% | 22% | 8% |
+   | Win two parts at once | 6% | 5% | 9% |
+   | Win the exact part aimed at | 28% | 23% | 25% |
 
    Aim decides *which* part you get more than *whether* you get one.
-6. **Carry skill doesn't matter yet.** Gentle and jerky steering bots win about the same (52% vs 50%). The slip risk is dominated by the part wobbling inside the prongs, and with digital input there's no way to steer gently. *This is an open design problem* (see §8).
+6. **Carry skill used to not matter; now it does.** Gentle and jerky steering bots used to win about the same (57% vs 56% when re-measured). The slip risk was dominated by the part rattling inside the prongs, and with digital input there was no way to steer gently. Now strain comes from carriage lurch and claw swing, the loaded carriage has momentum, and a part that starts slipping can be saved by holding still. Careful carrying beats hasty by about 12 points. See [docs/claw-feel.md](docs/claw-feel.md).
 7. **Battle curve** (headless, Zap used on cooldown). The Stage 5 boss is a deliberate wall that needs a full party of three.
 
    | Party | S1 | S2 | S3 | S4 | S5 (boss) | S8 | S10 |
@@ -104,6 +113,12 @@ These tests were automated (bots and headless simulation), not human playtests. 
    - The "landed" check fired at the top of the machine.
    - Parts spilled into the chute on their own. The guard was raised.
    - A part-roll bug put skulls where hearts or torsos should be.
+10. **"The part was right in the middle of the claw and it didn't take it."** This came from playing, and the tools confirmed it. In 37% of grabs where a part sat inside the claw's cavity, nothing got a grip. The causes:
+    - a hidden dice roll (50–90% even when perfectly centered)
+    - ranking by distance, which often put the part inside the prongs second
+    - a fixed center-point box instead of the real cavity
+
+    The same flaws made 24% of grips land on a part *outside* the prongs. Separately, a third of well-aimed drops closed on air, because the light claw levered itself out of the pile while closing. The fix replaced the roll with geometry and gave the claw weight while closing (§4). Now 1% of in-claw parts go ungripped (borderline cases where two parts compete) and no grips land outside. Details and the feel plan are in [docs/claw-feel.md](docs/claw-feel.md).
 
 ## 7. How to playtest it (the real test)
 
@@ -128,7 +143,7 @@ Log each session with this template:
 
 **If the answer is yes**, meaning people retry and chase parts:
 
-- Make carrying a skill. Tie the slip risk to carriage acceleration, not wobble. Or give the carriage momentum so holding a direction speeds it up and tapping is gentle. Or show a wobble meter.
+- Carrying is now a skill in a first form: slip risk comes from carriage lurch and swing, the loaded carriage has momentum, and a grip meter shows the strain. Playtest it and follow the plan in [docs/claw-feel.md](docs/claw-feel.md): strain you can hear, gamepad rumble, twitch telegraphs, claw size versus part size.
 - Give parts from the same creature a set bonus (e.g. a full ogre), so players chase *specific* parts.
 - Let players see the next restock falling into the machine before they fight, to set up "I want that".
 - Only then look at meta-progression: claw upgrades, more machines, more enemy families.

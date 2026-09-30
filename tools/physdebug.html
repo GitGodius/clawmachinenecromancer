@@ -39,6 +39,13 @@ function snap(k) {
   }
   const P = sim.clawPose();
   g.strokeStyle = '#fc6'; g.beginPath(); g.moveTo(P.carX, P.carY); g.lineTo(P.ropeX, P.ropeY); g.stroke();
+  // the claw's cavity (what counts as "in the claw") and each grip's spring, red while slipping
+  g.strokeStyle = '#3f8'; g.setLineDash([1, 1]); g.beginPath();
+  sim.cavity().forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.stroke(); g.setLineDash([]);
+  for (const gr of sim.grips) {
+    const a = gr.joint.getAnchorA(), b = gr.joint.getAnchorB();
+    g.strokeStyle = gr.slipping ? '#f45' : '#fd4'; g.beginPath(); g.moveTo(a.x * PPM, a.y * PPM); g.lineTo(b.x * PPM, b.y * PPM); g.stroke();
+  }
   for (const p of sim.held) { const [x, y] = sim.partPos(p); g.fillStyle = '#ff0'; g.fillRect(x - 2, y - 2, 4, 4); }
   g.restore();
   g.fillStyle = '#ccc'; g.fillText('f' + frame + ' ' + sim.state + ' held:' + sim.held.size + ' jL ' + sim.jL.getJointAngle().toFixed(2), ox + 2, oy + 9);

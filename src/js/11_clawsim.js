@@ -18,6 +18,31 @@ const MACHINE = {
 const HULLS = {};
 const getHull = (name) => HULLS[name] || (HULLS[name] = SPR.hull(name, 8, 0.45));
 
+// even-odd point-in-polygon test, poly = [[x, y], ...]
+function inPoly(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+// thinnest width of a fixture in px: what would have to fit through the claw's mouth
+function shapeThickness(f) {
+  const sh = f.getShape();
+  if (sh.getType() === 'circle') return sh.getRadius() * 2 * PPM;
+  const vs = sh.m_vertices;
+  let best = Infinity;
+  for (let i = 0; i < vs.length; i++) {
+    const a = vs[i], b = vs[(i + 1) % vs.length], ex = b.x - a.x, ey = b.y - a.y, L = Math.hypot(ex, ey) || 1;
+    let far = 0;
+    for (const v of vs) far = Math.max(far, Math.abs((v.x - a.x) * ey - (v.y - a.y) * ex) / L);
+    best = Math.min(best, far);
+  }
+  return best * PPM;
+}
+
 class ClawSim {
   constructor(opts = {}) {
     this.onEvent = opts.onEvent || (() => {});
@@ -73,7 +98,7 @@ class ClawSim {
 
   buildClaw(x) {
     const pl = planck, V = pl.Vec2, M = MACHINE, G = CLAW_GEO, w = this.world;
-    this.carX = x; this.carV = 0;
+    this.carX = x; this.carV = 0; this.carA = 0; this.giveT = 0;
     this.carriage = w.createBody({ type: 'kinematic', position: V(x / PPM, M.railY / PPM) });
     const hubY = M.railY + M.topLen + G.hubH / 2;
     this.hub = w.createBody({ type: 'dynamic', position: V(x / PPM, hubY / PPM), angularDamping: 5, linearDamping: CONFIG.swayDamping });
@@ -117,7 +142,7 @@ class ClawSim {
       b.setLinearVelocity(V(0, 0));
       b.setAngularVelocity(0);
     }
-    this.carX = x; this.carV = 0;
+    this.carX = x; this.carV = 0; this.carA = 0;
   }
 
   // ------------------------------------------------------------ parts
@@ -240,12 +265,16 @@ class ClawSim {
     return Math.hypot(b.x - a.x, b.y - a.y) * PPM;
   }
 
-  driveCarriage(target, h) {
-    const M = MACHINE;
-    this.carV = approach(this.carV, target, CONFIG.clawAccel * h);
+  // loaded: carrying a part, the carriage has momentum. It speeds up and coasts to a stop
+  // gently, and brakes hard only when pushed against its motion (that lurch shakes parts loose).
+  driveCarriage(target, h, loaded) {
+    const M = MACHINE, v0 = this.carV;
+    const accel = loaded && target * v0 >= 0 ? CONFIG.carryAccel : CONFIG.clawAccel;
+    this.carV = approach(this.carV, target, accel * h);
     let nx = this.carX + this.carV * h;
     if (nx < M.carMin) { nx = M.carMin; this.carV = 0; }
     if (nx > M.carMax) { nx = M.carMax; this.carV = 0; }
+    this.carA = (this.carV - v0) / h; // lurch: hitting the end stop at speed is the worst of all
     this.carriage.setLinearVelocity(planck.Vec2((nx - this.carX) / h / PPM, 0));
     this.carX = nx;
   }
@@ -253,6 +282,7 @@ class ClawSim {
   prongs(mode, fade = 0) {
     let torque, sL, sR;
     if (mode === 'open') { sL = 5; sR = -5; torque = 120; }
+    else if (mode === 'close' && this.giveT > 0) { sL = 1.5; sR = -1.5; torque = 30; } // losing its grip: prongs sag open
     else if (mode === 'close') {
       // full power while closing, then the machine "cuts the voltage" to the hold torque
       sL = -CONFIG.closeSpeed; sR = CONFIG.closeSpeed;
@@ -283,6 +313,7 @@ class ClawSim {
     const pressed = this.pressed;
     this.pressed = false;
     const move = clamp(this.input.move || 0, -1, 1);
+    this.giveT = Math.max(0, (this.giveT || 0) - h);
 
     switch (this.state) {
       case 'idle':
@@ -315,6 +346,8 @@ class ClawSim {
       case 'close': {
         this.prongs('close');
         this.driveCarriage(0, h);
+        // the claw's weight drives the closing prongs into the pile instead of letting them lever it up
+        if (CONFIG.closeDig > 0) this.hub.applyForceToCenter(planck.Vec2(0, CONFIG.closeDig * this.hub.getMass() * CONFIG.gravity), true);
         // cable stays a little slack: the claw settles into the pile as it closes
         this.ropeLen = Math.min(M.maxLen, Math.max(this.ropeLen, this.ropeDist() + 2));
         if (this.stateT > CONFIG.closeTime) {
@@ -335,7 +368,7 @@ class ClawSim {
         const spin = easeInOutQuad(clamp(this.stateT / 0.45, 0, 1));
         this.ropeLen = Math.max(M.topLen, this.ropeLen - CONFIG.liftSpeed * spin * h);
         if (this.ropeLen <= M.topLen + 0.01 && this.stateT > 0.2) {
-          for (const g of this.grips.slice()) this.rollSlip(g.part, CONFIG.topSlip, 'jolt');
+          for (const g of this.grips.slice()) this.kickGrip(g.part, CONFIG.strainJolt, 'jolt');
           this.setState(CONFIG.carryManual ? 'carry' : 'return');
           this.emit('top', { held: [...this.held] });
         }
@@ -344,15 +377,15 @@ class ClawSim {
       case 'carry':
         this.prongs('close', 1);
         this.updateGrips(h);
-        this.driveCarriage(move * CONFIG.clawMoveSpeed, h);
+        this.driveCarriage(move * CONFIG.clawMoveSpeed, h, true);
         if (pressed || (CONFIG.carryTime > 0 && this.stateT > CONFIG.carryTime)) this.startRelease();
         break;
       case 'return': {
         this.prongs('close', 1);
         this.updateGrips(h);
         const d = M.home - this.carX;
-        const vmax = Math.sqrt(2 * CONFIG.clawAccel * Math.abs(d));
-        this.driveCarriage(Math.sign(d) * Math.min(CONFIG.clawMoveSpeed, vmax), h);
+        const vmax = Math.sqrt(2 * CONFIG.carryAccel * Math.abs(d));
+        this.driveCarriage(Math.sign(d) * Math.min(CONFIG.clawMoveSpeed, vmax), h, true);
         if (Math.abs(d) < 0.6 && Math.abs(this.carV) < 6 && this.stateT > 0.3) this.startRelease();
         break;
       }
@@ -402,73 +435,203 @@ class ClawSim {
     return [dx * c - dy * s, dx * s + dy * c];
   }
 
-  // After closing: whatever sits in the claw's cavity may get a springy grip.
-  // Odds: centered + small + prongs actually closed = good. Physics does the rest.
-  tryGrab() {
-    this.grabInfo = null;
-    const open = clamp((this.jL.getJointAngle() - this.jR.getJointAngle()) / 1.7, 0, 1);
-    const closure = open < 0.6 ? 1 : lerp(1, 0.35, (open - 0.6) / 0.4);
-    const cand = [];
-    for (const p of this.parts) {
-      if (p.won) continue;
-      let best = null;
-      for (const b of p.bodies) {
-        const [lx, ly] = this.toHub(b.getPosition());
-        if (Math.abs(lx) > 16 || ly < 3 || ly > 40) continue;
-        const d = Math.hypot(lx, (ly - 20) * 0.6);
-        if (!best || d < best.d) best = { b, lx, ly, d };
-      }
-      if (!best) continue;
-      const s = SPR.get(p.def.sprite);
-      const dim = p.def.chain ? 16 : Math.max(s.w, s.h);
-      const size = dim <= 20 ? 1 : dim <= 26 ? 0.85 : 0.7;
-      const center = 1 - 0.55 * Math.pow(Math.min(1, Math.abs(best.lx) / 16), 2);
-      const chance = clamp(CONFIG.grabChance * size * center * closure * (p.def.grip || 1), 0, 0.98);
-      cand.push({ p, ...best, chance });
-    }
-    cand.sort((a, b) => a.d - b.d);
-    this.grabInfo = { open, closure, cand: cand.map((c) => ({ type: c.p.type, chance: c.chance })) };
-    let first = true;
-    for (const c of cand.slice(0, 2)) {
-      const roll = first ? c.chance : c.chance * 0.3; // a second part is a lucky bonus
-      if (RNG() < roll) this.attachGrip(c.p, c.b);
-      first = false;
-    }
+  // The claw's cavity as it is right now, traced along the inner edges of both prongs
+  // (world px). Whatever lies inside this outline is what the player sees in the claw.
+  cavity() {
+    const V = planck.Vec2, I = CLAW_GEO.inner;
+    const L = I.map(([x, y]) => this.prongL.getWorldPoint(V(x / PPM, y / PPM)));
+    const R = I.map(([x, y]) => this.prongR.getWorldPoint(V(-x / PPM, y / PPM)));
+    return [L[0], L[1], L[2], R[2], R[1], R[0]].map((q) => [q.x * PPM, q.y * PPM]);
   }
 
-  attachGrip(p, body) {
+  // The claw as it is right now: its cavity (and bounds), which parts each prong touches,
+  // and the mouth, i.e. the gap between the prong tips (0 once they cross) that a part
+  // would have to fit through to fall out.
+  clawFrame() {
+    const V = planck.Vec2, I = CLAW_GEO.inner, cav = this.cavity();
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of cav) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    const touching = (prong) => {
+      const s = new Set();
+      for (let ce = prong.getContactList(); ce; ce = ce.next) if (ce.contact.isTouching()) s.add(ce.other.getUserData());
+      return s;
+    };
+    const [lx, ly] = this.toHub(this.prongL.getWorldPoint(V(I[2][0] / PPM, I[2][1] / PPM)));
+    const [rx, ry] = this.toHub(this.prongR.getWorldPoint(V(-I[2][0] / PPM, I[2][1] / PPM)));
+    return {
+      cav, x0, y0, x1, y1, tL: touching(this.prongL), tR: touching(this.prongR),
+      mouth: rx > lx ? Math.hypot(rx - lx, ry - ly) : 0,
+      open: clamp((this.jL.getJointAngle() - this.jR.getJointAngle()) / 1.7, 0, 1),
+    };
+  }
+
+  // How much of a part is in the claw: the share of its area inside the cavity (sampled
+  // on a 1px grid), the centroid of that share (the spot the claw really holds), whether
+  // its center of mass is inside, and which prongs touch it. Null if it's nowhere near.
+  measurePart(p, F) {
+    const V = planck.Vec2;
+    const near = p.bodies.some((b) => {
+      for (let f = b.getFixtureList(); f; f = f.getNext()) {
+        const bb = f.getAABB(0);
+        if (bb.upperBound.x * PPM > F.x0 && bb.lowerBound.x * PPM < F.x1 && bb.upperBound.y * PPM > F.y0 && bb.lowerBound.y * PPM < F.y1) return true;
+      }
+      return false;
+    });
+    if (!near) return null;
+    let area = 0, inside = 0, best = null;
+    for (const b of p.bodies) {
+      let k = 0, sx = 0, sy = 0;
+      for (let f = b.getFixtureList(); f; f = f.getNext()) {
+        const bb = f.getAABB(0);
+        for (let x = Math.floor(bb.lowerBound.x * PPM) + 0.5; x < bb.upperBound.x * PPM; x++) {
+          for (let y = Math.floor(bb.lowerBound.y * PPM) + 0.5; y < bb.upperBound.y * PPM; y++) {
+            if (!f.testPoint(V(x / PPM, y / PPM))) continue;
+            area++;
+            if (inPoly(x, y, F.cav)) { k++; sx += x; sy += y; }
+          }
+        }
+      }
+      inside += k;
+      if (k && (!best || k > best.k)) best = { b, k, at: [sx / k, sy / k] };
+    }
+    if (!best) return null;
+    const c = best.b.getWorldCenter();
+    return {
+      p, body: best.b, at: best.at, frac: inside / Math.max(1, area),
+      centerIn: inPoly(c.x * PPM, c.y * PPM, F.cav), touchL: F.tL.has(p), touchR: F.tR.has(p),
+      thick: shapeThickness(best.b.getFixtureList()),
+    };
+  }
+
+  // How well the claw holds a measured part (0..1), from what the player can see: how much
+  // of it is inside, whether the prongs closed under it (caged: it can't fall through the
+  // mouth) or squeeze it from both sides (pinched), and how slippery it is.
+  holdOf(c, F, g) {
+    c.pinched = c.touchL && c.touchR;
+    // once caged it stays caged until the mouth clearly opens (the prongs flex as it swings)
+    c.caged = c.centerIn && F.mouth < c.thick * (g && g.caged ? 1.15 : 0.9);
+    if (g) g.caged = c.caged;
+    c.geo = 0;
+    if (!c.centerIn && c.frac < 0.15) return 0; // it has slid out of the claw
+    const fit = lerp(CONFIG.holdLoose, CONFIG.holdFull, smoothstep(0.3, 0.9, c.frac));
+    c.geo = fit + (c.caged ? CONFIG.holdCaged : c.pinched ? CONFIG.holdPinch : 0); // the visible part of the hold
+    return clamp(c.geo * (c.p.def.grip || 1), 0.05, 1);
+  }
+
+  measureGrab() {
+    const F = this.clawFrame(), parts = [];
+    for (const p of this.parts) {
+      if (p.won) continue;
+      const c = this.measurePart(p, F);
+      if (c) { c.q = this.holdOf(c, F); parts.push(c); }
+    }
+    return { parts, mouth: F.mouth, open: F.open };
+  }
+
+  // After closing, whatever is in the claw gets a springy grip. No hidden dice roll: the
+  // outcome follows what the player can see (see holdOf). The lift and the carry do the rest.
+  tryGrab() {
+    const m = this.measureGrab();
+    // in the claw: its middle is inside, or most of it is, or both prongs squeeze a good chunk of it
+    const held = m.parts.filter((c) => c.centerIn || c.frac >= CONFIG.grabInside || (c.pinched && c.frac >= CONFIG.grabInside / 2));
+    // the claw takes what it visibly holds best; among equals, the one in the middle of it
+    // (never an invisible stat like slipperiness)
+    const rank = (c) => c.geo - 0.01 * Math.abs(this.toHub(planck.Vec2(c.at[0] / PPM, c.at[1] / PPM))[0]);
+    held.sort((a, b) => rank(b) - rank(a));
+    // a second part only when it's properly held too, and squeezed in beside the first
+    // (weaker hold): a lucky double, not the norm. A third part is left to physics.
+    const grips = held.slice(0, 1);
+    if (held[1] && (held[1].caged || held[1].pinched)) grips.push(held[1]);
+    grips.forEach((c, i) => this.attachGrip(c.p, c.body, c.at, c.q, i ? 0.75 : 1));
+    // the closest call among the rest, so the scene can say what went wrong
+    const near = m.parts.filter((c) => !grips.includes(c)).sort((a, b) => b.frac - a.frac)[0];
+    this.grabInfo = {
+      open: m.open, mouth: m.mouth,
+      held: grips.map((c, i) => ({ type: c.p.type, q: c.q * (i ? 0.75 : 1), frac: c.frac, caged: c.caged, pinched: c.pinched })),
+      near: near ? { part: near.p, frac: near.frac, touched: near.touchL || near.touchR } : null,
+      inClaw: held.length,
+    };
+  }
+
+  // A springy link from the middle of the claw to the spot the claw actually holds. A
+  // part held by its end therefore dangles and swings, one held in the middle sits still.
+  attachGrip(p, body, at, q = 1, share = 1) {
     const pl = planck;
     const anchorA = this.hub.getWorldPoint(pl.Vec2(0, 16 / PPM));
-    const anchorB = body.getWorldCenter();
+    const anchorB = at ? pl.Vec2(at[0] / PPM, at[1] / PPM) : body.getWorldCenter();
     const len = Math.hypot(anchorA.x - anchorB.x, anchorA.y - anchorB.y);
     const joint = this.world.createJoint(pl.DistanceJoint({
       frequencyHz: CONFIG.gripSpring, dampingRatio: 1, length: clamp(len, 2 / PPM, 22 / PPM), collideConnected: true,
     }, this.hub, body, anchorA, anchorB));
-    this.grips.push({ part: p, body, joint, strain: 0, t: 0 });
+    const mass = p.bodies.reduce((a, b) => a + b.getMass(), 0);
+    const weight = CONFIG.strainWeight * Math.sqrt(mass / 0.4); // heavier parts pull harder on the grip
+    this.grips.push({
+      part: p, body, joint, share, hold: q * share, weight, strain: weight, kick: 0, slide: 0, load: 0,
+      len0: joint.getLength(), cause: 'swing', slipping: false, t: 0, measureT: 0,
+    });
     for (const b of p.bodies) { b.setLinearDamping(1.6); b.setAngularDamping(2.5); } // clamped by the prongs
   }
 
   unclamp(p) { for (const b of p.bodies) { b.setLinearDamping(0.05); b.setAngularDamping(p.def.chain ? 0.6 : 0.4); } }
 
-  // Slip model: explicit, tunable odds (physics supplies the swing you can see).
+  // Slip model. Each grip has a hold (how well it's gripped: re-measured as the prongs
+  // close around the part on the way up) and a strain (how hard the part is being yanked
+  // right now): its weight, the carriage lurching, the claw swinging, plus spikes from the
+  // jolt at the top and squirming. While strain beats hold the part visibly slides down in
+  // the claw. Ease off and the claw re-seats it; keep yanking and it drops. Every slip is
+  // telegraphed and the player can do something about it: no hidden dice.
   updateGrips(h) {
     const hv = this.hub.getLinearVelocity();
+    const steering = this.state === 'carry' || this.state === 'return';
+    const swing = Math.abs(hv.x * PPM - this.carV); // claw head swinging relative to the carriage, px/s
+    let F = null;
     for (const g of this.grips.slice()) {
       g.t += h;
-      const gp = g.part.def.grip || 1;
-      const v = g.body.getLinearVelocity();
-      const vrel = Math.hypot(v.x - hv.x, v.y - hv.y) * PPM; // how hard it's swinging, px/s
+      if ((g.measureT -= h) <= 0) {
+        g.measureT = 0.1;
+        F = F || this.clawFrame();
+        const c = this.measurePart(g.part, F);
+        // peak of the last 0.3s: a part rattling in the claw shouldn't flicker its hold
+        g.recent = [...(g.recent || []).slice(-2), c ? this.holdOf(c, F, g) * g.share : 0];
+        g.target = Math.max(...g.recent);
+        // it has worked its way out of the claw: nothing left to hold it by
+        if (g.target === 0) { this.loseGrip(g, 'loose'); continue; }
+      }
+      if (g.target != null) g.hold = approach(g.hold, g.target, (g.target > g.hold ? 3 : 1.2) * h);
       const A = g.joint.getAnchorA(), B = g.joint.getAnchorB();
       const stretch = (Math.hypot(A.x - B.x, A.y - B.y) - g.joint.getLength()) * PPM;
-      g.load = vrel;
-      let lose = null;
-      if (stretch > 9) lose = 'stuck'; // still wedged in the pile: it tears free of the claw
-      else if (g.t > 0.4 && this.state !== 'lift') { // swinging only counts once the player is steering
-        const hazard = CONFIG.slipBase / gp + CONFIG.swingSlip * Math.max(0, vrel - CONFIG.swingSafe) / 30;
-        if (RNG() < hazard * h) lose = 'swing';
+      if (stretch > 9) { this.loseGrip(g, 'stuck'); continue; } // still wedged in the pile: it tears free
+      const lurch = steering ? CONFIG.strainLurch * Math.min(3, Math.abs(this.carA) / 200) : 0;
+      const sway = steering ? CONFIG.strainSwing * Math.max(0, swing - CONFIG.swingSafe) / 20 : 0;
+      const target = g.weight + lurch + sway;
+      // strain rises fast and settles slowly; spikes (jolt, twitch) fade on their own
+      g.strain += (target - g.strain) * (1 - Math.exp(-h / (target > g.strain ? 0.05 : 0.3)));
+      g.kick *= Math.exp(-h / 0.35);
+      if (lurch + sway > g.kick) g.cause = 'swing';
+      // a part that has slid down is held by less of the claw: slipping feeds on itself,
+      // so a small slip recovers but yanking the claw while it slides tips it over
+      const hold = g.hold * (1 - 0.6 * g.slide / CONFIG.slideMax);
+      g.load = (g.strain + g.kick) / hold; // > 1: slipping
+      const over = g.strain + g.kick - hold;
+      if (over > 0) {
+        g.slide += over * CONFIG.slideRate * h;
+        if (!g.slipping && g.slide > 0.4) { g.slipping = true; this.emit('slipping', { part: g.part, why: g.cause }); }
+      } else {
+        g.slide = Math.max(0, g.slide - 4 * h); // the claw re-seats it
+        if (g.slipping && g.slide < 0.2) { g.slipping = false; this.emit('reseat', { part: g.part }); }
       }
-      if (lose) this.loseGrip(g, lose);
+      g.joint.setLength(g.len0 + g.slide / PPM); // the part sinks in the claw as it slides
+      if (g.slide > CONFIG.slideMax) this.loseGrip(g, g.cause);
     }
+  }
+
+  // a sudden spike of strain on a held part (the jolt at the top, a twitch in the claw)
+  kickGrip(p, amount, why) {
+    const g = this.grips.find((x) => x.part === p);
+    if (!g || amount <= 0) return;
+    g.kick += amount * rand(0.6, 1.4);
+    if (g.kick > g.strain) g.cause = why;
+    g.load = (g.strain + g.kick) / Math.max(0.01, g.hold * (1 - 0.6 * g.slide / CONFIG.slideMax));
   }
 
   loseGrip(g, why) {
@@ -476,13 +639,10 @@ class ClawSim {
     this.world.destroyJoint(g.joint);
     this.unclamp(g.part);
     this.grips = this.grips.filter((x) => x !== g);
+    // the prongs sag open for a moment (the classic weak arcade claw), so a part caged
+    // by the closed prongs really drops instead of riding along without a grip
+    if (why !== 'stuck' && why !== 'loose') this.giveT = 0.45;
     this.emit('gripLost', { part: g.part, why });
-  }
-
-  // one-off slip rolls (the jolt at the top of the lift, a twitch in the claw)
-  rollSlip(p, chance, why) {
-    const g = this.grips.find((x) => x.part === p);
-    if (g && RNG() < chance / (p.def.grip || 1)) this.loseGrip(g, why);
   }
 
   dropGrips() {
@@ -502,7 +662,7 @@ class ClawSim {
     b.applyAngularImpulse(rand(-1, 1) * 0.35 * f * b.getInertia() * 10, true);
     p.twitchT = this.time;
     this.emit('twitch', { part: p, held });
-    if (held) this.rollSlip(p, CONFIG.twitchSlip, 'twitch');
+    if (held) this.kickGrip(p, CONFIG.strainTwitch, 'twitch');
   }
 
   startRelease() {
