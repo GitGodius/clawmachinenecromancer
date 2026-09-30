@@ -38,6 +38,18 @@ The Reaper is the manager, and the claw is rigged (he has said so). Behind the m
 
 Tone stays dry and morbid. "Bad luck is still luck. I'll bank it."
 
+![The claw scene with THE RIG panel, the Luck meter and the odds badge on the drop guide](rig_idle.png)
+
+*Idle: the Luck meter (top right), THE RIG (bottom right) and the odds badge on the drop guide.*
+
+![An earthquake in progress: banner, churning pile, sealed chute, levers locked](rig_quake.png)
+
+*Quake: the pile churns, the chute is sealed by a wall of light, the levers lock until it settles.*
+
+![The Special Order menu](rig_order.png)
+
+*Order: pick a slot. The menu shows how many you own and marks the one you are short of.*
+
 ## 4. The economy: Luck
 
 | | |

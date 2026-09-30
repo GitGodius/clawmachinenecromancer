@@ -20,6 +20,8 @@ Controls:
 
 ## The Rig: rig the machine back
 
+![a quake in the claw machine, with the Rig panel on the right](docs/rig_quake.png)
+
 The claw is a luck machine, and the Reaper admits it's rigged. So the machine now has a panel of switches on the side. Bad luck fills your **LUCK** meter (a miss is +1, a slip is +2, a battle won is +1), and Luck buys levers that bend the odds:
 
 | Lever | Key | Cost | What it does |

@@ -7767,7 +7767,7 @@ Scenes.claw = (() => {
       if (Input.hit('a')) S.pressA();
       if (Input.hit('b')) S.back();
       sim.step(dt);
-      lens = Rig.on && CONFIG.lens && !picker ? sim.predict() : null;
+      lens = Rig.on && CONFIG.lens && !picker && sim.lockT <= 0 ? sim.predict() : null; // (no badge while the pile is being shaken)
       if (lens && lens.part && !Game.seen.lensHint && Game.seen.claw && movedOnce) {
         Game.seen.lensHint = true;
         Game.talk.say('That badge is your odds of holding something. Aim for green.', 3.2, false);
