@@ -8,22 +8,29 @@
 <script src="../src/js/11_clawsim.js"></script>
 <script>
 // ?seed=1001&x=110&every=12&n=16&cfg={"gripTorque":40}&sprites=1
+// ?part=ribcage&off=3&angle=1.57   one part alone on the floor, claw dropped `off` px from its centre
+// Magenta: the claw's cavity. Green dot + label: a soul grip (q = catch quality, s = slide speed px/s).
 const Q = new URLSearchParams(location.search);
 Object.assign(CONFIG, JSON.parse(Q.get('cfg') || '{}'));
 RNG = mulberry32(+(Q.get('seed') || 1001));
 const log = [];
-const sim = new ClawSim({ onEvent: (t, d) => { if (t !== 'bump' && t !== 'clank') log.push(frame + ':' + t + (d.result ? '=' + d.result : '') + (d.part ? '(' + d.part.type + ')' : '')); } });
-let frame = 0;
-sim.fillPile(CONFIG.partCount);
-const tx = Q.get('x') ? +Q.get('x') : sim.partPos(sim.parts[0])[0];
+const sim = new ClawSim({ onEvent: (t, d) => { if (t !== 'bump' && t !== 'clank') log.push(frame + ':' + t + (d.result ? '=' + d.result : '') + (d.why ? '=' + d.why : '') + (d.q != null ? '=' + d.q.toFixed(2) : '') + (d.part ? '(' + d.part.type + ')' : '')); } });
+let frame = 0, tx;
+if (Q.get('part')) {
+  const p = sim.spawnPart(Q.get('part'), 70, MACHINE.floor - 12, +(Q.get('angle') || 0));
+  sim.settle(1.5);
+  tx = p.body.getWorldCenter().x * PPM + +(Q.get('off') || 0);
+} else {
+  sim.fillPile(CONFIG.partCount);
+  tx = Q.get('x') ? +Q.get('x') : sim.partPos(sim.parts[0])[0];
+}
 sim.teleportClaw(tx);
 for (let i = 0; i < 30; i++) sim.step(1 / 60);
 sim.startDrop();
-const every = +(Q.get('every') || 12), N = +(Q.get('n') || 16), cols = 4, S = +(Q.get('s') || 4), skip = +(Q.get('skip') || 0);
+const every = +(Q.get('every') || 12), N = +(Q.get('n') || 16), cols = +(Q.get('cols') || 4), S = +(Q.get('s') || 4), skip = +(Q.get('skip') || 0);
 const W = 184, H = 136;
 const c = document.getElementById('c'); c.width = cols * W * S / 2; c.height = Math.ceil(N / cols) * (H * S / 2 + 12);
 const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
-const col = (u) => u === 'claw' ? '#ff5577' : '#8fd';
 function snap(k) {
   const ox = (k % cols) * W * S / 2, oy = Math.floor(k / cols) * (H * S / 2 + 12);
   g.save(); g.translate(ox, oy + 12); g.scale(S / 2, S / 2);
@@ -32,16 +39,22 @@ function snap(k) {
     for (const p of sim.parts) for (const b of p.bodies) { const q = b.getPosition(); const s = SPR.get(p.def.sprite); g.save(); g.translate(q.x * PPM, q.y * PPM); g.rotate(b.getAngle()); g.drawImage(s.c, -s.w / 2, -s.h / 2); g.restore(); }
   }
   for (const s of sim.debugShapes()) {
-    g.strokeStyle = s.stat ? '#556' : '#9cf'; g.lineWidth = 1;
+    g.strokeStyle = s.stat ? '#556' : '#9cf'; g.lineWidth = 1 / (S / 2);
     g.beginPath();
     if (s.type === 'circle') g.arc(s.x, s.y, s.r, 0, 7); else { s.pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); }
     g.stroke();
   }
   const P = sim.clawPose();
   g.strokeStyle = '#fc6'; g.beginPath(); g.moveTo(P.carX, P.carY); g.lineTo(P.ropeX, P.ropeY); g.stroke();
+  g.strokeStyle = '#f4d'; g.beginPath(); sim.cavity().forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.stroke();
   for (const p of sim.held) { const [x, y] = sim.partPos(p); g.fillStyle = '#ff0'; g.fillRect(x - 2, y - 2, 4, 4); }
+  g.font = '5px monospace';
+  for (const gr of sim.grips) {
+    const q = gr.body.getWorldCenter(); g.fillStyle = '#5f5'; g.fillRect(q.x * PPM - 1.5, q.y * PPM - 1.5, 3, 3);
+    g.fillText('q' + gr.q.toFixed(2) + ' s' + gr.slide.toFixed(0), q.x * PPM + 3, q.y * PPM);
+  }
   g.restore();
-  g.fillStyle = '#ccc'; g.fillText('f' + frame + ' ' + sim.state + ' held:' + sim.held.size + ' jL ' + sim.jL.getJointAngle().toFixed(2), ox + 2, oy + 9);
+  g.fillStyle = '#ccc'; g.fillText('f' + frame + ' ' + sim.state + ' held:' + sim.held.size + ' grips:' + sim.grips.length + ' jL ' + sim.jL.getJointAngle().toFixed(2), ox + 2, oy + 9);
 }
 let k = 0;
 while (k < N) {

@@ -19,7 +19,7 @@ const Debug = {
         <button data-act="parts">+6 random parts</button><button data-act="win">Win battle</button><button data-act="stage">Stage +1</button>
       </div>`;
     for (const g in groups) {
-      html += `<details ${g === 'Claw' ? 'open' : ''}><summary>${g}</summary>`;
+      html += `<details ${g === 'Claw' || g === 'Grip' ? 'open' : ''}><summary>${g}</summary>`;
       for (const [, key, def, min, max, step, label] of groups[g]) {
         html += `<label title="${key}"><span>${label}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${CONFIG[key]}" data-key="${key}"><output data-out="${key}">${CONFIG[key]}</output></label>`;
       }

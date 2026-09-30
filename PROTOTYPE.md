@@ -44,49 +44,91 @@ Handy URL flags for testing:
 
 ## 4. How the claw works (the part that has to feel good)
 
-- **Physics.** The pile, the cable and the claw are real rigid bodies (planck.js, a Box2D port). The claw hangs on a cable that pays out as it drops. It detects landing when the cable goes slack, closes two motor-driven prongs, winches up, and swings as you steer.
-- **Hybrid grip.** Pure friction grip was unplayable (see §6). The prongs still close physically, but whatever ends up inside the claw's cavity can get a springy grip. The chance depends on how centered it is, how big it is, how slippery it is (hearts and eyeballs are wet), and whether the prongs actually closed.
-- **Slips.** Slipping is an explicit, tunable chance:
-  - a small risk every second while carrying
-  - extra risk if the part swings hard
-  - a classic arcade "jolt" at the top of the lift
-  - a chance that a living part twitches out of the claw (hands, tentacles, hearts and tails twitch in the pile too)
+**The rule: what the prongs close around is what you get.** Nothing about a grab is rolled. A good grab holds, a bad grab gets nothing, and a part never hangs on from outside the claw.
+
+- **Physics.** The pile, the cable and the claw are real rigid bodies (planck.js, a Box2D port). A grab goes:
+  1. **Drop.** The claw comes down in its narrow half-open pose, so its prong tips land on the part under the drop guide rather than on that part's neighbours. A stiff cable mount keeps the head on target instead of letting it skate down the slope of the pile.
+  2. **Spread.** When the cable goes slack, the prongs spread around whatever the tips landed on while the head settles in between them.
+  3. **Clamp.** The prongs close hard enough to shove the pile aside. The cable carries half the head's weight so the tips aren't pinned under 5 kg of claw.
+  4. **Lock.** Once closed, the prongs lock like a worm-gear claw. A claw that kept squeezing would pop rigid parts out through its mouth.
+  5. **Lift.** The winch reels the cable in at real speed, so whatever the claw holds feels the lift.
+- **The soul grip.** A part is bound to the claw only if its centre of mass is inside the claw's mouth (outlined live by the prongs' inner faces, so a prong jammed open makes a leaky claw) and a prong is touching it. How strongly depends on how it was caught:
+  - depth inside the mouth
+  - one prong or both
+  - slimy (hearts and eyeballs are wet)
+  - weight (heavy parts need a better catch)
+
+  The grip is a friction joint, so it resists the part sliding through the claw up to a force limit.
+- **The soul hook (the extra magic).** While the claw spreads and clamps, it drags the part straight under its centre line up into its mouth. That's the part the drop guide marks in violet before you drop. It's a real force: the pile pushes back, a buried part stays buried, and the prongs still have to close around whatever comes up. This is what makes aiming count.
+- **Slips.** Slips are purely physical: a part slips when it's pushed out of the claw's mouth. Causes, as the playtest report names them:
+  - **wedged:** the pile holds on to it as the claw lifts
+  - **slid:** it was only half in, or the claw is overstuffed
+  - **jolt:** the bounce when the winch hits its stop
+  - **twitch:** a living part fights the grip (hands, tentacles, hearts and tails twitch in the pile too)
+  - **swing:** a hard swing
+
+  The prongs have grippy pads inside and smooth metal outside, so parts slide off the outside instead of riding along on a prong. A part pinched by just the prong tips can still come along. The Reaper calls it out, and it usually falls.
 - **Juice.** The key feedback, in the order it happens:
   - **Machine noise:** the motor hum's pitch follows the carriage speed and the load.
-  - **Landing:** a thunk, dust and a small screen shake. The prongs ratchet as they close and the winch spins up.
-  - **Held part:** its name and rarity are labelled while you carry it.
+  - **Aim:** the drop guide runs straight down to the part the soul hook will reach for and outlines it in violet.
+  - **Landing:** a thunk, dust and a small screen shake. The prongs spread with a ghostly whistle, and a violet tendril reaches from the claw's heart to the part as it's drawn up. The prongs ratchet shut and the winch spins up.
+  - **Bind:** a shimmer and a flare where the grip takes hold. Its colour says how firm the catch is: green is firm, amber is loose, and flickering red means it's sliding out. The prongs glow and spectral threads run from them into the part. The part's name and rarity are labelled with five pips of grip; no pips means it's only riding on the prongs.
+  - **Snap:** when a grip tears, you get a crack of sparks and a falling whine, and the Reaper says why.
   - **Win:** the chute catch hit-pauses, the bulbs chase, and the prize flies into your bag. Rare catches get slow-mo; legendaries get a gold flash.
   - **Life in the pile:** eyeballs follow the claw, hearts pulse, and legendaries sparkle.
   - **The Reaper** comments on everything.
 
 ## 5. Tools for finding the fun
 
-- **In-game tuning panel** (the **`** key). Every number in `src/js/01_config.js` gets a live slider: claw speeds and torques, slip odds, twitchiness, pile size, economy and battle multipliers, and juice amounts. **Copy values** puts your changes on the clipboard so you can paste them back into the config. It also has cheats: +5 tokens, refill the machine, drop in a legendary, +6 parts, win the battle.
+- **In-game tuning panel** (the **`** key). Every number in `src/js/01_config.js` gets a live slider: claw speeds and torques, grip strength and the soul hook, twitchiness, pile size, economy and battle multipliers, and juice amounts. **Draw physics shapes** overlays every collider and the claw's live mouth. **Copy values** puts your changes on the clipboard so you can paste them back into the config. It also has cheats: +5 tokens, refill the machine, drop in a legendary, +6 parts, win the battle.
 - **Playtest report** (the **P** key). It logs grabs, wins, slips (with the reason), misses and doubles. It also counts **one-more-try retries**, meaning the player drops again within 6 seconds of a fail, versus leaving the machine after a fail. Plus creatures made, battles, stages reached, and time spent per scene. Copy it after watching someone play.
-- **`tools/tune.mjs`** runs the *real* claw simulation headless in Node, with a bot that aims with human-like noise. Example: `node tools/tune.mjs 300 '{"gripAssist":0.2}' gripTorque=40,60,80` sweeps any setting.
+- **`tools/tune.mjs`** runs the *real* claw simulation headless in Node, with a bot that aims with human-like noise. Example: `node tools/tune.mjs 300 '{"gripAssist":0.2}' hookPull=1,2,3` sweeps any setting. Besides win rates it reports:
+  - how often the target was inside the claw when it closed, and how often those were won
+  - "phantom carries" (anything carried from outside the claw)
+  - wins by aim error
+  - why grips were lost
 - **`tools/battle_sim.mjs`** runs the real battle code headless against random parties to check the difficulty curve.
-- **`tools/physdebug.html`** draws a grab as a filmstrip of physics shapes. That's how the grip problems in §6 were found.
+- **`tools/physdebug.html`** draws a grab as a filmstrip of physics shapes, with the claw's mouth in magenta and each grip's catch quality. `?part=ribcage&off=3&angle=1.57` drops the claw beside a single part on an empty floor. That's how the grip problems in §6 were found.
 
 ## 6. What I tested and what happened
 
 These tests were automated (bots and headless simulation), not human playtests. They tune the machine; they don't answer the question. The human tests in §7 do that.
 
-1. **Friction-only grip was hopeless: 0–14% of grabs lifted anything.** Parts wedged in the pile block the prongs. Round parts get squeezed out downward like watermelon seeds. Real rigged claw machines behave exactly like this, but in a game it reads as broken. **I switched to the hybrid grip above.**
-2. **Claw size relative to the parts mattered more than any torque setting.** Doubling the claw's inner cavity took lifts from about 7% to about 30%. Changing the torque from 120 to 700 moved lifts by only about 1 point.
-3. **The machine cuts the claw's power after it closes,** so it closes hard and then holds weakly. That's how real arcade claws behave. It also produces the "it had it, then dropped it at the top" moment.
-4. **"Slips" came mostly from how the sim measured the grip, not from what the player did.** Spinning the winch up smoothly and damping held parts fixed most of it.
-5. **Current baseline** (200 bot grabs, 5 px aim noise):
+1. **First pass: friction-only grip was hopeless (0–14% of grabs lifted anything),** so I stood in a "hybrid grip". After closing, anything roughly under the claw was rolled for a springy joint to the claw head, and slips were rolled every second. It played badly, and players hit two problems:
+   - Obviously good grabs failed on the roll.
+   - Bad grabs dragged in parts that weren't in the claw, which then dangled from the spring.
+2. **Second pass: I measured those two complaints and found physics bugs underneath** (150 bot grabs, 4 px aim noise):
+   - **The claw drifted off target.** Hanging from a slack cable, the head skated down the slope of the pile while its prongs closed, landing a median 17 px (up to 68 px) from where it was aimed. The claw's mouth is only 23 px wide. A stiff cable mount now keeps it within about 1 px.
+   - **The winch never lifted anything.** It shortened the rope joint, and the solver moved the head up by position correction with zero velocity. Nothing the claw held felt the lift, so parts resting on the hooks stayed on the floor. That, not the prongs, is most of why friction-only grip was hopeless. The winch now reels the head in at real speed. In a test that drops the claw over lone parts on an empty floor, that one fix took wins from 28% to 91%.
+   - **Squeezing popped parts out.** The prongs' sloped shoulders push a squeezed rigid part down through the mouth (the watermelon seeds). The prongs now lock once closed instead of squeezing.
+   - **The prongs never closed in the pile.** They opened wide at the top and came down on the target's neighbours, then were pinned there under the claw's weight, closing above the target. The drop, spread and clamp sequence in §4 fixed that.
+   - **Aim barely mattered, even so.** The last piece was the soul hook.
+3. **Claw size isn't the lever any more.** Earlier, doubling the claw's cavity took lifts from about 7% to about 30%. Now that the physics works, longer prongs make things *worse*. Before the soul hook existed, the target was won 36% of the time at normal size, 27% at 1.2× and 9% at 1.5×.
+4. **Current baseline.** Both columns use the same 300 piles, the same bot and the same metrics (`node tools/tune.mjs 300`, 4 px aim noise):
 
-   | Outcome | Rate |
-   |---|---|
-   | Win something | ~50% |
-   | Lift something | ~63% |
-   | Slip mid-carry | ~12% |
-   | Win two parts at once | ~7% |
-   | Win the exact part aimed at | ~25–28% |
+   | Outcome | Hybrid grip (before) | Soul grip (now) |
+   |---|---|---|
+   | Win something | 56% | 75% |
+   | Win the exact part aimed at | 29% | 51% |
+   | Target inside the claw when it closed → won | 63% | 90% |
+   | Target centred in the claw → still lost | 20% | 6% |
+   | Carried something from outside the claw | 19% of grabs | 1% (tip pinches, parts shoved into the chute) |
+   | Win two parts at once | 12% | 21% |
+   | Slip | 9% | 2% |
 
-   Aim decides *which* part you get more than *whether* you get one.
-6. **Carry skill doesn't matter yet.** Gentle and jerky steering bots win about the same (52% vs 50%). The slip risk is dominated by the part wobbling inside the prongs, and with digital input there's no way to steer gently. *This is an open design problem* (see §8).
+   With sloppier aim (10 px noise), the exact part is won:
+
+   | Aim error | Before | Now |
+   |---|---|---|
+   | 0–2 px | 33% | 59% |
+   | 2–4 px | 21% | 40% |
+   | 4–7 px | 28% | 50% |
+   | 7–11 px | 17% | 42% |
+   | over 11 px | 13% | 18% |
+
+   Centred catches were lost 45% of the time before and 6% now.
+5. **Economy side effect.** Grabs now pay out about 0.9 parts per token, up from about 0.6. By Stage 5 that's roughly 25 parts instead of 14, so battles in §7 will feel easier. If they do, `startTokens` or `winTokens` is the knob. Don't make the claw worse.
+6. **Carry skill still doesn't matter.** Gentle and jerky steering bots win about the same (76% vs 75%). Held parts sit in a locked cage, and the carriage's capped acceleration never shakes one loose. *This is still an open design problem* (see §8).
 7. **Battle curve** (headless, Zap used on cooldown). The Stage 5 boss is a deliberate wall that needs a full party of three.
 
    | Party | S1 | S2 | S3 | S4 | S5 (boss) | S8 | S10 |
@@ -97,7 +139,7 @@ These tests were automated (bots and headless simulation), not human playtests. 
    | 3 creatures, 5 parts | 100% | 100% | 100% | 100% | 95% | 70% | 35% |
    | 3 creatures, 7 parts | 100% | 100% | 100% | 100% | 100% | 98% | 73% |
 
-   By Stage 5 you've earned about 28 tokens, which is roughly 14 parts at the current odds. That's enough for three 5-part creatures if you spend them well.
+   By Stage 5 you've earned about 28 tokens, which is roughly 25 parts at the current claw odds (see item 5). That's more than enough for three 5-part creatures.
 8. **Soak test.** Four bots mashed random keys and clicks for 90 seconds each across all four scenes (stitching, winning and losing battles, retreating). There were no script errors.
 9. **Bugs the tools caught before any human saw them:**
    - Claw bodies fell asleep, so the motors did nothing.
@@ -128,7 +170,12 @@ Log each session with this template:
 
 **If the answer is yes**, meaning people retry and chase parts:
 
-- Make carrying a skill. Tie the slip risk to carriage acceleration, not wobble. Or give the carriage momentum so holding a direction speeds it up and tapping is gentle. Or show a wobble meter.
+- Make carrying a skill. Slips are physical now, but at the carriage's capped acceleration a locked claw never shakes a part loose. Options:
+  - Give the carriage momentum, so holding a direction speeds it up and tapping is gentle.
+  - Let hard stops and reversals jolt the head.
+  - Let hard swings weaken the soul grip.
+
+  The grip meter is already there to show it.
 - Give parts from the same creature a set bonus (e.g. a full ogre), so players chase *specific* parts.
 - Let players see the next restock falling into the machine before they fight, to set up "I want that".
 - Only then look at meta-progression: claw upgrades, more machines, more enemy families.

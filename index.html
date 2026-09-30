@@ -93,27 +93,33 @@ const CONFIG_META = [
   ['Claw', 'clawAccel', 200, 50, 1500, 10, 'Move acceleration'],
   ['Claw', 'dropSpeed', 55, 10, 200, 1, 'Drop speed'],
   ['Claw', 'liftSpeed', 34, 5, 200, 1, 'Lift speed'],
-  ['Claw', 'closeTorque', 150, 0, 500, 5, 'Closing torque (push into pile)'],
-  ['Claw', 'gripTorque', 60, 0, 300, 2, 'Hold torque after lift'],
+  ['Claw', 'clawGuide', 1.6, 0, 5, 0.1, 'Cable holds the head on target (Hz, 0 = slack)'],
+  ['Claw', 'dropOpen', 0.3, 0, 0.85, 0.05, 'Prongs open this far on the way down (rad)'],
+  ['Claw', 'clawOpen', 0.85, 0.3, 0.85, 0.05, 'Prongs spread this wide on landing (rad)'],
+  ['Claw', 'closeCarry', 0.5, 0, 1, 0.05, 'Cable takes this much weight while closing'],
+  ['Claw', 'closeTorque', 400, 0, 800, 10, 'Closing torque (shoves the pile aside)'],
+  ['Claw', 'gripTorque', 60, 0, 300, 2, 'Prongs lock this hard once closed'],
   ['Claw', 'closeSpeed', 3.2, 0.5, 12, 0.1, 'Close speed (rad/s)'],
   ['Claw', 'closeTime', 0.7, 0.1, 2, 0.05, 'Close time (s)'],
   ['Claw', 'closeFriction', 0.08, 0, 1.5, 0.02, 'Prong friction while closing'],
-  ['Claw', 'prongFriction', 1.0, 0, 3, 0.05, 'Prong friction while holding'],
-  ['Claw', 'grabChance', 0.9, 0, 1, 0.02, 'Grab chance (part in claw, centered)'],
-  ['Claw', 'slipBase', 0.05, 0, 1, 0.01, 'Slip chance /s while carrying'],
-  ['Claw', 'swingSlip', 1.6, 0, 5, 0.05, 'Extra slip from swinging it around'],
-  ['Claw', 'swingSafe', 30, 0, 120, 1, 'Swing speed that is still safe (px/s)'],
-  ['Claw', 'topSlip', 0.15, 0, 1, 0.01, 'Slip chance on the jolt at the top'],
-  ['Claw', 'twitchSlip', 0.4, 0, 1, 0.05, 'Slip chance when a held part twitches'],
-  ['Claw', 'gripFade', 0.8, 0, 3, 0.05, 'Seconds to fade close→hold torque'],
-  ['Claw', 'gripSpring', 6, 1, 20, 0.5, 'Grip springiness (Hz)'],
-  ['Claw', 'gripAssist', 0.3, 0, 1, 0.05, 'Held parts weigh less'],
+  ['Claw', 'prongFriction', 1.0, 0, 3, 0.05, 'Prong pads friction while holding (inside)'],
+  ['Claw', 'shellFriction', 0.15, 0, 3, 0.05, 'Prong friction outside (smooth metal)'],
   ['Claw', 'hubMass', 3, 0.5, 10, 0.25, 'Claw head mass'],
   ['Claw', 'swayDamping', 0.35, 0, 5, 0.05, 'Sway damping'],
   ['Claw', 'clawStiffness', 90, 0, 400, 5, 'Keep-upright stiffness'],
   ['Claw', 'carryManual', 1, 0, 1, 1, 'Steer carry manually (0 = auto return)'],
   ['Claw', 'carryTime', 8, 0, 30, 1, 'Carry timer s (0 = off)'],
   ['Claw', 'aimTime', 0, 0, 30, 1, 'Aim timer s (0 = off)'],
+  // the soul grip: nothing is rolled, these only shape the physics (see ClawSim)
+  ['Grip', 'gripStrength', 4, 0, 12, 0.25, 'Grip strength (× a skull\'s weight)'],
+  ['Grip', 'gripMin', 0.15, 0, 1, 0.01, 'Weakest catch that still binds'],
+  ['Grip', 'gripDepth', 5, 1, 12, 0.5, 'Depth inside for a full grip (px)'],
+  ['Grip', 'gripSlack', 1.5, 0, 6, 0.25, 'Lets go this far outside the claw (px)'],
+  ['Grip', 'hookPull', 2, 0, 5, 0.1, 'Soul hook on the part under the claw (× gravity)'],
+  ['Grip', 'hookReach', 14, 0, 40, 1, 'Soul hook reaches below the prong tips (px)'],
+  ['Grip', 'gripAssist', 0.3, 0, 1, 0.05, 'Bound parts weigh less'],
+  ['Grip', 'topJolt', 30, 0, 150, 5, 'Bounce when the winch stops (px/s)'],
+  ['Grip', 'twitchHeld', 1.8, 0, 5, 0.1, 'Held living parts struggle ×'],
   ['Pile', 'partCount', 22, 5, 40, 1, 'Parts in machine (refill)'],
   ['Pile', 'gravity', 30, 5, 80, 1, 'Gravity'],
   ['Pile', 'partFriction', 0.55, 0, 1.5, 0.05, 'Part friction'],
@@ -148,6 +154,7 @@ const CONFIG_DEFAULTS = Object.assign({}, CONFIG);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const invLerp = (a, b, v) => (v - a) / (b - a);
+const smoothstep = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const approach = (v, target, step) => (v < target ? Math.min(v + step, target) : Math.max(v - step, target));
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOutQuad = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
@@ -1117,6 +1124,9 @@ const CLAW_GEO = {
     [[1.8, 0.85], [-1.8, -0.85], [-8.8, 14.2], [-5.2, 15.9]],
     [[-5.5, 13.6], [-8.5, 16.4], [4.9, 30.0], [7.1, 28.0]],
   ],
+  // inner face of the left prong (by the pivot, the elbow, the hook tip). With the right prong's
+  // mirror image it outlines the cavity the claw really closes around (ClawSim.cavity).
+  inner: [[1.8, 0.85], [-4.6, 14.6], [7.1, 28.0]],
 };
 (() => {
   // prong sprite: grid offset so the pivot lands at (OX, OY)
@@ -3610,6 +3620,26 @@ const { AudioSys, Sfx, Music } = (() => {
       for (let k = 0; k < 4; k++) hiss(v, t + k * 0.035 + R() * 0.015, { d: 0.03, g, f: rr(900, 2600), q: 3 });
       tone(v, t + 0.02, { f: 380 * o.p, f1: 900 * o.p, d: 0.04, g: g * 0.8 });
     },
+    // --- the soul grip ---
+    soul_reach: (v, t, o) => { // the claw reaches for the part below: a breathy swell and a ghostly rising whistle
+      const p = o.p;
+      hiss(v, t, { d: 0.5, a: 0.18, g: 0.2, f: 450 * p, f1: 2600 * p, q: 5 });
+      const s = tone(v, t + 0.05, { f: 520 * p, f1: 830 * p, glide: 0.4, d: 0.5, a: 0.14, g: 0.07 });
+      lfo(v, 7, 25, t, t + 0.55).connect(s.detune);
+    },
+    soul_bind: (v, t, o) => { // the grip takes hold: a hollow thrum, a whoosh up, a minor shimmer (brighter = firmer)
+      const p = o.p, i = o.i;
+      tone(v, t, { f: 98 * p, f1: 147 * p, glide: 0.12, d: 0.35, a: 0.01, g: 0.22 });
+      hiss(v, t, { d: 0.22, a: 0.05, g: 0.18 + 0.2 * i, f: 700 * p, f1: 4200 * p, q: 3 });
+      [0, 3, 7, 12].forEach((iv, k) => bell(v, t + 0.04 + k * 0.035, hz(76 + iv) * p, 0.04 + 0.06 * i, 0.3 + 0.4 * i));
+    },
+    soul_snap: (v, t, o) => { // the grip tears: a brittle crack and a sighing fall
+      const p = o.p;
+      hiss(v, t, { d: 0.04, g: 0.6, type: 'highpass', f: 3500 });
+      tone(v, t, { type: 'triangle', f: 1300 * p, f1: 240 * p, glide: 0.35, d: 0.4, g: 0.16 });
+      const s = tone(v, t + 0.01, { f: 880 * p, f1: 180 * p, glide: 0.45, d: 0.5, g: 0.1 });
+      lfo(v, 11, 30, t, t + 0.5).connect(s.detune);
+    },
     heartbeat: (v, t, o) => {
       const g = 0.2 + 0.25 * o.i;
       for (const [dt, k, f] of [[0, 1, 80], [0.19, 0.7, 92]]) {
@@ -3758,6 +3788,7 @@ const { AudioSys, Sfx, Music } = (() => {
     bump: [12, 4], ui_hover: [15, 2], coins_count: [20, 3], twitch: [8, 2], heartbeat: [3, 2], chute: [6, 3],
     restock: [1.5, 1], thunder: [0.7, 1], alive: [1, 1], victory: [1, 1], defeat: [1, 1], zap: [8, 3],
     win_legendary: [1, 1], win_rare: [2, 1], meow: [3, 1], purr: [1, 1],
+    soul_reach: [2, 1], soul_bind: [8, 3], soul_snap: [6, 2],
   };
   // Reverb send per sound.
   const WET = {
@@ -3765,6 +3796,7 @@ const { AudioSys, Sfx, Music } = (() => {
     win_common: 0.2, win_uncommon: 0.22, win_rare: 0.28, win_legendary: 0.32, restock: 0.1, heartbeat: 0.12, bump: 0.05,
     stitch: 0.06, unstitch: 0.06, zap: 0.15, thunder: 0.45, alive: 0.4, enemy_die: 0.4, creature_die: 0.12,
     victory: 0.3, defeat: 0.35, meow: 0.12, page: 0.05, swing: 0.05,
+    soul_reach: 0.35, soul_bind: 0.3, soul_snap: 0.25,
   };
   // These use intensity themselves; the rest just get a mild loudness scale.
   const RAW = { bump: 1, hit: 1, claw_land: 1, swing: 1, heartbeat: 1, enemy_hit: 1, twitch: 1 };
@@ -4218,6 +4250,22 @@ const MACHINE = {
 };
 const HULLS = {};
 const getHull = (name) => HULLS[name] || (HULLS[name] = SPR.hull(name, 8, 0.45));
+const GRIP_REF_MASS = 0.4; // a skull: CONFIG.gripStrength is measured in skull-weights
+
+// Signed distance (px) from a point to the claw cavity polygon (ClawSim.cavity): > 0 inside.
+// The closing edge (the underside of the claw head) is a wall, not a way out, so it doesn't count.
+function cavityDepth(poly, x, y) {
+  let inside = false, d2 = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    if (i === 0) continue;
+    const ex = xi - xj, ey = yi - yj, t = clamp(((x - xj) * ex + (y - yj) * ey) / (ex * ex + ey * ey || 1), 0, 1);
+    const dx = x - xj - t * ex, dy = y - yj - t * ey;
+    d2 = Math.min(d2, dx * dx + dy * dy);
+  }
+  return (inside ? 1 : -1) * Math.sqrt(d2);
+}
 
 class ClawSim {
   constructor(opts = {}) {
@@ -4233,6 +4281,8 @@ class ClawSim {
     this.turn = null;
     this.turnCount = 0;
     this.grips = [];
+    this.cav = null; // the claw's cavity polygon, refreshed while it grips
+    this.joltT = -9;
     this.build();
   }
 
@@ -4288,8 +4338,14 @@ class ClawSim {
       const piv = side < 0 ? G.pivotL : G.pivotR;
       const pos = V((x + piv[0]) / PPM, (hubY + piv[1]) / PPM);
       const b = w.createBody({ type: 'dynamic', position: pos, angularDamping: 2 });
-      for (const poly of G.prong) {
-        b.createFixture(pl.Polygon(poly.map(([px, py]) => V((side < 0 ? px : -px) / PPM, py / PPM))), clawFix(2, CONFIG.prongFriction));
+      // Each prong segment [innerA, outerA, outerB, innerB] is split lengthwise into a grippy inner
+      // pad and a smooth outer shell (same shape and mass): parts caught inside get purchase, while
+      // parts resting on the outside slide off instead of riding along on a prong.
+      const pt = ([px, py]) => V((side < 0 ? px : -px) / PPM, py / PPM), mid = (a, c) => [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
+      for (const [iA, oA, oB, iB] of G.prong) {
+        const m0 = mid(iA, oA), m1 = mid(oB, iB);
+        b.createFixture(pl.Polygon([iA, m0, m1, iB].map(pt)), clawFix(2, CONFIG.prongFriction)).setUserData('pad');
+        b.createFixture(pl.Polygon([m0, oA, oB, m1].map(pt)), clawFix(2, CONFIG.shellFriction));
       }
       b.setUserData('claw');
       const j = w.createJoint(pl.RevoluteJoint({
@@ -4425,6 +4481,8 @@ class ClawSim {
     this.turn = { won: [], grabbed: new Set(), slips: 0, startT: this.time, n: ++this.turnCount };
     this.landed = false;
     this.slackT = 0;
+    // slippery prongs on the way down and while closing, so they slide off parts into the gaps
+    this.setProngFriction(CONFIG.closeFriction);
     this.emit('drop');
     return true;
   }
@@ -4441,6 +4499,21 @@ class ClawSim {
     return Math.hypot(b.x - a.x, b.y - a.y) * PPM;
   }
 
+  // Reel the cable in at `speed` px/s. Shortening the rope joint alone drags the head up by
+  // position correction, which never shows up as velocity: nothing the claw carries (the grip, a
+  // part resting on the hooks) would feel the lift, and it would stay behind. So the head and its
+  // prongs are given the cable's real speed, and the solver passes it on to whatever they hold.
+  reel(speed) {
+    const V = planck.Vec2, a = this.carriage.getPosition(), b = this.hub.getWorldPoint(V(0, -CLAW_GEO.hubH / 2 / PPM));
+    const dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy);
+    if (d * PPM < this.ropeLen - 0.5 || d < 1e-6) return; // slack cable pulls nothing
+    const ux = dx / d, uy = dy / d, s = speed / PPM;
+    for (const body of [this.hub, this.prongL, this.prongR]) {
+      const v = body.getLinearVelocity(), along = v.x * ux + v.y * uy;
+      if (along < s) body.setLinearVelocity(V(v.x + (s - along) * ux, v.y + (s - along) * uy));
+    }
+  }
+
   driveCarriage(target, h) {
     const M = MACHINE;
     this.carV = approach(this.carV, target, CONFIG.clawAccel * h);
@@ -4451,18 +4524,27 @@ class ClawSim {
     this.carX = nx;
   }
 
-  prongs(mode, fade = 0) {
+  prongs(mode) {
     let torque, sL, sR;
-    if (mode === 'open') { sL = 5; sR = -5; torque = 120; }
-    else if (mode === 'close') {
-      // full power while closing, then the machine "cuts the voltage" to the hold torque
-      sL = -CONFIG.closeSpeed; sR = CONFIG.closeSpeed;
-      torque = lerp(CONFIG.closeTorque, CONFIG.gripTorque, clamp(fade, 0, 1));
+    if (mode === 'open') {
+      sL = clamp(12 * (CONFIG.clawOpen - this.jL.getJointAngle()), -5, 5);
+      sR = clamp(12 * (-CONFIG.clawOpen - this.jR.getJointAngle()), -5, 5);
+      torque = 120;
     }
-    else { // relax: servo to half-open
-      const k = 5;
-      sL = clamp(k * (0.3 - this.jL.getJointAngle()), -3, 3);
-      sR = clamp(k * (-0.3 - this.jR.getJointAngle()), -3, 3);
+    else if (mode === 'close') { sL = -CONFIG.closeSpeed; sR = CONFIG.closeSpeed; torque = CONFIG.closeTorque; }
+    else if (mode === 'hold') {
+      // Locked where they closed, like a worm-gear claw: a cage around the catch. Still squeezing,
+      // the sloped shoulders would pop a rigid part out through the mouth like a watermelon seed.
+      // Pushed open, they creep back; they never squeeze tighter.
+      const aL = this.jL.getJointAngle(), aR = this.jR.getJointAngle();
+      this.holdL = Math.min(this.holdL, aL); this.holdR = Math.max(this.holdR, aR);
+      sL = Math.min(0, 6 * (this.holdL - aL)); sR = Math.max(0, 6 * (this.holdR - aR));
+      torque = CONFIG.gripTorque;
+    }
+    else { // relax: servo to a half-open pose (or to the drop pose while it falls)
+      const k = 5, a = mode === 'drop' ? CONFIG.dropOpen : 0.3;
+      sL = clamp(k * (a - this.jL.getJointAngle()), -3, 3);
+      sR = clamp(k * (-a - this.jR.getJointAngle()), -3, 3);
       torque = 40;
     }
     this.jL.setMotorSpeed(sL); this.jR.setMotorSpeed(sR);
@@ -4484,16 +4566,21 @@ class ClawSim {
     const pressed = this.pressed;
     this.pressed = false;
     const move = clamp(this.input.move || 0, -1, 1);
+    let guide = 0, stiff = 1; // cable guide (Hz) and upright stiffness: firm while the claw works the pile
 
     switch (this.state) {
       case 'idle':
         this.prongs('relax');
         this.driveCarriage(move * CONFIG.clawMoveSpeed, h);
         this.ropeLen = approach(this.ropeLen, M.topLen, CONFIG.liftSpeed * h);
+        if (this.ropeLen > M.topLen) this.reel(CONFIG.liftSpeed);
         if (CONFIG.aimTime > 0 && this.aimActive && this.stateT > CONFIG.aimTime) this.emit('aimTimeout');
         break;
       case 'drop': {
-        this.prongs('open');
+        // Down it goes in the narrow half-open pose, so the prong tips come down on whatever is under
+        // the drop guide. Wide open, they'd land on its neighbours and the claw would close above it.
+        guide = CONFIG.clawGuide; stiff = 3;
+        this.prongs('drop');
         this.driveCarriage(0, h);
         const vy = this.hub.getLinearVelocity().y * PPM;
         const dist = this.ropeDist();
@@ -4501,56 +4588,83 @@ class ClawSim {
         this.ropeLen = Math.min(M.maxLen, this.ropeLen + CONFIG.dropSpeed * h, dist + 4);
         this.dropVmax = Math.max(this.dropVmax || 0, vy);
         const slack = this.ropeLen - dist;
+        // landed = the cable has stayed slack a moment (a prong just glancing off a part doesn't count)
         this.slackT = this.stateT > 0.22 && slack > 2 && vy < 25 ? this.slackT + h : 0;
-        if (this.slackT > 0.03 || this.ropeLen >= M.maxLen || (pressed && this.stateT > 0.1)) {
-          this.landed = this.slackT > 0.03;
+        if (this.slackT > 0.05 || this.ropeLen >= M.maxLen || (pressed && this.stateT > 0.1)) {
+          this.landed = this.slackT > 0.05;
+          this.sink = this.landed; // stopped early by the player: spread and close right there
           if (this.landed) this.emit('land', { intensity: clamp(this.dropVmax / 140, 0.2, 1), x: this.hub.getPosition().x * PPM, y: this.hub.getPosition().y * PPM });
           this.dropVmax = 0;
-          // slippery prongs while closing so they slide into the gaps of the pile
-          this.setProngFriction(CONFIG.closeFriction);
+          this.settleT = 0;
+          this.setState('spread');
+          this.emit('spread');
+        }
+        break;
+      }
+      case 'spread': {
+        // Touched down: the prongs spread around what the tips landed on while the head settles in
+        // between them on a slack cable, then the claw clamps shut.
+        guide = CONFIG.clawGuide; stiff = 3;
+        this.prongs('open');
+        this.driveCarriage(0, h);
+        if (this.sink) this.ropeLen = Math.min(M.maxLen, Math.max(this.ropeLen, this.ropeDist() + 3));
+        this.soulHook();
+        const open = (this.jL.getJointAngle() - this.jR.getJointAngle()) / 2;
+        this.settleT = Math.abs(this.hub.getLinearVelocity().y * PPM) < 6 ? this.settleT + h : 0;
+        if ((this.stateT > 0.2 && (open > CONFIG.clawOpen - 0.08 || this.stateT > 0.45) && this.settleT > 0.06) || this.stateT > 0.8) {
           this.setState('close');
           this.emit('close');
         }
         break;
       }
       case 'close': {
+        guide = CONFIG.clawGuide; stiff = 3;
         this.prongs('close');
         this.driveCarriage(0, h);
-        // cable stays a little slack: the claw settles into the pile as it closes
+        // cable stays a little slack: the claw settles into the pile as it closes...
         this.ropeLen = Math.min(M.maxLen, Math.max(this.ropeLen, this.ropeDist() + 2));
+        // ...but it carries most of the head's weight, or the prong tips would be pinned to the pile
+        // under 5 kg of claw and never sweep in
+        const m = this.hub.getMass() + this.prongL.getMass() + this.prongR.getMass();
+        this.hub.applyForceToCenter(planck.Vec2(0, -CONFIG.closeCarry * m * CONFIG.gravity), true);
+        this.soulHook();
         if (this.stateT > CONFIG.closeTime) {
-          this.setProngFriction(CONFIG.prongFriction);
+          this.hook = null;
+          this.setProngFriction(CONFIG.prongFriction, CONFIG.shellFriction);
+          this.holdL = this.jL.getJointAngle(); this.holdR = this.jR.getJointAngle();
           this.setState('lift');
-          this.tryGrab();
+          this.scanGrips();
           this.emit('lift', { grips: this.grips.map((g) => g.part) });
         }
         break;
       }
       case 'lift': {
-        this.prongs('close', CONFIG.gripFade > 0 ? this.stateT / CONFIG.gripFade : 1);
-        this.updateGrips(h);
+        guide = CONFIG.clawGuide; stiff = 2;
+        this.prongs('hold');
+        this.scanGrips();
         this.driveCarriage(0, h);
         const d = this.ropeDist();
         if (this.ropeLen > d + 1) this.ropeLen = d + 1;
         // winch spins up smoothly (an instant yank would rip parts out of the grip)
         const spin = easeInOutQuad(clamp(this.stateT / 0.45, 0, 1));
         this.ropeLen = Math.max(M.topLen, this.ropeLen - CONFIG.liftSpeed * spin * h);
+        if (this.ropeLen > M.topLen) this.reel(CONFIG.liftSpeed * spin);
         if (this.ropeLen <= M.topLen + 0.01 && this.stateT > 0.2) {
-          for (const g of this.grips.slice()) this.rollSlip(g.part, CONFIG.topSlip, 'jolt');
+          this.jolt();
           this.setState(CONFIG.carryManual ? 'carry' : 'return');
           this.emit('top', { held: [...this.held] });
         }
         break;
       }
       case 'carry':
-        this.prongs('close', 1);
-        this.updateGrips(h);
+        this.prongs('hold');
+        this.scanGrips();
         this.driveCarriage(move * CONFIG.clawMoveSpeed, h);
         if (pressed || (CONFIG.carryTime > 0 && this.stateT > CONFIG.carryTime)) this.startRelease();
         break;
       case 'return': {
-        this.prongs('close', 1);
-        this.updateGrips(h);
+        this.prongs('hold');
+        this.scanGrips();
         const d = M.home - this.carX;
         const vmax = Math.sqrt(2 * CONFIG.clawAccel * Math.abs(d));
         this.driveCarriage(Math.sign(d) * Math.min(CONFIG.clawMoveSpeed, vmax), h);
@@ -4564,10 +4678,11 @@ class ClawSim {
         break;
     }
     this.rope.setMaxLength(this.ropeLen / PPM);
+    this.guideClaw(guide);
     // keep the claw head roughly upright (real claws hang from a stiff cable mount)
     if (CONFIG.clawStiffness > 0) {
-      const a = this.hub.getAngle(), w = this.hub.getAngularVelocity();
-      this.hub.applyTorque(-CONFIG.clawStiffness * a - CONFIG.clawStiffness * 0.18 * w, true);
+      const k = CONFIG.clawStiffness * stiff, a = this.hub.getAngle(), w = this.hub.getAngularVelocity();
+      this.hub.applyTorque(-k * a - k * 0.18 * w, true);
     }
 
     // living parts twitch
@@ -4589,9 +4704,9 @@ class ClawSim {
     this.afterStep();
   }
 
-  setProngFriction(f) {
+  setProngFriction(pad, shell = pad) {
     for (const b of [this.prongL, this.prongR]) {
-      for (let fx = b.getFixtureList(); fx; fx = fx.getNext()) fx.setFriction(f);
+      for (let fx = b.getFixtureList(); fx; fx = fx.getNext()) fx.setFriction(fx.getUserData() === 'pad' ? pad : shell);
       for (let ce = b.getContactList(); ce; ce = ce.next) ce.contact.resetFriction();
     }
   }
@@ -4603,73 +4718,108 @@ class ClawSim {
     return [dx * c - dy * s, dx * s + dy * c];
   }
 
-  // After closing: whatever sits in the claw's cavity may get a springy grip.
-  // Odds: centered + small + prongs actually closed = good. Physics does the rest.
-  tryGrab() {
-    this.grabInfo = null;
-    const open = clamp((this.jL.getJointAngle() - this.jR.getJointAngle()) / 1.7, 0, 1);
-    const closure = open < 0.6 ? 1 : lerp(1, 0.35, (open - 0.6) / 0.4);
-    const cand = [];
+  // ------------------------------------------------------------ the soul grip
+  // What the prongs close around is what you get. A part whose centre of mass ends up inside the
+  // claw's cavity (outlined live by the prongs' inner faces, so a prong jammed open makes a leaky
+  // claw) and that the claw is touching gets bound to the head by a friction joint: the Reaper's
+  // soul grip. How strong depends on how it was caught: how deep inside, pinched by both prongs or
+  // resting on one, slimy or dry, light or heavy. Nothing is rolled. A part slips only when the
+  // physics pushes it out of the cavity (wedged in the pile, a hard swing, a twitch, the bounce at
+  // the top), and a grip that nothing touches fades until the part settles back onto the prongs.
+
+  // The cavity in world px: down the left prong's inner face to its hook, across the mouth, back up
+  // the right prong. The closing edge is the underside of the head.
+  cavity() {
+    const V = planck.Vec2, I = CLAW_GEO.inner, out = [];
+    for (const [x, y] of I) { const q = this.prongL.getWorldPoint(V(x / PPM, y / PPM)); out.push([q.x * PPM, q.y * PPM]); }
+    for (let i = I.length - 1; i >= 0; i--) { const q = this.prongR.getWorldPoint(V(-I[i][0] / PPM, I[i][1] / PPM)); out.push([q.x * PPM, q.y * PPM]); }
+    return out;
+  }
+
+  // remember when each part last touched the left prong, the right prong and the head
+  noteTouches() {
+    const scan = (body, k) => {
+      for (let ce = body.getContactList(); ce; ce = ce.next) {
+        const p = ce.other.getUserData();
+        if (!p || p === 'claw' || !ce.contact.isTouching()) continue;
+        (p.touchT || (p.touchT = [-9, -9, -9]))[k] = this.time;
+      }
+    };
+    scan(this.prongL, 0); scan(this.prongR, 1); scan(this.hub, 2);
+  }
+
+  touching(p, within = 0.2) { return !!p.touchT && this.time - Math.max(p.touchT[0], p.touchT[1], p.touchT[2]) < within; }
+
+  // 0..1: how well the claw holds part p, whose gripped body sits `depth` px inside the cavity
+  gripQuality(p, depth) {
+    const T = p.touchT, now = this.time;
+    if (!T) return 0;
+    const L = now - T[0] < 0.2, R = now - T[1] < 0.2, head = now - T[2] < 0.2;
+    const pinch = L && R ? 1 : L || R ? 0.65 : head ? 0.45 : 0;
+    return smoothstep(0, CONFIG.gripDepth, depth) * pinch * (p.def.grip || 1);
+  }
+
+  scanGrips(h = 1 / 120) {
+    const poly = (this.cav = this.cavity());
+    this.noteTouches();
+    for (const g of this.grips.slice()) {
+      g.t += h;
+      const c = g.body.getWorldCenter();
+      g.depth = cavityDepth(poly, c.x * PPM, c.y * PPM);
+      if (g.depth < -CONFIG.gripSlack) { this.loseGrip(g, this.slipWhy(g)); continue; }
+      // slide: how fast it's slipping through the claw (px/s). 0 = held fast.
+      const v = g.body.getLinearVelocity(), hv = this.hub.getLinearVelocityFromWorldPoint(c);
+      const slide = Math.hypot(v.x - hv.x, v.y - hv.y) * PPM;
+      g.slide = Math.max(slide, (g.slide || 0) - h * 40);
+      if (slide > 8 && g.t > 0.15) g.strainT = this.time;
+      g.q = this.gripQuality(g.part, g.depth);
+      this.setGripStrength(g);
+    }
     for (const p of this.parts) {
-      if (p.won) continue;
+      if (p.won || !this.touching(p) || this.time - (p.unbindT || -9) < 0.4 || this.grips.some((g) => g.part === p)) continue;
       let best = null;
       for (const b of p.bodies) {
-        const [lx, ly] = this.toHub(b.getPosition());
-        if (Math.abs(lx) > 16 || ly < 3 || ly > 40) continue;
-        const d = Math.hypot(lx, (ly - 20) * 0.6);
-        if (!best || d < best.d) best = { b, lx, ly, d };
+        const c = b.getWorldCenter(), d = cavityDepth(poly, c.x * PPM, c.y * PPM);
+        if (d > 0 && (!best || d > best.d)) best = { b, d };
       }
       if (!best) continue;
-      const s = SPR.get(p.def.sprite);
-      const dim = p.def.chain ? 16 : Math.max(s.w, s.h);
-      const size = dim <= 20 ? 1 : dim <= 26 ? 0.85 : 0.7;
-      const center = 1 - 0.55 * Math.pow(Math.min(1, Math.abs(best.lx) / 16), 2);
-      const chance = clamp(CONFIG.grabChance * size * center * closure * (p.def.grip || 1), 0, 0.98);
-      cand.push({ p, ...best, chance });
-    }
-    cand.sort((a, b) => a.d - b.d);
-    this.grabInfo = { open, closure, cand: cand.map((c) => ({ type: c.p.type, chance: c.chance })) };
-    let first = true;
-    for (const c of cand.slice(0, 2)) {
-      const roll = first ? c.chance : c.chance * 0.3; // a second part is a lucky bonus
-      if (RNG() < roll) this.attachGrip(c.p, c.b);
-      first = false;
+      const q = this.gripQuality(p, best.d);
+      if (q >= CONFIG.gripMin) this.bind(p, best.b, q);
     }
   }
 
-  attachGrip(p, body) {
-    const pl = planck;
-    const anchorA = this.hub.getWorldPoint(pl.Vec2(0, 16 / PPM));
-    const anchorB = body.getWorldCenter();
-    const len = Math.hypot(anchorA.x - anchorB.x, anchorA.y - anchorB.y);
-    const joint = this.world.createJoint(pl.DistanceJoint({
-      frequencyHz: CONFIG.gripSpring, dampingRatio: 1, length: clamp(len, 2 / PPM, 22 / PPM), collideConnected: true,
-    }, this.hub, body, anchorA, anchorB));
-    this.grips.push({ part: p, body, joint, strain: 0, t: 0 });
-    for (const b of p.bodies) { b.setLinearDamping(1.6); b.setAngularDamping(2.5); } // clamped by the prongs
+  bind(p, body, q) {
+    const c = body.getWorldCenter(), s = SPR.get(p.def.sprite);
+    const joint = this.world.createJoint(planck.FrictionJoint({ collideConnected: true }, this.hub, body, c));
+    const g = {
+      part: p, body, joint, q, t: 0, slide: 0, strainT: -9, depth: 0,
+      mass: p.bodies.reduce((a, b) => a + b.getMass(), 0),
+      lever: (p.def.chain ? 8 : Math.max(s.w, s.h) / 2) / PPM,
+    };
+    this.grips.push(g);
+    this.setGripStrength(g);
+    for (const b of p.bodies) { b.setLinearDamping(0.8); b.setAngularDamping(2.5); } // clamped by the prongs
+    this.emit('bind', { part: p, q, x: c.x * PPM, y: c.y * PPM });
+  }
+
+  // measured in skull-weights, so a heavy part needs a better catch than a light one
+  setGripStrength(g) {
+    const f = CONFIG.gripStrength * g.q * Math.sqrt(g.mass * GRIP_REF_MASS) * CONFIG.gravity;
+    g.strength = f / (g.mass * CONFIG.gravity); // in the part's own weights
+    g.joint.setMaxForce(f);
+    g.joint.setMaxTorque(f * g.lever);
   }
 
   unclamp(p) { for (const b of p.bodies) { b.setLinearDamping(0.05); b.setAngularDamping(p.def.chain ? 0.6 : 0.4); } }
 
-  // Slip model: explicit, tunable odds (physics supplies the swing you can see).
-  updateGrips(h) {
-    const hv = this.hub.getLinearVelocity();
-    for (const g of this.grips.slice()) {
-      g.t += h;
-      const gp = g.part.def.grip || 1;
-      const v = g.body.getLinearVelocity();
-      const vrel = Math.hypot(v.x - hv.x, v.y - hv.y) * PPM; // how hard it's swinging, px/s
-      const A = g.joint.getAnchorA(), B = g.joint.getAnchorB();
-      const stretch = (Math.hypot(A.x - B.x, A.y - B.y) - g.joint.getLength()) * PPM;
-      g.load = vrel;
-      let lose = null;
-      if (stretch > 9) lose = 'stuck'; // still wedged in the pile: it tears free of the claw
-      else if (g.t > 0.4 && this.state !== 'lift') { // swinging only counts once the player is steering
-        const hazard = CONFIG.slipBase / gp + CONFIG.swingSlip * Math.max(0, vrel - CONFIG.swingSafe) / 30;
-        if (RNG() < hazard * h) lose = 'swing';
-      }
-      if (lose) this.loseGrip(g, lose);
-    }
+  // why a part left the claw (playtest report, the Reaper's lines)
+  slipWhy(g) {
+    const p = g.part;
+    if (p.twitchT && this.time - p.twitchT < 0.6) return 'twitch';
+    if (this.time - this.joltT < 0.5) return 'jolt';
+    if (this.state === 'lift' && this.stateT < 0.7) return 'wedged'; // the pile held on to it
+    if (this.time - g.strainT < 0.5 && this.state !== 'lift') return 'swing';
+    return 'slid';
   }
 
   loseGrip(g, why) {
@@ -4677,13 +4827,8 @@ class ClawSim {
     this.world.destroyJoint(g.joint);
     this.unclamp(g.part);
     this.grips = this.grips.filter((x) => x !== g);
+    g.part.unbindT = this.time;
     this.emit('gripLost', { part: g.part, why });
-  }
-
-  // one-off slip rolls (the jolt at the top of the lift, a twitch in the claw)
-  rollSlip(p, chance, why) {
-    const g = this.grips.find((x) => x.part === p);
-    if (g && RNG() < chance / (p.def.grip || 1)) this.loseGrip(g, why);
   }
 
   dropGrips() {
@@ -4691,19 +4836,70 @@ class ClawSim {
     this.grips = [];
   }
 
+  // The extra magic. A real claw standing on its prong tips closes above whatever lies between them.
+  // This one reaches: while the prongs spread and clamp, the SOUL HOOK drags the part straight below
+  // the claw's centre line (the part the drop guide points at) up toward its heart. It's a real
+  // force, so the pile pushes back, a buried part stays buried and nothing passes through a prong:
+  // the prongs still have to close around whatever comes up.
+  hookTarget(reach = CONFIG.hookReach) {
+    const V = planck.Vec2, a = this.hub.getWorldPoint(V(0, CLAW_GEO.hubH / 2 / PPM)), b = this.hub.getWorldPoint(V(0, (34 + reach) / PPM));
+    let hit = null;
+    this.world.rayCast(a, b, (fix, point, normal, frac) => {
+      const p = fix.getBody().getUserData();
+      if (!p || p === 'claw' || p.won) return -1;
+      hit = { part: p, body: fix.getBody(), x: point.x * PPM, y: point.y * PPM };
+      return frac;
+    });
+    return hit;
+  }
+
+  soulHook() {
+    const hook = (this.hook = CONFIG.hookPull > 0 ? this.hookTarget() : null);
+    if (!hook) return;
+    const V = planck.Vec2, heart = this.hub.getWorldPoint(V(0, 17 / PPM));
+    for (const b of hook.part.bodies) {
+      const c = b.getWorldCenter(), dx = heart.x - c.x, dy = heart.y - c.y, L = Math.hypot(dx, dy) || 1;
+      const f = b.getMass() * CONFIG.gravity * CONFIG.hookPull * Math.min(1, (L * PPM) / 6);
+      b.applyForce(V((dx / L) * f, (dy / L) * f), c, true);
+    }
+    hook.part.pullT = this.time;
+  }
+
+  // Hanging from a slack cable, the head used to skate down the slope of the pile while its prongs
+  // closed (17 px on average, most of the width of its mouth), so grabs landed beside what you
+  // aimed at. A real machine's heavy cable mount keeps the head under the carriage; this
+  // spring-damper does the same while the claw works the pile. It swings freely again at the top.
+  guideClaw(hz) {
+    if (!(hz > 0)) return;
+    const w = 2 * Math.PI * hz, m = this.hub.getMass() + this.prongL.getMass() + this.prongR.getMass();
+    const p = this.hub.getPosition(), v = this.hub.getLinearVelocity();
+    this.hub.applyForceToCenter(planck.Vec2(-m * (w * w * (p.x - this.carX / PPM) + 1.6 * w * (v.x - this.carV / PPM)), 0), true);
+  }
+
+  // The winch hits its stop: the cable snaps taut and everything on it bounces. A part held deep
+  // in the claw rides it out; one hanging off a hook tip may not.
+  jolt() {
+    if (!(CONFIG.topJolt > 0)) return;
+    const dv = CONFIG.topJolt / PPM;
+    for (const b of [this.hub, this.prongL, this.prongR, ...this.grips.flatMap((g) => g.part.bodies)]) {
+      const v = b.getLinearVelocity();
+      b.setLinearVelocity(planck.Vec2(v.x, v.y + dv));
+    }
+    this.joltT = this.time;
+  }
+
   twitch() {
     const living = this.parts.filter((p) => p.def.alive && !p.won);
     if (!living.length) return;
     const p = pick(living);
     const held = this.held.has(p) || this.grips.some((g) => g.part === p);
-    const f = CONFIG.twitchForce * (held ? 1.5 : 1);
+    const f = CONFIG.twitchForce * (held ? CONFIG.twitchHeld : 1); // a held part fights the grip; physics decides
     const b = held ? p.bodies[p.bodies.length - 1] : p.body;
     const m = b.getMass() * (p.bodies.length > 1 ? 2 : 1);
     b.applyLinearImpulse(planck.Vec2(rand(-1.4, 1.4) * f * m, -rand(2.2, 4) * f * m), b.getWorldCenter(), true);
     b.applyAngularImpulse(rand(-1, 1) * 0.35 * f * b.getInertia() * 10, true);
     p.twitchT = this.time;
     this.emit('twitch', { part: p, held });
-    if (held) this.rollSlip(p, CONFIG.twitchSlip, 'twitch');
   }
 
   startRelease() {
@@ -4737,30 +4933,24 @@ class ClawSim {
         this.removePart(p);
       }
     }
-    // held / slipped
+    // held: parts the claw has actually lifted since the lift began, either soul-bound or riding in
+    // its mouth while touching it. Nothing else counts, however close it is.
     const lifting = this.state === 'lift' || this.state === 'carry' || this.state === 'return';
+    const bound = new Set(this.grips.map((g) => g.part));
     const now = new Set();
     if (lifting) {
-      const hp = this.hub.getPosition(), a = this.hub.getAngle(), c = Math.cos(-a), s = Math.sin(-a);
+      const poly = this.cav || this.cavity();
       for (const p of this.parts) {
-        if (p.won) continue;
-        let inZone = false;
-        for (const b of p.bodies) {
-          const q = b.getPosition();
-          const dx = (q.x - hp.x) * PPM, dy = (q.y - hp.y) * PPM;
-          const lx = dx * c - dy * s, ly = dx * s + dy * c;
-          if (lx > -24 && lx < 24 && ly > -4 && ly < 64) { inZone = true; break; }
-        }
-        if (!inZone) continue;
-        if (this.held.has(p) || p.liftY0 - p.body.getPosition().y * PPM > 9) now.add(p);
+        if (p.won || p.liftY0 - p.body.getPosition().y * PPM <= 9) continue;
+        const c = p.body.getWorldCenter();
+        if (bound.has(p) || (this.touching(p, 0.25) && cavityDepth(poly, c.x * PPM, c.y * PPM) > -6)) now.add(p);
       }
       for (const p of this.held) if (!now.has(p) && !p.won) { if (this.turn) this.turn.slips++; this.emit('slip', { part: p }); }
       for (const p of now) if (!this.held.has(p)) { if (this.turn) this.turn.grabbed.add(p); this.emit('grab', { part: p }); }
     }
     this.held = now;
-    const gripped = new Set(this.grips.map((g) => g.part));
     for (const p of this.parts) {
-      const gs = now.has(p) || gripped.has(p) ? 1 - CONFIG.gripAssist : 1;
+      const gs = bound.has(p) ? 1 - CONFIG.gripAssist : 1;
       for (const b of p.bodies) if (b.getGravityScale() !== gs) b.setGravityScale(gs);
     }
     // impact sounds
@@ -6827,9 +7017,18 @@ Scenes.claw = (() => {
   let lastBumpSfx = 0;
   let neonOff = 0;
   let turnWins = 0;
+  let reachSfx = false, markPart = null;
   const btn = {};
   const toScreen = (x, y) => [(x + GX) * 2, (y + GY) * 2];
   const say = (text, hold) => Game.talk.say(text, hold);
+
+  // The soul grip, drawn: violet is the claw reaching (drop guide, the part it will reach for, the
+  // soul hook), green a firm grip, amber a loose one, flickering red a part sliding out.
+  const REACH = '#e7a6f0', REACH2 = '#b56bd6';
+  const security = (gr) => clamp(gr.q * (gr.slide > 6 ? 0.45 : 1), 0, 1);
+  const gripColor = (sec) => (sec >= 0.55 ? PAL.d : sec >= 0.3 ? PAL.L : PAL.R);
+  const gripAlpha = (sec, ph = 0) => (sec < 0.3 ? (Math.sin(t * 30 + ph) > 0 ? 1 : 0.35) : 0.7 + 0.3 * Math.sin(t * 6 + ph));
+  const worldPt = (body, x, y) => { const q = body.getWorldPoint(planck.Vec2(x / PPM, y / PPM)); return [q.x * PPM, q.y * PPM]; };
 
   function mk(w, h) { const c = SPR.makeCanvas(w, h); const x = c.getContext('2d'); x.imageSmoothingEnabled = false; return [c, x]; }
 
@@ -6954,6 +7153,19 @@ Scenes.claw = (() => {
         const [x, y] = sim.partPos(p);
         fxW.add({ x: x + rand(-8, 8), y: y + rand(-8, 8), vy: -6, life: 0.6, color: pick([PAL.l, PAL.L, PAL.j]) });
       }
+      // the soul hook reaching for the part under the claw: wisps drawn up into its mouth
+      const hook = sim.hook && (sim.state === 'spread' || sim.state === 'close') ? sim.hook : null;
+      if (hook && !reachSfx) { reachSfx = true; Sfx.play('soul_reach'); }
+      if (hook && chance(dt * 30)) {
+        const [hx, hy] = worldPt(sim.hub, 0, 12);
+        fxW.add({ x: hook.x + rand(-4, 4), y: hook.y + rand(-2, 2), vx: (hx - hook.x) * 2.2, vy: (hy - hook.y) * 2.2, drag: 1.5, life: 0.4, color: pick([REACH, REACH2, PAL.j]) });
+      }
+      // souls rising off whatever the claw holds
+      for (const gr of sim.grips) {
+        if (!chance(dt * 5)) continue;
+        const c = gr.body.getWorldCenter();
+        fxW.add({ x: c.x * PPM + rand(-5, 5), y: c.y * PPM + rand(-4, 4), vx: rand(-4, 4), vy: -rand(10, 18), life: rand(0.5, 0.9), color: pick([gripColor(security(gr)), PAL.j]) });
+      }
 
       fxW.update(dt); fxS.update(dt);
       Game.talk.update(dt);
@@ -7012,8 +7224,19 @@ Scenes.claw = (() => {
       switch (type) {
         case 'drop':
           Sfx.play('claw_drop');
+          reachSfx = false;
           if (chance(0.35)) say(pick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
           break;
+        case 'spread': Sfx.play('claw_open', { pitch: 1.35, intensity: 0.3 }); break;
+        case 'bind': {
+          // the soul grip takes hold: the firmer the catch, the brighter the flare
+          d.part.lostWhy = null;
+          const col = gripColor(d.q);
+          Sfx.play('soul_bind', { intensity: d.q, pitch: 0.9 + 0.2 * d.q });
+          fxW.burst(d.x, d.y, 6 + Math.round(d.q * 10), { speed: 18 + 20 * d.q, life: 0.5, drag: 2, color: [col, PAL.j, col] });
+          fxW.add({ kind: 'ring', x: d.x, y: d.y, r0: 2, r1: 8 + 8 * d.q, life: 0.35, color: col });
+          break;
+        }
         case 'land':
           Sfx.play('claw_land', { intensity: d.intensity });
           Engine.shake(1 + d.intensity * 2, 0.18);
@@ -7029,20 +7252,41 @@ Scenes.claw = (() => {
             else if (chance(0.6)) say(pick(['Got something!', 'Ooh.', 'Hold it... hold it...', 'Easy does it.']), 1.6);
           }
           break;
-        case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); break;
-        case 'gripLost':
-          Telemetry.c.bySlipWhy[d.why] = (Telemetry.c.bySlipWhy[d.why] || 0) + 1;
+        case 'grab':
+          // carried without the soul grip: pinched by the prong tips, or just riding on them
+          if (!sim.grips.some((gr) => gr.part === d.part) && !Game.talk.visible()) say(pick(['By the fingertips! Don\'t breathe.', 'That\'s not a grip, that\'s a hope.', 'Hanging on by a knuckle.']), 1.8);
           break;
+        case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); break;
+        case 'gripLost': {
+          // the grip tears: a crack of sparks where it let go
+          Telemetry.c.bySlipWhy[d.why] = (Telemetry.c.bySlipWhy[d.why] || 0) + 1;
+          d.part.lostWhy = d.why;
+          const c = d.part.body.getWorldCenter();
+          Sfx.play('soul_snap', { pitch: rand(0.9, 1.1) });
+          fxW.burst(c.x * PPM, c.y * PPM, 10, { speed: 45, ay: 40, drag: 1, life: 0.45, color: [PAL.R, PAL.j, PAL.d, PAL.r] });
+          break;
+        }
         case 'slip': {
           Sfx.play('slip');
           const [px, py] = sim.partPos(d.part);
           fxW.burst(px, py, 6, { speed: 25, ay: 60, life: 0.4, color: ['#fff6e3', '#cdb892'] });
-          const why = d.part.twitchT && sim.time - d.part.twitchT < 0.6;
-          say(why ? pick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
-            pick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
+          const lines = {
+            twitch: ['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.'],
+            wedged: ['The pile wanted it back.', 'Stuck under the others. Loose ones come easier.'],
+            swing: ['Swing it less. It gets dizzy.', 'Easy on the stick. Bones rattle loose.'],
+            jolt: ['Rattled loose at the top. Classic.', 'The winch always gets the last word.'],
+          }[d.part.lostWhy] || ['Butterfingers. Literally.', 'Only half in the claw. Aim for the middle.', 'Almost. Almost is a whole genre here.', 'It wanted to stay. Respect that.', 'Gravity: undefeated.'];
+          say(pick(lines), 2.4);
           break;
         }
-        case 'release': Sfx.play('claw_open'); break;
+        case 'release':
+          Sfx.play('claw_open');
+          // the grip dissolves as the prongs open
+          for (const p of d.held) {
+            const [px, py] = sim.partPos(p);
+            fxW.burst(px, py, 8, { speed: 16, angle: -Math.PI / 2, spread: 1.2, life: 0.6, color: [PAL.d, PAL.j, PAL.D] });
+          }
+          break;
         case 'win': onWin(d); break;
         case 'turnEnd': {
           Telemetry.grabEnd(d.result, d.won);
@@ -7161,14 +7405,17 @@ Scenes.claw = (() => {
     for (let i = 0; i < 4; i++) g.fillRect(ax - 3 + i, 92 + i, 7 - i * 2, 1);
     g.fillRect(ax - 1, 86, 3, 6);
 
-    // drop guide
+    // drop guide: straight down from the claw to the part its soul hook will reach for
+    markPart = null;
     if (CONFIG.dropGuide && sim.state === 'idle') {
       const top = P.hubY + 30;
       let hitY = M.floor;
       const pl = planck;
       sim.world.rayCast(pl.Vec2(P.carX / PPM, top / PPM), pl.Vec2(P.carX / PPM, M.floor / PPM), (fix, point, normal, fr) => {
-        if (fix.getBody().getUserData() === 'claw') return -1;
+        const ud = fix.getBody().getUserData();
+        if (ud === 'claw' || (ud && ud.won)) return -1;
         hitY = point.y * PPM;
+        markPart = ud || null;
         return fr;
       });
       g.fillStyle = 'rgba(231,166,240,0.35)';
@@ -7178,8 +7425,12 @@ Scenes.claw = (() => {
     }
 
     // parts
-    const gripped = new Set(sim.grips.map((x) => x.part));
-    for (const p of sim.parts) drawPart(p, gripped.has(p) || sim.held.has(p), P);
+    const grips = new Map(sim.grips.map((x) => [x.part, x]));
+    const hooked = sim.hook && (sim.state === 'spread' || sim.state === 'close') ? sim.hook.part : null;
+    for (const p of sim.parts) {
+      const gr = grips.get(p);
+      drawPart(p, { sec: gr ? security(gr) : null, hooked: p === hooked, held: sim.held.has(p), marked: p === markPart }, P);
+    }
 
     // claw: rail, carriage, cable, head, prongs
     g.fillStyle = '#3c4257'; g.fillRect(2, P.carY - 3, 176, 2);
@@ -7188,10 +7439,19 @@ Scenes.claw = (() => {
     Draw.line(g, P.carX, P.carY + 5, P.ropeX, P.ropeY, '#a6aec2');
     Draw.line(g, P.carX + 1, P.carY + 5, P.ropeX + 1, P.ropeY, '#3c4257');
     SPR.draw(g, 'claw_hub', P.hubX, P.hubY, { rot: P.hubA || 0.0001 });
+    // the prongs glow with the grip they hold (or violet while the claw reaches)
+    const best = sim.grips.reduce((a, gr) => Math.max(a, security(gr)), -1);
+    const aura = best >= 0 ? gripColor(best) : hooked ? REACH : null;
+    if (aura) {
+      const al = best >= 0 ? 0.55 * gripAlpha(best) : 0.35 + 0.25 * Math.sin(t * 14);
+      glowSprite('claw_prongL', P.lX, P.lY, P.lA, aura, al);
+      glowSprite('claw_prongR', P.rX, P.rY, P.rA, aura, al);
+    }
     SPR.draw(g, 'claw_prongL', P.lX, P.lY, { rot: P.lA || 0.0001 });
     SPR.draw(g, 'claw_prongR', P.rX, P.rY, { rot: P.rA || 0.0001 });
+    drawSoulGrip(sim);
     // blinking status light on the claw head
-    g.fillStyle = sim.state === 'idle' ? (Math.sin(t * 5) > 0 ? '#9be38f' : '#274536') : sim.grips.length ? '#f6c64b' : '#e8405a';
+    g.fillStyle = sim.state === 'idle' ? (Math.sin(t * 5) > 0 ? '#9be38f' : '#274536') : best >= 0 ? gripColor(best) : sim.held.size ? '#f6c64b' : '#e8405a';
     const la = P.hubA;
     g.fillRect(Math.round(P.hubX + Math.cos(la) * 7 - Math.sin(la) * -1), Math.round(P.hubY + Math.sin(la) * 7 + Math.cos(la) * -1), 1, 1);
 
@@ -7202,6 +7462,7 @@ Scenes.claw = (() => {
     g.fillStyle = '#2b2d3d'; g.fillRect(M.chuteX0 - 3, 112, M.chuteX1 - M.chuteX0 + 3, 10);
     g.fillStyle = '#6b6f86'; g.fillRect(M.chuteX0 - 3, 112, M.chuteX1 - M.chuteX0 + 3, 1);
     fxW.draw(g);
+    if (CONFIG.physDebug) drawPhysics(sim);
 
     // glass reflections
     g.globalCompositeOperation = 'lighter';
@@ -7212,10 +7473,18 @@ Scenes.claw = (() => {
     g.restore();
   }
 
-  function drawPart(p, held, P) {
+  // Outline, most telling first: soul-bound parts glow with their grip, the part the claw reaches
+  // for glows violet, loose riders flash white, the part under the drop guide gets a faint violet
+  // mark, and the rest show their rarity.
+  function drawPart(p, look, P) {
     const def = p.def;
     const rar = RARITY[def.rarity];
-    const glow = rar.glow ? 0.55 + 0.45 * Math.sin(t * 4 + p.glowT) : 0;
+    let col = null, alpha = 1;
+    if (look.sec != null) { col = gripColor(look.sec); alpha = gripAlpha(look.sec, p.glowT); }
+    else if (look.hooked) { col = REACH; alpha = 0.6 + 0.4 * Math.sin(t * 14); }
+    else if (look.held) { if (Math.sin(t * 16) > 0) col = '#fff6e3'; }
+    else if (look.marked) { col = REACH; alpha = 0.45 + 0.3 * Math.sin(t * 5); }
+    else if (rar.glow) { col = rar.glow; alpha = 0.55 + 0.45 * Math.sin(t * 4 + p.glowT); }
     for (let i = 0; i < p.bodies.length; i++) {
       const b = p.bodies[i];
       const q = b.getPosition(), a = b.getAngle();
@@ -7224,8 +7493,7 @@ Scenes.claw = (() => {
       g.save();
       g.translate(q.x * PPM, q.y * PPM);
       g.rotate(a);
-      if (held && Math.sin(t * 16) > 0) { g.drawImage(SPR.outline(name, '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
-      else if (glow > 0) { g.globalAlpha = glow; g.drawImage(SPR.outline(name, rar.glow), -s.w / 2 - 1, -s.h / 2 - 1); g.globalAlpha = 1; }
+      if (col) { g.globalAlpha = alpha; g.drawImage(SPR.outline(name, col), -s.w / 2 - 1, -s.h / 2 - 1); g.globalAlpha = 1; }
       g.drawImage(s.c, -s.w / 2, -s.h / 2);
       g.restore();
       if (def.sprite === 'p_eyeball') { // it watches the claw
@@ -7234,6 +7502,66 @@ Scenes.claw = (() => {
       }
     }
     if (def.slot === 'heart' && Math.sin(t * 7 + p.glowT) > 0.7) Draw.glow(g, p.body.getPosition().x * PPM, p.body.getPosition().y * PPM, 9, def.rarity === 'legendary' ? '#f6c64b' : '#e8405a', 0.25);
+  }
+
+  // tuning panel "Draw physics shapes": every collider, the claw's live mouth (only a part whose
+  // centre is inside it can be soul-bound) and each grip's catch quality
+  function drawPhysics(sim) {
+    g.lineWidth = 0.5;
+    const path = (pts) => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.stroke(); };
+    for (const s of sim.debugShapes()) {
+      g.strokeStyle = s.stat ? 'rgba(160,160,200,0.5)' : 'rgba(150,210,255,0.8)';
+      if (s.type === 'circle') { g.beginPath(); g.arc(s.x, s.y, s.r, 0, Math.PI * 2); g.stroke(); } else path(s.pts);
+    }
+    g.strokeStyle = REACH; path(sim.cavity());
+    for (const gr of sim.grips) {
+      const c = gr.body.getWorldCenter();
+      g.fillStyle = gripColor(security(gr)); g.fillRect(Math.round(c.x * PPM) - 1, Math.round(c.y * PPM) - 1, 2, 2);
+    }
+    g.lineWidth = 1;
+  }
+
+  // a rotated sprite's 1px outline on its own, e.g. a glow behind a prong
+  function glowSprite(name, x, y, rot, color, alpha) {
+    const s = SPR.get(name);
+    g.save(); g.translate(x, y); g.rotate(rot || 0); g.globalAlpha = alpha;
+    g.drawImage(SPR.outline(name, color), -s.ax - 1, -s.ay - 1);
+    g.restore();
+  }
+
+  // a spectral thread: dotted 1px pixels along a line, rippling
+  function tendril(x0, y0, x1, y1, color, alpha, phase, amp = 1.5) {
+    const L = Math.hypot(x1 - x0, y1 - y0) || 1, n = Math.max(2, Math.round(L / 1.5));
+    const nx = -(y1 - y0) / L, ny = (x1 - x0) / L;
+    g.globalAlpha = alpha; g.fillStyle = color;
+    for (let i = 0; i <= n; i++) {
+      const k = i / n, w = Math.sin(k * Math.PI) * amp * Math.sin(t * 9 + phase + k * 7);
+      g.fillRect(Math.round(x0 + (x1 - x0) * k + nx * w), Math.round(y0 + (y1 - y0) * k + ny * w), 1, 1);
+    }
+    g.globalAlpha = 1;
+  }
+
+  // The soul hook reaching down from the claw's heart while it spreads and clamps, then the grip:
+  // threads from each prong's elbow and hook tip into whatever it holds, coloured by how secure it is.
+  function drawSoulGrip(sim) {
+    const [hx, hy] = worldPt(sim.hub, 0, 10);
+    if (sim.hook && (sim.state === 'spread' || sim.state === 'close')) {
+      tendril(hx, hy, sim.hook.x, sim.hook.y, REACH2, 0.7, 2.1, 2.5);
+      tendril(hx, hy, sim.hook.x, sim.hook.y, REACH, 0.9, 0, 1.5);
+      Draw.glow(g, sim.hook.x, sim.hook.y, 7, REACH, 0.3);
+    }
+    for (const gr of sim.grips) {
+      const c = gr.body.getWorldCenter(), cx = c.x * PPM, cy = c.y * PPM;
+      const sec = security(gr), col = gripColor(sec), a = 0.35 + 0.5 * sec * gripAlpha(sec, gr.part.glowT);
+      for (const [prong, sx] of [[sim.prongL, 1], [sim.prongR, -1]]) {
+        for (const k of [1, 2]) {
+          const [ix, iy] = CLAW_GEO.inner[k];
+          const [px, py] = worldPt(prong, sx * ix, iy);
+          tendril(px, py, cx, cy, col, a, k * 2.3 + sx + gr.part.glowT, 1.2);
+        }
+      }
+      Draw.glow(g, cx, cy, 12, col, 0.05 + 0.06 * sec);
+    }
   }
 
   function drawFrameLights() {
@@ -7306,14 +7634,22 @@ Scenes.claw = (() => {
     if (btn.left.held || Input.held('left')) Draw.frame(ctx, btn.left.x, btn.left.y, btn.left.w, btn.left.h, '#fff6e3');
     if (btn.right.held || Input.held('right')) Draw.frame(ctx, btn.right.x, btn.right.y, btn.right.w, btn.right.h, '#fff6e3');
 
-    // held part label + carry timer near the claw
+    // held part label + grip meter + carry timer near the claw
     const gp = sim.grips[0] ? sim.grips[0].part : [...sim.held][0];
     if (gp && (sim.state === 'lift' || sim.state === 'carry' || sim.state === 'return')) {
       const [px, py] = sim.partPos(gp);
       const [sx, sy] = toScreen(px, py);
       const r = RARITY[gp.def.rarity];
       const txt = gp.def.name + (r.order ? ' · ' + r.name : '');
-      Font.draw(ctx, txt, clamp(sx, 60, 330), sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      const lx = clamp(sx, 60, 330);
+      Font.draw(ctx, txt, lx, sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      // five pips of grip: how deep and how firmly it's held, knocked down while it's sliding.
+      // No pips = it's only riding on the prongs.
+      const gr = sim.grips.find((x) => x.part === gp);
+      const sec = gr ? security(gr) : 0, lit = Math.ceil(sec * 5 - 0.01), col = gripColor(sec);
+      const blink = sec < 0.3 && Math.sin(t * 30) < 0;
+      Draw.rect(ctx, lx - 16, sy + 35, 33, 4, PAL.k);
+      for (let i = 0; i < 5; i++) Draw.rect(ctx, lx - 15 + i * 6, sy + 36, 5, 2, i < lit && !blink ? col : '#3b3654');
     }
     if (sim.state === 'carry' && CONFIG.carryTime > 0) {
       const k = 1 - sim.stateT / CONFIG.carryTime;
@@ -8652,7 +8988,7 @@ const Debug = {
         <button data-act="parts">+6 random parts</button><button data-act="win">Win battle</button><button data-act="stage">Stage +1</button>
       </div>`;
     for (const g in groups) {
-      html += `<details ${g === 'Claw' ? 'open' : ''}><summary>${g}</summary>`;
+      html += `<details ${g === 'Claw' || g === 'Grip' ? 'open' : ''}><summary>${g}</summary>`;
       for (const [, key, def, min, max, step, label] of groups[g]) {
         html += `<label title="${key}"><span>${label}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${CONFIG[key]}" data-key="${key}"><output data-out="${key}">${CONFIG[key]}</output></label>`;
       }

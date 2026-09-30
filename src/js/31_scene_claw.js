@@ -15,9 +15,18 @@ Scenes.claw = (() => {
   let lastBumpSfx = 0;
   let neonOff = 0;
   let turnWins = 0;
+  let reachSfx = false, markPart = null;
   const btn = {};
   const toScreen = (x, y) => [(x + GX) * 2, (y + GY) * 2];
   const say = (text, hold) => Game.talk.say(text, hold);
+
+  // The soul grip, drawn: violet is the claw reaching (drop guide, the part it will reach for, the
+  // soul hook), green a firm grip, amber a loose one, flickering red a part sliding out.
+  const REACH = '#e7a6f0', REACH2 = '#b56bd6';
+  const security = (gr) => clamp(gr.q * (gr.slide > 6 ? 0.45 : 1), 0, 1);
+  const gripColor = (sec) => (sec >= 0.55 ? PAL.d : sec >= 0.3 ? PAL.L : PAL.R);
+  const gripAlpha = (sec, ph = 0) => (sec < 0.3 ? (Math.sin(t * 30 + ph) > 0 ? 1 : 0.35) : 0.7 + 0.3 * Math.sin(t * 6 + ph));
+  const worldPt = (body, x, y) => { const q = body.getWorldPoint(planck.Vec2(x / PPM, y / PPM)); return [q.x * PPM, q.y * PPM]; };
 
   function mk(w, h) { const c = SPR.makeCanvas(w, h); const x = c.getContext('2d'); x.imageSmoothingEnabled = false; return [c, x]; }
 
@@ -142,6 +151,19 @@ Scenes.claw = (() => {
         const [x, y] = sim.partPos(p);
         fxW.add({ x: x + rand(-8, 8), y: y + rand(-8, 8), vy: -6, life: 0.6, color: pick([PAL.l, PAL.L, PAL.j]) });
       }
+      // the soul hook reaching for the part under the claw: wisps drawn up into its mouth
+      const hook = sim.hook && (sim.state === 'spread' || sim.state === 'close') ? sim.hook : null;
+      if (hook && !reachSfx) { reachSfx = true; Sfx.play('soul_reach'); }
+      if (hook && chance(dt * 30)) {
+        const [hx, hy] = worldPt(sim.hub, 0, 12);
+        fxW.add({ x: hook.x + rand(-4, 4), y: hook.y + rand(-2, 2), vx: (hx - hook.x) * 2.2, vy: (hy - hook.y) * 2.2, drag: 1.5, life: 0.4, color: pick([REACH, REACH2, PAL.j]) });
+      }
+      // souls rising off whatever the claw holds
+      for (const gr of sim.grips) {
+        if (!chance(dt * 5)) continue;
+        const c = gr.body.getWorldCenter();
+        fxW.add({ x: c.x * PPM + rand(-5, 5), y: c.y * PPM + rand(-4, 4), vx: rand(-4, 4), vy: -rand(10, 18), life: rand(0.5, 0.9), color: pick([gripColor(security(gr)), PAL.j]) });
+      }
 
       fxW.update(dt); fxS.update(dt);
       Game.talk.update(dt);
@@ -200,8 +222,19 @@ Scenes.claw = (() => {
       switch (type) {
         case 'drop':
           Sfx.play('claw_drop');
+          reachSfx = false;
           if (chance(0.35)) say(pick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
           break;
+        case 'spread': Sfx.play('claw_open', { pitch: 1.35, intensity: 0.3 }); break;
+        case 'bind': {
+          // the soul grip takes hold: the firmer the catch, the brighter the flare
+          d.part.lostWhy = null;
+          const col = gripColor(d.q);
+          Sfx.play('soul_bind', { intensity: d.q, pitch: 0.9 + 0.2 * d.q });
+          fxW.burst(d.x, d.y, 6 + Math.round(d.q * 10), { speed: 18 + 20 * d.q, life: 0.5, drag: 2, color: [col, PAL.j, col] });
+          fxW.add({ kind: 'ring', x: d.x, y: d.y, r0: 2, r1: 8 + 8 * d.q, life: 0.35, color: col });
+          break;
+        }
         case 'land':
           Sfx.play('claw_land', { intensity: d.intensity });
           Engine.shake(1 + d.intensity * 2, 0.18);
@@ -217,20 +250,41 @@ Scenes.claw = (() => {
             else if (chance(0.6)) say(pick(['Got something!', 'Ooh.', 'Hold it... hold it...', 'Easy does it.']), 1.6);
           }
           break;
-        case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); break;
-        case 'gripLost':
-          Telemetry.c.bySlipWhy[d.why] = (Telemetry.c.bySlipWhy[d.why] || 0) + 1;
+        case 'grab':
+          // carried without the soul grip: pinched by the prong tips, or just riding on them
+          if (!sim.grips.some((gr) => gr.part === d.part) && !Game.talk.visible()) say(pick(['By the fingertips! Don\'t breathe.', 'That\'s not a grip, that\'s a hope.', 'Hanging on by a knuckle.']), 1.8);
           break;
+        case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); break;
+        case 'gripLost': {
+          // the grip tears: a crack of sparks where it let go
+          Telemetry.c.bySlipWhy[d.why] = (Telemetry.c.bySlipWhy[d.why] || 0) + 1;
+          d.part.lostWhy = d.why;
+          const c = d.part.body.getWorldCenter();
+          Sfx.play('soul_snap', { pitch: rand(0.9, 1.1) });
+          fxW.burst(c.x * PPM, c.y * PPM, 10, { speed: 45, ay: 40, drag: 1, life: 0.45, color: [PAL.R, PAL.j, PAL.d, PAL.r] });
+          break;
+        }
         case 'slip': {
           Sfx.play('slip');
           const [px, py] = sim.partPos(d.part);
           fxW.burst(px, py, 6, { speed: 25, ay: 60, life: 0.4, color: ['#fff6e3', '#cdb892'] });
-          const why = d.part.twitchT && sim.time - d.part.twitchT < 0.6;
-          say(why ? pick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
-            pick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
+          const lines = {
+            twitch: ['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.'],
+            wedged: ['The pile wanted it back.', 'Stuck under the others. Loose ones come easier.'],
+            swing: ['Swing it less. It gets dizzy.', 'Easy on the stick. Bones rattle loose.'],
+            jolt: ['Rattled loose at the top. Classic.', 'The winch always gets the last word.'],
+          }[d.part.lostWhy] || ['Butterfingers. Literally.', 'Only half in the claw. Aim for the middle.', 'Almost. Almost is a whole genre here.', 'It wanted to stay. Respect that.', 'Gravity: undefeated.'];
+          say(pick(lines), 2.4);
           break;
         }
-        case 'release': Sfx.play('claw_open'); break;
+        case 'release':
+          Sfx.play('claw_open');
+          // the grip dissolves as the prongs open
+          for (const p of d.held) {
+            const [px, py] = sim.partPos(p);
+            fxW.burst(px, py, 8, { speed: 16, angle: -Math.PI / 2, spread: 1.2, life: 0.6, color: [PAL.d, PAL.j, PAL.D] });
+          }
+          break;
         case 'win': onWin(d); break;
         case 'turnEnd': {
           Telemetry.grabEnd(d.result, d.won);
@@ -349,14 +403,17 @@ Scenes.claw = (() => {
     for (let i = 0; i < 4; i++) g.fillRect(ax - 3 + i, 92 + i, 7 - i * 2, 1);
     g.fillRect(ax - 1, 86, 3, 6);
 
-    // drop guide
+    // drop guide: straight down from the claw to the part its soul hook will reach for
+    markPart = null;
     if (CONFIG.dropGuide && sim.state === 'idle') {
       const top = P.hubY + 30;
       let hitY = M.floor;
       const pl = planck;
       sim.world.rayCast(pl.Vec2(P.carX / PPM, top / PPM), pl.Vec2(P.carX / PPM, M.floor / PPM), (fix, point, normal, fr) => {
-        if (fix.getBody().getUserData() === 'claw') return -1;
+        const ud = fix.getBody().getUserData();
+        if (ud === 'claw' || (ud && ud.won)) return -1;
         hitY = point.y * PPM;
+        markPart = ud || null;
         return fr;
       });
       g.fillStyle = 'rgba(231,166,240,0.35)';
@@ -366,8 +423,12 @@ Scenes.claw = (() => {
     }
 
     // parts
-    const gripped = new Set(sim.grips.map((x) => x.part));
-    for (const p of sim.parts) drawPart(p, gripped.has(p) || sim.held.has(p), P);
+    const grips = new Map(sim.grips.map((x) => [x.part, x]));
+    const hooked = sim.hook && (sim.state === 'spread' || sim.state === 'close') ? sim.hook.part : null;
+    for (const p of sim.parts) {
+      const gr = grips.get(p);
+      drawPart(p, { sec: gr ? security(gr) : null, hooked: p === hooked, held: sim.held.has(p), marked: p === markPart }, P);
+    }
 
     // claw: rail, carriage, cable, head, prongs
     g.fillStyle = '#3c4257'; g.fillRect(2, P.carY - 3, 176, 2);
@@ -376,10 +437,19 @@ Scenes.claw = (() => {
     Draw.line(g, P.carX, P.carY + 5, P.ropeX, P.ropeY, '#a6aec2');
     Draw.line(g, P.carX + 1, P.carY + 5, P.ropeX + 1, P.ropeY, '#3c4257');
     SPR.draw(g, 'claw_hub', P.hubX, P.hubY, { rot: P.hubA || 0.0001 });
+    // the prongs glow with the grip they hold (or violet while the claw reaches)
+    const best = sim.grips.reduce((a, gr) => Math.max(a, security(gr)), -1);
+    const aura = best >= 0 ? gripColor(best) : hooked ? REACH : null;
+    if (aura) {
+      const al = best >= 0 ? 0.55 * gripAlpha(best) : 0.35 + 0.25 * Math.sin(t * 14);
+      glowSprite('claw_prongL', P.lX, P.lY, P.lA, aura, al);
+      glowSprite('claw_prongR', P.rX, P.rY, P.rA, aura, al);
+    }
     SPR.draw(g, 'claw_prongL', P.lX, P.lY, { rot: P.lA || 0.0001 });
     SPR.draw(g, 'claw_prongR', P.rX, P.rY, { rot: P.rA || 0.0001 });
+    drawSoulGrip(sim);
     // blinking status light on the claw head
-    g.fillStyle = sim.state === 'idle' ? (Math.sin(t * 5) > 0 ? '#9be38f' : '#274536') : sim.grips.length ? '#f6c64b' : '#e8405a';
+    g.fillStyle = sim.state === 'idle' ? (Math.sin(t * 5) > 0 ? '#9be38f' : '#274536') : best >= 0 ? gripColor(best) : sim.held.size ? '#f6c64b' : '#e8405a';
     const la = P.hubA;
     g.fillRect(Math.round(P.hubX + Math.cos(la) * 7 - Math.sin(la) * -1), Math.round(P.hubY + Math.sin(la) * 7 + Math.cos(la) * -1), 1, 1);
 
@@ -390,6 +460,7 @@ Scenes.claw = (() => {
     g.fillStyle = '#2b2d3d'; g.fillRect(M.chuteX0 - 3, 112, M.chuteX1 - M.chuteX0 + 3, 10);
     g.fillStyle = '#6b6f86'; g.fillRect(M.chuteX0 - 3, 112, M.chuteX1 - M.chuteX0 + 3, 1);
     fxW.draw(g);
+    if (CONFIG.physDebug) drawPhysics(sim);
 
     // glass reflections
     g.globalCompositeOperation = 'lighter';
@@ -400,10 +471,18 @@ Scenes.claw = (() => {
     g.restore();
   }
 
-  function drawPart(p, held, P) {
+  // Outline, most telling first: soul-bound parts glow with their grip, the part the claw reaches
+  // for glows violet, loose riders flash white, the part under the drop guide gets a faint violet
+  // mark, and the rest show their rarity.
+  function drawPart(p, look, P) {
     const def = p.def;
     const rar = RARITY[def.rarity];
-    const glow = rar.glow ? 0.55 + 0.45 * Math.sin(t * 4 + p.glowT) : 0;
+    let col = null, alpha = 1;
+    if (look.sec != null) { col = gripColor(look.sec); alpha = gripAlpha(look.sec, p.glowT); }
+    else if (look.hooked) { col = REACH; alpha = 0.6 + 0.4 * Math.sin(t * 14); }
+    else if (look.held) { if (Math.sin(t * 16) > 0) col = '#fff6e3'; }
+    else if (look.marked) { col = REACH; alpha = 0.45 + 0.3 * Math.sin(t * 5); }
+    else if (rar.glow) { col = rar.glow; alpha = 0.55 + 0.45 * Math.sin(t * 4 + p.glowT); }
     for (let i = 0; i < p.bodies.length; i++) {
       const b = p.bodies[i];
       const q = b.getPosition(), a = b.getAngle();
@@ -412,8 +491,7 @@ Scenes.claw = (() => {
       g.save();
       g.translate(q.x * PPM, q.y * PPM);
       g.rotate(a);
-      if (held && Math.sin(t * 16) > 0) { g.drawImage(SPR.outline(name, '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
-      else if (glow > 0) { g.globalAlpha = glow; g.drawImage(SPR.outline(name, rar.glow), -s.w / 2 - 1, -s.h / 2 - 1); g.globalAlpha = 1; }
+      if (col) { g.globalAlpha = alpha; g.drawImage(SPR.outline(name, col), -s.w / 2 - 1, -s.h / 2 - 1); g.globalAlpha = 1; }
       g.drawImage(s.c, -s.w / 2, -s.h / 2);
       g.restore();
       if (def.sprite === 'p_eyeball') { // it watches the claw
@@ -422,6 +500,66 @@ Scenes.claw = (() => {
       }
     }
     if (def.slot === 'heart' && Math.sin(t * 7 + p.glowT) > 0.7) Draw.glow(g, p.body.getPosition().x * PPM, p.body.getPosition().y * PPM, 9, def.rarity === 'legendary' ? '#f6c64b' : '#e8405a', 0.25);
+  }
+
+  // tuning panel "Draw physics shapes": every collider, the claw's live mouth (only a part whose
+  // centre is inside it can be soul-bound) and each grip's catch quality
+  function drawPhysics(sim) {
+    g.lineWidth = 0.5;
+    const path = (pts) => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.stroke(); };
+    for (const s of sim.debugShapes()) {
+      g.strokeStyle = s.stat ? 'rgba(160,160,200,0.5)' : 'rgba(150,210,255,0.8)';
+      if (s.type === 'circle') { g.beginPath(); g.arc(s.x, s.y, s.r, 0, Math.PI * 2); g.stroke(); } else path(s.pts);
+    }
+    g.strokeStyle = REACH; path(sim.cavity());
+    for (const gr of sim.grips) {
+      const c = gr.body.getWorldCenter();
+      g.fillStyle = gripColor(security(gr)); g.fillRect(Math.round(c.x * PPM) - 1, Math.round(c.y * PPM) - 1, 2, 2);
+    }
+    g.lineWidth = 1;
+  }
+
+  // a rotated sprite's 1px outline on its own, e.g. a glow behind a prong
+  function glowSprite(name, x, y, rot, color, alpha) {
+    const s = SPR.get(name);
+    g.save(); g.translate(x, y); g.rotate(rot || 0); g.globalAlpha = alpha;
+    g.drawImage(SPR.outline(name, color), -s.ax - 1, -s.ay - 1);
+    g.restore();
+  }
+
+  // a spectral thread: dotted 1px pixels along a line, rippling
+  function tendril(x0, y0, x1, y1, color, alpha, phase, amp = 1.5) {
+    const L = Math.hypot(x1 - x0, y1 - y0) || 1, n = Math.max(2, Math.round(L / 1.5));
+    const nx = -(y1 - y0) / L, ny = (x1 - x0) / L;
+    g.globalAlpha = alpha; g.fillStyle = color;
+    for (let i = 0; i <= n; i++) {
+      const k = i / n, w = Math.sin(k * Math.PI) * amp * Math.sin(t * 9 + phase + k * 7);
+      g.fillRect(Math.round(x0 + (x1 - x0) * k + nx * w), Math.round(y0 + (y1 - y0) * k + ny * w), 1, 1);
+    }
+    g.globalAlpha = 1;
+  }
+
+  // The soul hook reaching down from the claw's heart while it spreads and clamps, then the grip:
+  // threads from each prong's elbow and hook tip into whatever it holds, coloured by how secure it is.
+  function drawSoulGrip(sim) {
+    const [hx, hy] = worldPt(sim.hub, 0, 10);
+    if (sim.hook && (sim.state === 'spread' || sim.state === 'close')) {
+      tendril(hx, hy, sim.hook.x, sim.hook.y, REACH2, 0.7, 2.1, 2.5);
+      tendril(hx, hy, sim.hook.x, sim.hook.y, REACH, 0.9, 0, 1.5);
+      Draw.glow(g, sim.hook.x, sim.hook.y, 7, REACH, 0.3);
+    }
+    for (const gr of sim.grips) {
+      const c = gr.body.getWorldCenter(), cx = c.x * PPM, cy = c.y * PPM;
+      const sec = security(gr), col = gripColor(sec), a = 0.35 + 0.5 * sec * gripAlpha(sec, gr.part.glowT);
+      for (const [prong, sx] of [[sim.prongL, 1], [sim.prongR, -1]]) {
+        for (const k of [1, 2]) {
+          const [ix, iy] = CLAW_GEO.inner[k];
+          const [px, py] = worldPt(prong, sx * ix, iy);
+          tendril(px, py, cx, cy, col, a, k * 2.3 + sx + gr.part.glowT, 1.2);
+        }
+      }
+      Draw.glow(g, cx, cy, 12, col, 0.05 + 0.06 * sec);
+    }
   }
 
   function drawFrameLights() {
@@ -494,14 +632,22 @@ Scenes.claw = (() => {
     if (btn.left.held || Input.held('left')) Draw.frame(ctx, btn.left.x, btn.left.y, btn.left.w, btn.left.h, '#fff6e3');
     if (btn.right.held || Input.held('right')) Draw.frame(ctx, btn.right.x, btn.right.y, btn.right.w, btn.right.h, '#fff6e3');
 
-    // held part label + carry timer near the claw
+    // held part label + grip meter + carry timer near the claw
     const gp = sim.grips[0] ? sim.grips[0].part : [...sim.held][0];
     if (gp && (sim.state === 'lift' || sim.state === 'carry' || sim.state === 'return')) {
       const [px, py] = sim.partPos(gp);
       const [sx, sy] = toScreen(px, py);
       const r = RARITY[gp.def.rarity];
       const txt = gp.def.name + (r.order ? ' · ' + r.name : '');
-      Font.draw(ctx, txt, clamp(sx, 60, 330), sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      const lx = clamp(sx, 60, 330);
+      Font.draw(ctx, txt, lx, sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      // five pips of grip: how deep and how firmly it's held, knocked down while it's sliding.
+      // No pips = it's only riding on the prongs.
+      const gr = sim.grips.find((x) => x.part === gp);
+      const sec = gr ? security(gr) : 0, lit = Math.ceil(sec * 5 - 0.01), col = gripColor(sec);
+      const blink = sec < 0.3 && Math.sin(t * 30) < 0;
+      Draw.rect(ctx, lx - 16, sy + 35, 33, 4, PAL.k);
+      for (let i = 0; i < 5; i++) Draw.rect(ctx, lx - 15 + i * 6, sy + 36, 5, 2, i < lit && !blink ? col : '#3b3654');
     }
     if (sim.state === 'carry' && CONFIG.carryTime > 0) {
       const k = 1 - sim.stateT / CONFIG.carryTime;

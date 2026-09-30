@@ -366,6 +366,26 @@ const { AudioSys, Sfx, Music } = (() => {
       for (let k = 0; k < 4; k++) hiss(v, t + k * 0.035 + R() * 0.015, { d: 0.03, g, f: rr(900, 2600), q: 3 });
       tone(v, t + 0.02, { f: 380 * o.p, f1: 900 * o.p, d: 0.04, g: g * 0.8 });
     },
+    // --- the soul grip ---
+    soul_reach: (v, t, o) => { // the claw reaches for the part below: a breathy swell and a ghostly rising whistle
+      const p = o.p;
+      hiss(v, t, { d: 0.5, a: 0.18, g: 0.2, f: 450 * p, f1: 2600 * p, q: 5 });
+      const s = tone(v, t + 0.05, { f: 520 * p, f1: 830 * p, glide: 0.4, d: 0.5, a: 0.14, g: 0.07 });
+      lfo(v, 7, 25, t, t + 0.55).connect(s.detune);
+    },
+    soul_bind: (v, t, o) => { // the grip takes hold: a hollow thrum, a whoosh up, a minor shimmer (brighter = firmer)
+      const p = o.p, i = o.i;
+      tone(v, t, { f: 98 * p, f1: 147 * p, glide: 0.12, d: 0.35, a: 0.01, g: 0.22 });
+      hiss(v, t, { d: 0.22, a: 0.05, g: 0.18 + 0.2 * i, f: 700 * p, f1: 4200 * p, q: 3 });
+      [0, 3, 7, 12].forEach((iv, k) => bell(v, t + 0.04 + k * 0.035, hz(76 + iv) * p, 0.04 + 0.06 * i, 0.3 + 0.4 * i));
+    },
+    soul_snap: (v, t, o) => { // the grip tears: a brittle crack and a sighing fall
+      const p = o.p;
+      hiss(v, t, { d: 0.04, g: 0.6, type: 'highpass', f: 3500 });
+      tone(v, t, { type: 'triangle', f: 1300 * p, f1: 240 * p, glide: 0.35, d: 0.4, g: 0.16 });
+      const s = tone(v, t + 0.01, { f: 880 * p, f1: 180 * p, glide: 0.45, d: 0.5, g: 0.1 });
+      lfo(v, 11, 30, t, t + 0.5).connect(s.detune);
+    },
     heartbeat: (v, t, o) => {
       const g = 0.2 + 0.25 * o.i;
       for (const [dt, k, f] of [[0, 1, 80], [0.19, 0.7, 92]]) {
@@ -514,6 +534,7 @@ const { AudioSys, Sfx, Music } = (() => {
     bump: [12, 4], ui_hover: [15, 2], coins_count: [20, 3], twitch: [8, 2], heartbeat: [3, 2], chute: [6, 3],
     restock: [1.5, 1], thunder: [0.7, 1], alive: [1, 1], victory: [1, 1], defeat: [1, 1], zap: [8, 3],
     win_legendary: [1, 1], win_rare: [2, 1], meow: [3, 1], purr: [1, 1],
+    soul_reach: [2, 1], soul_bind: [8, 3], soul_snap: [6, 2],
   };
   // Reverb send per sound.
   const WET = {
@@ -521,6 +542,7 @@ const { AudioSys, Sfx, Music } = (() => {
     win_common: 0.2, win_uncommon: 0.22, win_rare: 0.28, win_legendary: 0.32, restock: 0.1, heartbeat: 0.12, bump: 0.05,
     stitch: 0.06, unstitch: 0.06, zap: 0.15, thunder: 0.45, alive: 0.4, enemy_die: 0.4, creature_die: 0.12,
     victory: 0.3, defeat: 0.35, meow: 0.12, page: 0.05, swing: 0.05,
+    soul_reach: 0.35, soul_bind: 0.3, soul_snap: 0.25,
   };
   // These use intensity themselves; the rest just get a mild loudness scale.
   const RAW = { bump: 1, hit: 1, claw_land: 1, swing: 1, heartbeat: 1, enemy_hit: 1, twitch: 1 };
