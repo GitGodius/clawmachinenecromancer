@@ -138,9 +138,9 @@ Scenes.claw = (() => {
       }
       // legendary sparkle
       for (const p of sim.parts) {
-        if (p.won || p.def.rarity !== 'legendary' || !chance(dt * 3)) continue;
+        if (p.won || p.def.rarity !== 'legendary' || !vchance(dt * 3)) continue;
         const [x, y] = sim.partPos(p);
-        fxW.add({ x: x + rand(-8, 8), y: y + rand(-8, 8), vy: -6, life: 0.6, color: pick([PAL.l, PAL.L, PAL.j]) });
+        fxW.add({ x: x + vrand(-8, 8), y: y + vrand(-8, 8), vy: -6, life: 0.6, color: vpick([PAL.l, PAL.L, PAL.j]) });
       }
 
       fxW.update(dt); fxS.update(dt);
@@ -149,7 +149,7 @@ Scenes.claw = (() => {
       bagBump = Math.max(0, bagBump - dt * 3);
       tokenBump = Math.max(0, tokenBump - dt * 3);
       noTokenT = Math.max(0, noTokenT - dt);
-      neonOff = neonOff > 0 ? neonOff - dt : chance(dt * 0.25) ? rand(0.05, 0.25) : 0;
+      neonOff = neonOff > 0 ? neonOff - dt : vchance(dt * 0.25) ? vrand(0.05, 0.25) : 0;
       for (const f of flying) f.t += dt;
       flying = flying.filter((f) => {
         if (f.t < f.dur) return true;
@@ -174,7 +174,7 @@ Scenes.claw = (() => {
           }
           Sfx.play('ui_deny');
           noTokenT = 2;
-          say(pick(['Out of tokens. Go stitch something. Or someone.', 'No token, no grab. Your creations can earn you more.']), 3);
+          say(vpick(['Out of tokens. Go stitch something. Or someone.', 'No token, no grab. Your creations can earn you more.']), 3);
           return;
         }
         Game.tokens--;
@@ -200,7 +200,7 @@ Scenes.claw = (() => {
       switch (type) {
         case 'drop':
           Sfx.play('claw_drop');
-          if (chance(0.35)) say(pick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
+          if (vchance(0.35)) say(vpick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
           break;
         case 'land':
           Sfx.play('claw_land', { intensity: d.intensity });
@@ -213,8 +213,8 @@ Scenes.claw = (() => {
             const best = d.grips.slice().sort((a, b) => RARITY[b.def.rarity].order - RARITY[a.def.rarity].order)[0];
             Sfx.play('grab');
             const r = RARITY[best.def.rarity].order;
-            if (r >= 2) say(pick(['Oh, that\'s a good part.', 'Don\'t. Drop. It.', 'Careful. That one\'s precious.']), 2);
-            else if (chance(0.6)) say(pick(['Got something!', 'Ooh.', 'Hold it... hold it...', 'Easy does it.']), 1.6);
+            if (r >= 2) say(vpick(['Oh, that\'s a good part.', 'Don\'t. Drop. It.', 'Careful. That one\'s precious.']), 2);
+            else if (vchance(0.6)) say(vpick(['Got something!', 'Ooh.', 'Hold it... hold it...', 'Easy does it.']), 1.6);
           }
           break;
         case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); break;
@@ -226,8 +226,8 @@ Scenes.claw = (() => {
           const [px, py] = sim.partPos(d.part);
           fxW.burst(px, py, 6, { speed: 25, ay: 60, life: 0.4, color: ['#fff6e3', '#cdb892'] });
           const why = d.part.twitchT && sim.time - d.part.twitchT < 0.6;
-          say(why ? pick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
-            pick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
+          say(why ? vpick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
+            vpick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
           break;
         }
         case 'release': Sfx.play('claw_open'); break;
@@ -236,7 +236,7 @@ Scenes.claw = (() => {
           Telemetry.grabEnd(d.result, d.won);
           if (d.result === 'miss') {
             Sfx.play('miss');
-            if (!Game.talk.visible() || chance(0.5)) say(pick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
+            if (!Game.talk.visible() || vchance(0.5)) say(vpick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
           }
           if (d.won.length > 1) say('Two for one! The machine likes you.', 2.4);
           topUp();
@@ -252,7 +252,7 @@ Scenes.claw = (() => {
         }
         case 'clank': if (Engine.realT - lastBumpSfx > 0.05) { lastBumpSfx = Engine.realT; Sfx.play('bump', { material: 'metal', intensity: d.intensity * 0.6 }); } break;
         case 'twitch': {
-          if (d.held || chance(0.5)) Sfx.play('twitch', { intensity: d.held ? 0.9 : 0.4 });
+          if (d.held || vchance(0.5)) Sfx.play('twitch', { intensity: d.held ? 0.9 : 0.4 });
           const [px, py] = sim.partPos(d.part);
           if (d.held) { fxW.burst(px, py, 4, { speed: 20, life: 0.3, color: ['#e8405a', '#fff6e3'] }); if (!Game.talk.visible()) say('It\'s squirming!', 1.2); }
           break;
@@ -286,7 +286,7 @@ Scenes.claw = (() => {
     if (order >= 3) {
       Engine.flash('#f6c64b', 0.4);
       Music.duck(0.8, 2.5);
-      for (let i = 0; i < 40; i++) fxW.add({ x: rand(10, 170), y: rand(-10, 20), vx: rand(-20, 20), vy: rand(10, 40), ay: 40, life: rand(1.2, 2.2), color: pick([PAL.l, PAL.L, PAL.W, PAL.R]), size: pick([1, 2]) });
+      for (let i = 0; i < 40; i++) fxW.add({ x: vrand(10, 170), y: vrand(-10, 20), vx: vrand(-20, 20), vy: vrand(10, 40), ay: 40, life: vrand(1.2, 2.2), color: vpick([PAL.l, PAL.L, PAL.W, PAL.R]), size: vpick([1, 2]) });
     } else if (order >= 2) Engine.flash('#6fd3ff', 0.2);
     const [sx, sy] = toScreen(cx, M.floor - 20);
     fxS.text(sx, sy - 10, def.name.toUpperCase(), r.color, { font: 'main', life: 1.6, vy: -20, outline: PAL.k });
@@ -298,7 +298,7 @@ Scenes.claw = (() => {
       [`A ${def.name}! Someone's getting spoiled.`, `${def.name}! Oh, that's a GOOD part.`],
       ['...I was saving that one.', `The ${def.name}. You absolute ghoul.`],
     ][order];
-    say(pick(lines), 2.6);
+    say(vpick(lines), 2.6);
     if (!d.inTurn) say('Free part! Don\'t tell the manager. I\'m the manager.', 2.6);
   }
 
@@ -425,7 +425,7 @@ Scenes.claw = (() => {
     for (let i = 0; i < n; i++) {
       const [x, y] = spots[i];
       let on, col;
-      if (winFx > 0) { on = Math.sin(t * 20 + i * 1.3) > 0; col = pick([PAL.l, PAL.r, PAL.C, PAL.p]); }
+      if (winFx > 0) { on = Math.sin(t * 20 + i * 1.3) > 0; col = vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
       else { on = (i + Math.floor(t * 7)) % 4 === 0 || (i + Math.floor(t * 7)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
       g.fillStyle = on ? col : '#6b3a1c';
       g.fillRect(x, y, 1, 1);

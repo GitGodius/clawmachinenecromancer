@@ -34,8 +34,8 @@ Scenes.shop = (() => {
     zoom = null;
     if (opened) {
       if (Game.broke()) { Game.givePity(); say('Broke? Here. On the house. Death is patient.', 3.5); tokenPop = 1; }
-      else if (Game.stage > 1 && !Game.seen['stage' + Game.stage]) { Game.seen['stage' + Game.stage] = 1; say(pick(['Welcome back, champion. The machine restocked itself. Funny, that.', 'Fresh parts in the machine. Some of them are your old friends.']), 3.5); }
-      else if (chance(0.5)) say(pick(['Welcome back.', 'Good parts make great friends.', 'The machine missed you. It told me.']), 2.4);
+      else if (Game.stage > 1 && !Game.seen['stage' + Game.stage]) { Game.seen['stage' + Game.stage] = 1; say(vpick(['Welcome back, champion. The machine restocked itself. Funny, that.', 'Fresh parts in the machine. Some of them are your old friends.']), 3.5); }
+      else if (vchance(0.5)) say(vpick(['Welcome back.', 'Good parts make great friends.', 'The machine missed you. It told me.']), 2.4);
     }
     if (params && params.skipIntro) open();
   };
@@ -63,7 +63,7 @@ Scenes.shop = (() => {
     fx.update(dt);
     tokenPop = Math.max(0, tokenPop - dt * 2);
     blinkT -= dt;
-    if (blinkT < -0.14) blinkT = rand(2, 5);
+    if (blinkT < -0.14) blinkT = vrand(2, 5);
     catT += dt;
     catMood = Math.max(0, catMood - dt);
     lean = approach(lean, Game.talk.visible() ? 1 : 0, dt * 3);
@@ -80,7 +80,7 @@ Scenes.shop = (() => {
       return;
     }
     chatT -= dt;
-    if (chatT < 0 && !Game.talk.visible()) { chatT = rand(14, 22); say(pick(IDLE_LINES), 3.2); }
+    if (chatT < 0 && !Game.talk.visible()) { chatT = vrand(14, 22); say(vpick(IDLE_LINES), 3.2); }
     const h = hint();
     const signs = [
       { id: 'collect', label: 'COLLECT', y: 205, onClick: goClaw, tip: [{ t: 'The claw machine', c: '#ff8ac6' }, { t: `1 token per grab · you have ${Game.tokens}`, c: '#ecdcbc' }] },
@@ -90,8 +90,8 @@ Scenes.shop = (() => {
         tip: Game.canFight() ? [{ t: 'The graveyard', c: '#e8405a' }, { t: `stage ${Game.stage} · party of ${Game.party.length}`, c: '#ecdcbc' }] : 'Stitch a creature first.' },
     ].map((b) => Object.assign({ x: 398, w: 76, h: 16, style: 'wood', kind: 'sign', pulse: h === b.id }, b));
     signs.push({ id: 'machine', x: MX, y: MY, w: MW, h: 214, label: '', kind: 'hot', silent: true, onClick: goClaw, tip: 'Play the claw machine' });
-    signs.push({ id: 'cat', x: 424, y: 176, w: 24, h: 20, label: '', kind: 'hot', silent: true, onClick: () => { catMood = 1.5; Sfx.play('meow'); say(pick(['The cat is not for sale.', 'He bites. Affectionately.', 'That\'s Mr. Whiskers. He\'s been dead for years. Don\'t tell him.']), 2.4); } });
-    signs.push({ id: 'reaper', x: REAPER_X - 22, y: 150, w: 44, h: 46, label: '', kind: 'hot', silent: true, onClick: () => { say(pick(IDLE_LINES), 3); chatT = 18; } });
+    signs.push({ id: 'cat', x: 424, y: 176, w: 24, h: 20, label: '', kind: 'hot', silent: true, onClick: () => { catMood = 1.5; Sfx.play('meow'); say(vpick(['The cat is not for sale.', 'He bites. Affectionately.', 'That\'s Mr. Whiskers. He\'s been dead for years. Don\'t tell him.']), 2.4); } });
+    signs.push({ id: 'reaper', x: REAPER_X - 22, y: 150, w: 44, h: 46, label: '', kind: 'hot', silent: true, onClick: () => { say(vpick(IDLE_LINES), 3); chatT = 18; } });
     S.signs = signs;
     UI.set(signs);
     const sg = signs.filter((b) => b.kind === 'sign');

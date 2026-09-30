@@ -7270,9 +7270,9 @@ Scenes.claw = (() => {
       }
       // legendary sparkle
       for (const p of sim.parts) {
-        if (p.won || p.def.rarity !== 'legendary' || !chance(dt * 3)) continue;
+        if (p.won || p.def.rarity !== 'legendary' || !vchance(dt * 3)) continue;
         const [x, y] = sim.partPos(p);
-        fxW.add({ x: x + rand(-8, 8), y: y + rand(-8, 8), vy: -6, life: 0.6, color: pick([PAL.l, PAL.L, PAL.j]) });
+        fxW.add({ x: x + vrand(-8, 8), y: y + vrand(-8, 8), vy: -6, life: 0.6, color: vpick([PAL.l, PAL.L, PAL.j]) });
       }
 
       fxW.update(dt); fxS.update(dt);
@@ -7281,7 +7281,7 @@ Scenes.claw = (() => {
       bagBump = Math.max(0, bagBump - dt * 3);
       tokenBump = Math.max(0, tokenBump - dt * 3);
       noTokenT = Math.max(0, noTokenT - dt);
-      neonOff = neonOff > 0 ? neonOff - dt : chance(dt * 0.25) ? rand(0.05, 0.25) : 0;
+      neonOff = neonOff > 0 ? neonOff - dt : vchance(dt * 0.25) ? vrand(0.05, 0.25) : 0;
       for (const f of flying) f.t += dt;
       flying = flying.filter((f) => {
         if (f.t < f.dur) return true;
@@ -7306,7 +7306,7 @@ Scenes.claw = (() => {
           }
           Sfx.play('ui_deny');
           noTokenT = 2;
-          say(pick(['Out of tokens. Go stitch something. Or someone.', 'No token, no grab. Your creations can earn you more.']), 3);
+          say(vpick(['Out of tokens. Go stitch something. Or someone.', 'No token, no grab. Your creations can earn you more.']), 3);
           return;
         }
         Game.tokens--;
@@ -7332,7 +7332,7 @@ Scenes.claw = (() => {
       switch (type) {
         case 'drop':
           Sfx.play('claw_drop');
-          if (chance(0.35)) say(pick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
+          if (vchance(0.35)) say(vpick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
           break;
         case 'land':
           Sfx.play('claw_land', { intensity: d.intensity });
@@ -7345,8 +7345,8 @@ Scenes.claw = (() => {
             const best = d.grips.slice().sort((a, b) => RARITY[b.def.rarity].order - RARITY[a.def.rarity].order)[0];
             Sfx.play('grab');
             const r = RARITY[best.def.rarity].order;
-            if (r >= 2) say(pick(['Oh, that\'s a good part.', 'Don\'t. Drop. It.', 'Careful. That one\'s precious.']), 2);
-            else if (chance(0.6)) say(pick(['Got something!', 'Ooh.', 'Hold it... hold it...', 'Easy does it.']), 1.6);
+            if (r >= 2) say(vpick(['Oh, that\'s a good part.', 'Don\'t. Drop. It.', 'Careful. That one\'s precious.']), 2);
+            else if (vchance(0.6)) say(vpick(['Got something!', 'Ooh.', 'Hold it... hold it...', 'Easy does it.']), 1.6);
           }
           break;
         case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); break;
@@ -7358,8 +7358,8 @@ Scenes.claw = (() => {
           const [px, py] = sim.partPos(d.part);
           fxW.burst(px, py, 6, { speed: 25, ay: 60, life: 0.4, color: ['#fff6e3', '#cdb892'] });
           const why = d.part.twitchT && sim.time - d.part.twitchT < 0.6;
-          say(why ? pick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
-            pick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
+          say(why ? vpick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
+            vpick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
           break;
         }
         case 'release': Sfx.play('claw_open'); break;
@@ -7368,7 +7368,7 @@ Scenes.claw = (() => {
           Telemetry.grabEnd(d.result, d.won);
           if (d.result === 'miss') {
             Sfx.play('miss');
-            if (!Game.talk.visible() || chance(0.5)) say(pick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
+            if (!Game.talk.visible() || vchance(0.5)) say(vpick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
           }
           if (d.won.length > 1) say('Two for one! The machine likes you.', 2.4);
           topUp();
@@ -7384,7 +7384,7 @@ Scenes.claw = (() => {
         }
         case 'clank': if (Engine.realT - lastBumpSfx > 0.05) { lastBumpSfx = Engine.realT; Sfx.play('bump', { material: 'metal', intensity: d.intensity * 0.6 }); } break;
         case 'twitch': {
-          if (d.held || chance(0.5)) Sfx.play('twitch', { intensity: d.held ? 0.9 : 0.4 });
+          if (d.held || vchance(0.5)) Sfx.play('twitch', { intensity: d.held ? 0.9 : 0.4 });
           const [px, py] = sim.partPos(d.part);
           if (d.held) { fxW.burst(px, py, 4, { speed: 20, life: 0.3, color: ['#e8405a', '#fff6e3'] }); if (!Game.talk.visible()) say('It\'s squirming!', 1.2); }
           break;
@@ -7418,7 +7418,7 @@ Scenes.claw = (() => {
     if (order >= 3) {
       Engine.flash('#f6c64b', 0.4);
       Music.duck(0.8, 2.5);
-      for (let i = 0; i < 40; i++) fxW.add({ x: rand(10, 170), y: rand(-10, 20), vx: rand(-20, 20), vy: rand(10, 40), ay: 40, life: rand(1.2, 2.2), color: pick([PAL.l, PAL.L, PAL.W, PAL.R]), size: pick([1, 2]) });
+      for (let i = 0; i < 40; i++) fxW.add({ x: vrand(10, 170), y: vrand(-10, 20), vx: vrand(-20, 20), vy: vrand(10, 40), ay: 40, life: vrand(1.2, 2.2), color: vpick([PAL.l, PAL.L, PAL.W, PAL.R]), size: vpick([1, 2]) });
     } else if (order >= 2) Engine.flash('#6fd3ff', 0.2);
     const [sx, sy] = toScreen(cx, M.floor - 20);
     fxS.text(sx, sy - 10, def.name.toUpperCase(), r.color, { font: 'main', life: 1.6, vy: -20, outline: PAL.k });
@@ -7430,7 +7430,7 @@ Scenes.claw = (() => {
       [`A ${def.name}! Someone's getting spoiled.`, `${def.name}! Oh, that's a GOOD part.`],
       ['...I was saving that one.', `The ${def.name}. You absolute ghoul.`],
     ][order];
-    say(pick(lines), 2.6);
+    say(vpick(lines), 2.6);
     if (!d.inTurn) say('Free part! Don\'t tell the manager. I\'m the manager.', 2.6);
   }
 
@@ -7557,7 +7557,7 @@ Scenes.claw = (() => {
     for (let i = 0; i < n; i++) {
       const [x, y] = spots[i];
       let on, col;
-      if (winFx > 0) { on = Math.sin(t * 20 + i * 1.3) > 0; col = pick([PAL.l, PAL.r, PAL.C, PAL.p]); }
+      if (winFx > 0) { on = Math.sin(t * 20 + i * 1.3) > 0; col = vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
       else { on = (i + Math.floor(t * 7)) % 4 === 0 || (i + Math.floor(t * 7)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
       g.fillStyle = on ? col : '#6b3a1c';
       g.fillRect(x, y, 1, 1);
@@ -7977,8 +7977,8 @@ Scenes.slab = (() => {
     const pt = { head: L.neck, torso: [0, L.ty], armL: L.shL, armR: L.shR, legL: L.hipL, legR: L.hipR, heart: L.heart, back: L.back }[slot] || [0, -30];
     fx.burst(FEET_X + pt[0] * 2, FEET_Y + pt[1] * 2, 10, { speed: 50, life: 0.45, ay: 60, color: ['#9be38f', '#fff6e3', '#4fae6c'] });
     Telemetry.log('stitch', { part: item.type, slot });
-    if (chance(0.3)) say(pick(['Snug.', 'It fits. Mostly.', 'Needle, thread, hope.', 'Ooh, that suits them.', 'Stitch, stitch, stitch.', 'Lovely. Horrible. Lovely.']), 1.6);
-    if (item.type === 'pegleg' && chance(0.6)) say('A peg leg. Classic look. Terrible posture.', 2.2);
+    if (vchance(0.3)) say(vpick(['Snug.', 'It fits. Mostly.', 'Needle, thread, hope.', 'Ooh, that suits them.', 'Stitch, stitch, stitch.', 'Lovely. Horrible. Lovely.']), 1.6);
+    if (item.type === 'pegleg' && vchance(0.6)) say('A peg leg. Classic look. Terrible posture.', 2.2);
   }
   function unstitchSlot(slot) {
     if (!build[slot]) return;
@@ -8005,7 +8005,7 @@ Scenes.slab = (() => {
     Game.party.push(c);
     build = emptyBuild();
     life = null;
-    say(pick(['Not pretty. But it\'ll fight.', 'Look at them go. Well. Look at them.', 'It\'s alive! Ish.', 'A face only a necromancer could love.']), 3);
+    say(vpick(['Not pretty. But it\'ll fight.', 'Look at them go. Well. Look at them.', 'It\'s alive! Ish.', 'A face only a necromancer could love.']), 3);
     Game.talk.say(`Meet ${c.name}. Take them to the graveyard.`, 3.2, false);
   }
 
@@ -8040,11 +8040,11 @@ Scenes.slab = (() => {
         Engine.flash('#e7f7ff', 0.25);
         Engine.shake(5, 0.5);
         Engine.hitPause(0.08);
-        for (let i = 0; i < 3; i++) life.bolts.push({ x0: FEET_X + rand(-60, 60), seed: randInt(1, 999), t: 0 });
+        for (let i = 0; i < 3; i++) life.bolts.push({ x0: FEET_X + vrand(-60, 60), seed: vrandInt(1, 999), t: 0 });
       }
-      if (life.stage >= 1 && lt < 1.3 && chance(dt * 30)) {
-        fx.burst(FEET_X + rand(-30, 30), FEET_Y - rand(10, 120), 3, { speed: 70, life: 0.25, color: ['#c2f5ff', '#fff', '#9be38f'] });
-        if (chance(dt * 8)) Sfx.play('zap', { intensity: 0.4 });
+      if (life.stage >= 1 && lt < 1.3 && vchance(dt * 30)) {
+        fx.burst(FEET_X + vrand(-30, 30), FEET_Y - vrand(10, 120), 3, { speed: 70, life: 0.25, color: ['#c2f5ff', '#fff', '#9be38f'] });
+        if (vchance(dt * 8)) Sfx.play('zap', { intensity: 0.4 });
       }
       if (life.stage === 1 && lt > 1.35) { life.stage = 2; Sfx.play('alive'); fx.burst(FEET_X, FEET_Y - 60, 30, { speed: 90, life: 0.8, ay: 40, color: ['#9be38f', '#fff6e3', '#4fae6c'] }); }
       if (life.stage === 2 && lt > 3.2) finishLife();
@@ -8085,7 +8085,7 @@ Scenes.slab = (() => {
             selected = null;
             Sfx.play('unstitch');
             Telemetry.c.unstitched++;
-            say(pick([`${c.name.split(' ')[0]} is parts again. Circle of life.`, 'Back to bits. No hard feelings.']), 2.4);
+            say(vpick([`${c.name.split(' ')[0]} is parts again. Circle of life.`, 'Back to bits. No hard feelings.']), 2.4);
           } else { selected = c; Sfx.play('ui_click'); }
         } });
     });
@@ -8100,8 +8100,8 @@ Scenes.slab = (() => {
     BG.lab(ctx, t, { surge: life ? clamp(life.stage === 1 ? 1 - (life.t - 0.45) : life.stage === 2 ? 0.3 : life.t, 0, 1) : 0 });
     // creature on the slab
     const ty = types();
-    const shakeX = life && life.stage === 1 ? rand(-2, 2) : jolt > 0 ? Math.round(Math.sin(jolt * 60) * 1) : 0;
-    const shakeY = life && life.stage === 1 ? rand(-2, 2) : 0;
+    const shakeX = life && life.stage === 1 ? vrand(-2, 2) : jolt > 0 ? Math.round(Math.sin(jolt * 60) * 1) : 0;
+    const shakeY = life && life.stage === 1 ? vrand(-2, 2) : 0;
     if (life && life.stage >= 1 && life.t < 1.2) {
       ctx.fillStyle = 'rgba(14,11,22,0.55)'; ctx.fillRect(0, 0, W, H);
     }
@@ -8113,7 +8113,7 @@ Scenes.slab = (() => {
     if (life && life.stage >= 1 && life.t < 1.3) {
       for (const b of life.bolts) {
         if (Math.sin(life.t * 40 + b.seed) > -0.3) {
-          Draw.bolt(ctx, b.x0, 0, FEET_X + rand(-20, 20), FEET_Y - rand(40, 110), '#e7f7ff', 10, b.seed + Math.floor(life.t * 20));
+          Draw.bolt(ctx, b.x0, 0, FEET_X + vrand(-20, 20), FEET_Y - vrand(40, 110), '#e7f7ff', 10, b.seed + Math.floor(life.t * 20));
           Draw.glow(ctx, FEET_X, FEET_Y - 70, 90, '#6fd3ff', 0.25);
         }
       }
@@ -8543,8 +8543,8 @@ Scenes.shop = (() => {
     zoom = null;
     if (opened) {
       if (Game.broke()) { Game.givePity(); say('Broke? Here. On the house. Death is patient.', 3.5); tokenPop = 1; }
-      else if (Game.stage > 1 && !Game.seen['stage' + Game.stage]) { Game.seen['stage' + Game.stage] = 1; say(pick(['Welcome back, champion. The machine restocked itself. Funny, that.', 'Fresh parts in the machine. Some of them are your old friends.']), 3.5); }
-      else if (chance(0.5)) say(pick(['Welcome back.', 'Good parts make great friends.', 'The machine missed you. It told me.']), 2.4);
+      else if (Game.stage > 1 && !Game.seen['stage' + Game.stage]) { Game.seen['stage' + Game.stage] = 1; say(vpick(['Welcome back, champion. The machine restocked itself. Funny, that.', 'Fresh parts in the machine. Some of them are your old friends.']), 3.5); }
+      else if (vchance(0.5)) say(vpick(['Welcome back.', 'Good parts make great friends.', 'The machine missed you. It told me.']), 2.4);
     }
     if (params && params.skipIntro) open();
   };
@@ -8572,7 +8572,7 @@ Scenes.shop = (() => {
     fx.update(dt);
     tokenPop = Math.max(0, tokenPop - dt * 2);
     blinkT -= dt;
-    if (blinkT < -0.14) blinkT = rand(2, 5);
+    if (blinkT < -0.14) blinkT = vrand(2, 5);
     catT += dt;
     catMood = Math.max(0, catMood - dt);
     lean = approach(lean, Game.talk.visible() ? 1 : 0, dt * 3);
@@ -8589,7 +8589,7 @@ Scenes.shop = (() => {
       return;
     }
     chatT -= dt;
-    if (chatT < 0 && !Game.talk.visible()) { chatT = rand(14, 22); say(pick(IDLE_LINES), 3.2); }
+    if (chatT < 0 && !Game.talk.visible()) { chatT = vrand(14, 22); say(vpick(IDLE_LINES), 3.2); }
     const h = hint();
     const signs = [
       { id: 'collect', label: 'COLLECT', y: 205, onClick: goClaw, tip: [{ t: 'The claw machine', c: '#ff8ac6' }, { t: `1 token per grab · you have ${Game.tokens}`, c: '#ecdcbc' }] },
@@ -8599,8 +8599,8 @@ Scenes.shop = (() => {
         tip: Game.canFight() ? [{ t: 'The graveyard', c: '#e8405a' }, { t: `stage ${Game.stage} · party of ${Game.party.length}`, c: '#ecdcbc' }] : 'Stitch a creature first.' },
     ].map((b) => Object.assign({ x: 398, w: 76, h: 16, style: 'wood', kind: 'sign', pulse: h === b.id }, b));
     signs.push({ id: 'machine', x: MX, y: MY, w: MW, h: 214, label: '', kind: 'hot', silent: true, onClick: goClaw, tip: 'Play the claw machine' });
-    signs.push({ id: 'cat', x: 424, y: 176, w: 24, h: 20, label: '', kind: 'hot', silent: true, onClick: () => { catMood = 1.5; Sfx.play('meow'); say(pick(['The cat is not for sale.', 'He bites. Affectionately.', 'That\'s Mr. Whiskers. He\'s been dead for years. Don\'t tell him.']), 2.4); } });
-    signs.push({ id: 'reaper', x: REAPER_X - 22, y: 150, w: 44, h: 46, label: '', kind: 'hot', silent: true, onClick: () => { say(pick(IDLE_LINES), 3); chatT = 18; } });
+    signs.push({ id: 'cat', x: 424, y: 176, w: 24, h: 20, label: '', kind: 'hot', silent: true, onClick: () => { catMood = 1.5; Sfx.play('meow'); say(vpick(['The cat is not for sale.', 'He bites. Affectionately.', 'That\'s Mr. Whiskers. He\'s been dead for years. Don\'t tell him.']), 2.4); } });
+    signs.push({ id: 'reaper', x: REAPER_X - 22, y: 150, w: 44, h: 46, label: '', kind: 'hot', silent: true, onClick: () => { say(vpick(IDLE_LINES), 3); chatT = 18; } });
     S.signs = signs;
     UI.set(signs);
     const sg = signs.filter((b) => b.kind === 'sign');

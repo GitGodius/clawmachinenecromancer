@@ -41,8 +41,8 @@ Scenes.slab = (() => {
     const pt = { head: L.neck, torso: [0, L.ty], armL: L.shL, armR: L.shR, legL: L.hipL, legR: L.hipR, heart: L.heart, back: L.back }[slot] || [0, -30];
     fx.burst(FEET_X + pt[0] * 2, FEET_Y + pt[1] * 2, 10, { speed: 50, life: 0.45, ay: 60, color: ['#9be38f', '#fff6e3', '#4fae6c'] });
     Telemetry.log('stitch', { part: item.type, slot });
-    if (chance(0.3)) say(pick(['Snug.', 'It fits. Mostly.', 'Needle, thread, hope.', 'Ooh, that suits them.', 'Stitch, stitch, stitch.', 'Lovely. Horrible. Lovely.']), 1.6);
-    if (item.type === 'pegleg' && chance(0.6)) say('A peg leg. Classic look. Terrible posture.', 2.2);
+    if (vchance(0.3)) say(vpick(['Snug.', 'It fits. Mostly.', 'Needle, thread, hope.', 'Ooh, that suits them.', 'Stitch, stitch, stitch.', 'Lovely. Horrible. Lovely.']), 1.6);
+    if (item.type === 'pegleg' && vchance(0.6)) say('A peg leg. Classic look. Terrible posture.', 2.2);
   }
   function unstitchSlot(slot) {
     if (!build[slot]) return;
@@ -69,7 +69,7 @@ Scenes.slab = (() => {
     Game.party.push(c);
     build = emptyBuild();
     life = null;
-    say(pick(['Not pretty. But it\'ll fight.', 'Look at them go. Well. Look at them.', 'It\'s alive! Ish.', 'A face only a necromancer could love.']), 3);
+    say(vpick(['Not pretty. But it\'ll fight.', 'Look at them go. Well. Look at them.', 'It\'s alive! Ish.', 'A face only a necromancer could love.']), 3);
     Game.talk.say(`Meet ${c.name}. Take them to the graveyard.`, 3.2, false);
   }
 
@@ -104,11 +104,11 @@ Scenes.slab = (() => {
         Engine.flash('#e7f7ff', 0.25);
         Engine.shake(5, 0.5);
         Engine.hitPause(0.08);
-        for (let i = 0; i < 3; i++) life.bolts.push({ x0: FEET_X + rand(-60, 60), seed: randInt(1, 999), t: 0 });
+        for (let i = 0; i < 3; i++) life.bolts.push({ x0: FEET_X + vrand(-60, 60), seed: vrandInt(1, 999), t: 0 });
       }
-      if (life.stage >= 1 && lt < 1.3 && chance(dt * 30)) {
-        fx.burst(FEET_X + rand(-30, 30), FEET_Y - rand(10, 120), 3, { speed: 70, life: 0.25, color: ['#c2f5ff', '#fff', '#9be38f'] });
-        if (chance(dt * 8)) Sfx.play('zap', { intensity: 0.4 });
+      if (life.stage >= 1 && lt < 1.3 && vchance(dt * 30)) {
+        fx.burst(FEET_X + vrand(-30, 30), FEET_Y - vrand(10, 120), 3, { speed: 70, life: 0.25, color: ['#c2f5ff', '#fff', '#9be38f'] });
+        if (vchance(dt * 8)) Sfx.play('zap', { intensity: 0.4 });
       }
       if (life.stage === 1 && lt > 1.35) { life.stage = 2; Sfx.play('alive'); fx.burst(FEET_X, FEET_Y - 60, 30, { speed: 90, life: 0.8, ay: 40, color: ['#9be38f', '#fff6e3', '#4fae6c'] }); }
       if (life.stage === 2 && lt > 3.2) finishLife();
@@ -149,7 +149,7 @@ Scenes.slab = (() => {
             selected = null;
             Sfx.play('unstitch');
             Telemetry.c.unstitched++;
-            say(pick([`${c.name.split(' ')[0]} is parts again. Circle of life.`, 'Back to bits. No hard feelings.']), 2.4);
+            say(vpick([`${c.name.split(' ')[0]} is parts again. Circle of life.`, 'Back to bits. No hard feelings.']), 2.4);
           } else { selected = c; Sfx.play('ui_click'); }
         } });
     });
@@ -164,8 +164,8 @@ Scenes.slab = (() => {
     BG.lab(ctx, t, { surge: life ? clamp(life.stage === 1 ? 1 - (life.t - 0.45) : life.stage === 2 ? 0.3 : life.t, 0, 1) : 0 });
     // creature on the slab
     const ty = types();
-    const shakeX = life && life.stage === 1 ? rand(-2, 2) : jolt > 0 ? Math.round(Math.sin(jolt * 60) * 1) : 0;
-    const shakeY = life && life.stage === 1 ? rand(-2, 2) : 0;
+    const shakeX = life && life.stage === 1 ? vrand(-2, 2) : jolt > 0 ? Math.round(Math.sin(jolt * 60) * 1) : 0;
+    const shakeY = life && life.stage === 1 ? vrand(-2, 2) : 0;
     if (life && life.stage >= 1 && life.t < 1.2) {
       ctx.fillStyle = 'rgba(14,11,22,0.55)'; ctx.fillRect(0, 0, W, H);
     }
@@ -177,7 +177,7 @@ Scenes.slab = (() => {
     if (life && life.stage >= 1 && life.t < 1.3) {
       for (const b of life.bolts) {
         if (Math.sin(life.t * 40 + b.seed) > -0.3) {
-          Draw.bolt(ctx, b.x0, 0, FEET_X + rand(-20, 20), FEET_Y - rand(40, 110), '#e7f7ff', 10, b.seed + Math.floor(life.t * 20));
+          Draw.bolt(ctx, b.x0, 0, FEET_X + vrand(-20, 20), FEET_Y - vrand(40, 110), '#e7f7ff', 10, b.seed + Math.floor(life.t * 20));
           Draw.glow(ctx, FEET_X, FEET_Y - 70, 90, '#6fd3ff', 0.25);
         }
       }

@@ -21,7 +21,7 @@ export function exposedParts(sim, M) {
 }
 
 // One full grab. Returns what happened. `target` is a part from sim.parts (or null to aim at nothing).
-export function playGrab(sim, M, { target, aimNoise = 2.5, carry = 'gentle', u = Math.random, maxT = 30, hooks = {} } = {}) {
+export function playGrab(sim, M, { target, aimNoise = 2.5, carry = 'gentle', u = Math.random, maxT = 30, hooks = {}, start } = {}) {
   let ended = null, slips = 0, lifted = false;
   const prev = sim.onEvent;
   sim.onEvent = (t, d) => {
@@ -37,7 +37,8 @@ export function playGrab(sim, M, { target, aimNoise = 2.5, carry = 'gentle', u =
       sim.teleportClaw(clamp(tx + gaussian(u) * aimNoise, M.carMin, M.carMax));
     }
     for (let i = 0; i < 30; i++) sim.step(1 / 60);
-    sim.startDrop();
+    if (start) start(); else sim.startDrop();
+    if (sim.state === 'idle') return { result: 'refused', won: [], wonParts: [], slips, lifted, time: 0 };
     let t = 0;
     while (!ended && t < maxT) {
       if (sim.state === 'carry') {
