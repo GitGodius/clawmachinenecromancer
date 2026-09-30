@@ -5,10 +5,14 @@
 //
 // It checks, in order:
 //   quake     shuffles the pile, loses nothing, never spills, settles, leaves the claw intact
+//   seal      the chute lid stays up through a drop and comes down when the claw starts carrying;
+//             a part thrown at the chute mid-drop cannot get in (and does get in without the lid)
 //   nudge     pushes the right way, hardest under the claw, never spills
 //   lens      the odds badge uses the exact function the dice use
 //   iron      Iron Grip raises the win rate and cuts slips
-//   redo      a rewind restores every part and the claw to the recorded pre-drop state
+//   redo      a rewind restores every part and the claw to the recorded pre-drop state: positions, RAW
+//             angles and every revolute joint angle (a bone tail across the +-PI seam is forced, and the
+//             same check is shown to fail with the old wrapped restore), and Iron Grip comes back
 //   hooks     the recording hooks are invisible: same world with them stubbed out, seed for seed
 //   rules     Luck gain/cap/spend/refund, costs, TILT, Order, A/B switch, free-lever cheat
 //   fuzz      hundreds of random lever pulls keep every invariant
@@ -52,8 +56,12 @@ function newSim(seed) {
 const snap = (sim) => new Map(sim.parts.filter((p) => !p.won).map((p) => [p.uid, sim.partPos(p)]));
 // how many parts sit above each part (same column, at least 6 px higher): a cheap "stack order"
 const depth = (pos) => { const m = new Map(); for (const [u, [x, y]] of pos) { let d = 0; for (const [u2, [x2, y2]] of pos) if (u2 !== u && Math.abs(x2 - x) < 12 && y2 < y - 6) d++; m.set(u, d); } return m; };
-// angles are compared modulo 2*PI: planck reports a restored body's angle in (-PI, PI]
-const angDiff = (a, b) => Math.abs(((a - b + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI);
+// A revolute joint reads the RAW angles of its two bodies, so angles and joint angles are compared strictly
+// (no modulo 2*PI: comparing modulo hid a real bug where a rewind left a bone tail's joints off by 2*PI).
+const jointAngles = (sim) => { const out = []; for (let j = sim.world.getJointList(); j; j = j.getNext()) out.push(j.getType() === 'revolute-joint' ? j.getJointAngle() : 0); return out; };
+const jointCount = (sim) => { let n = 0; for (let j = sim.world.getJointList(); j; j = j.getNext()) n++; return n; };
+const clawAngles = (sim) => [sim.hub, sim.prongL, sim.prongR].map((b) => b.getAngle());
+const worstDiff = (a, b) => a.reduce((m, x, i) => Math.max(m, Math.abs(x - b[i])), 0);
 const speedOf = (sim) => max(sim.parts.filter((p) => !p.won).map((p) => { const v = p.body.getLinearVelocity(); return Math.hypot(v.x, v.y) * PPM; }));
 const finite = (sim) => sim.parts.every((p) => p.bodies.every((b) => { const q = b.getPosition(); return isFinite(q.x) && isFinite(q.y) && isFinite(b.getAngle()); }));
 const stepFor = (sim, secs) => { for (let t = 0; t < secs; t += 1 / 60) sim.step(1 / 60); };
@@ -62,7 +70,7 @@ const stepFor = (sim, secs) => { for (let t = 0; t < secs; t += 1 / 60) sim.step
 section(`quake (${SEEDS} seeded piles)`);
 {
   const disp = [], changed = [], rise = [], hub = [], unlockAt = [];
-  let lost = 0, won = 0, nan = 0, lidUpAtEnd = 0, lidDownAfterDrop = 0, tooLong = 0;
+  let lost = 0, won = 0, nan = 0, lidUpAtEnd = 0, lidUpAfterDrop = 0, tooLong = 0;
   for (let s = 0; s < SEEDS; s++) {
     const sim = newSim(1000 + s);
     const before = snap(sim), d0 = depth(before), hub0 = sim.hub.getPosition().clone();
@@ -88,7 +96,7 @@ section(`quake (${SEEDS} seeded piles)`);
       if (unlock == null || unlock > CONFIG.quakeTime + RIGSIM.settleCap + 0.2) tooLong++;
       if (sim.lid) lidUpAtEnd++; // the lid must still be up: nobody has dropped yet
       sim.startDrop();
-      if (!sim.lid) lidDownAfterDrop++;
+      if (sim.lid) lidUpAfterDrop++; // ...and it stays up through the drop itself
     }
   }
   check('it shuffles: parts move', avg(disp) >= 12, `mean displacement ${avg(disp).toFixed(1)} px`);
@@ -99,7 +107,7 @@ section(`quake (${SEEDS} seeded piles)`);
   check('the claw is left where it was', max(hub) < 3, `hub drift worst ${max(hub).toFixed(2)} px`);
   check('the drop unlocks once the pile settles', tooLong === 0, `unlock avg ${avg(unlockAt).toFixed(2)} s, worst ${max(unlockAt).toFixed(2)} s`);
   check('the chute stays sealed until you drop', lidUpAtEnd === SEEDS, `${lidUpAtEnd}/${SEEDS}`);
-  check('the lid comes down when a drop begins', lidDownAfterDrop === SEEDS, `${lidDownAfterDrop}/${SEEDS}`);
+  check('the lid stays up when a drop begins', lidUpAfterDrop === SEEDS, `${lidUpAfterDrop}/${SEEDS}`);
 }
 { // the seal is doing real work: without it the same shakes occasionally spill parts
   const real = ClawSim.prototype.seal;
@@ -156,12 +164,17 @@ function runTurn(sim, aimX, opts = {}) {
   sim.teleportClaw(clamp(aimX, MACHINE.carMin, MACHINE.carMax));
   stepFor(sim, 0.5);
   if (opts.iron) sim.armIron(true);
+  if (opts.prep) opts.prep(sim); // a test may rearrange the world right before the drop
   const start = sim.ev.length;
   sim.pred = sim.predict(); // what the Lens says at the instant the drop starts
-  sim.pre = { pos: snap(sim), ang: new Map(sim.parts.map((p) => [p.uid, p.bodies.map((b) => b.getAngle())])), carX: sim.carX }; // the world at the instant the drop starts
+  sim.pre = { // the world at the instant the drop starts (raw angles: see jointAngles)
+    pos: snap(sim), ang: new Map(sim.parts.map((p) => [p.uid, p.bodies.map((b) => b.getAngle())])), carX: sim.carX,
+    joints: jointAngles(sim), nJoints: jointCount(sim), claw: clawAngles(sim), iron: sim.iron,
+  };
   if (!sim.startDrop()) return null;
   let t = 0;
   while (sim.state !== 'idle' && t < 40) {
+    if (opts.onStep) opts.onStep(sim);
     if (sim.state === 'carry') {
       const d = MACHINE.home - sim.carX;
       sim.input.move = Math.abs(d) < 1.5 ? 0 : Math.sign(d) * Math.min(1, Math.abs(d) / 12);
@@ -177,6 +190,50 @@ const aimAtRandomPart = (sim, rng) => {
   const c = sim.parts.filter((p) => !p.won && sim.partPos(p)[0] > 14 && sim.partPos(p)[0] < 132);
   return sim.partPos(c[Math.floor(rng() * c.length)])[0] + (rng() - 0.5) * 5;
 };
+
+// ------------------------------------------------------------------ CHUTE SEAL (lifetime and the drop itself)
+section('chute seal');
+{ // the lid stays up through the drop, close and lift, and comes down when the claw starts carrying
+  const N = Math.max(SEEDS, 24);
+  let wrongUp = 0, wrongDown = 0, lidAtEnd = 0, reached = 0, noLid = 0, turns = 0;
+  for (let s = 0; s < N; s++) {
+    const sim = newSim(12000 + s), rng = mulberry32(s + 9);
+    sim.nudge(s % 2 ? 1 : -1); // a lever was pulled: the lid is up
+    if (!sim.lid) { noLid++; continue; }
+    const seen = {};
+    const turn = runTurn(sim, aimAtRandomPart(sim, rng), { onStep: (q) => { (seen[q.state] = seen[q.state] || new Set()).add(!!q.lid); } });
+    if (!turn) continue;
+    turns++;
+    for (const st of ['drop', 'close', 'lift']) if (seen[st] && seen[st].has(false)) wrongUp++;
+    for (const st of ['carry', 'return', 'release']) if (seen[st] && seen[st].has(true)) wrongDown++;
+    if (seen.carry || seen.return) reached++;
+    if (sim.lid) lidAtEnd++;
+  }
+  check('a nudge puts the lid up', noLid === 0, `${noLid} without`);
+  check('the lid stays up through the drop, the close and the lift', turns > 10 && wrongUp === 0, `${wrongUp} turns where it dropped early (${turns} turns)`);
+  check('the lid is down while the claw carries, and when the turn is over', reached >= 3 && wrongDown === 0 && lidAtEnd === 0, `${reached} turns carried, ${wrongDown} with the lid still up, ${lidAtEnd} left up at the end`);
+}
+{ // a part thrown at the chute while the claw is going down must not get in (and does without the lid)
+  const runs = Math.max(SEEDS, 30), real = ClawSim.prototype.seal;
+  const tally = { with: 0, without: 0 };
+  for (const mode of ['with', 'without']) {
+    ClawSim.prototype.seal = mode === 'with' ? real : function () {};
+    for (let s = 0; s < runs; s++) {
+      const sim = newSim(14000 + s);
+      sim.nudge(1); // seals the chute
+      sim.teleportClaw(30);
+      sim.startDrop();
+      const p = sim.parts.filter((q) => !q.def.chain && !q.won).sort((a, b) => sim.partPos(a)[1] - sim.partPos(b)[1])[0];
+      p.body.setTransform(planck.Vec2(124 / PPM, 40 / PPM), 0); // from above the pile, flat and fast, at the guard
+      p.body.setLinearVelocity(planck.Vec2(340 / PPM, -40 / PPM));
+      stepFor(sim, 4);
+      if (sim.ev.some(([k]) => k === 'win')) tally[mode]++;
+    }
+  }
+  ClawSim.prototype.seal = real;
+  check('a part thrown at the chute mid-drop never gets in', tally.with === 0, `with the lid ${tally.with}/${runs}; without it ${tally.without}/${runs}`);
+  check('(the throw is real: it gets in when there is no lid)', tally.without >= runs * 0.5, `${tally.without}/${runs}`);
+}
 
 // ------------------------------------------------------------------ LENS
 section('lens (odds badge)');
@@ -271,20 +328,76 @@ section('redo (rewind)');
       if (!p) { err = 1e9; break; }
       const [x1, y1] = sim.partPos(p);
       err = Math.max(err, Math.hypot(x1 - x0, y1 - y0));
-      p.bodies.forEach((b, i) => { err = Math.max(err, angDiff(b.getAngle(), preAng.get(u)[i]) * 10); });
+      p.bodies.forEach((b, i) => { err = Math.max(err, Math.abs(b.getAngle() - preAng.get(u)[i]) * 10); }); // RAW angle, no modulo
     }
+    err = Math.max(err, worstDiff(jointAngles(sim), sim.pre.joints), worstDiff(clawAngles(sim), sim.pre.claw) * 10);
+    if (jointCount(sim) !== sim.pre.nJoints) err = 1e9; // a rewind must not leak or lose a joint
     worst = Math.max(worst, err);
     if (err < 1e-6) exact++;
     if (Math.abs(sim.carX - preX) > 1e-6 || sim.state !== 'idle' || sim.turn || sim.redoHist) claw++;
     if (sim.canRedo()) leftovers++; // a rewind cannot be rewound twice
   }
   check('a failed grab can be rewound', fails >= 8 && leftovers === 0, `${fails} failed turns, ${leftovers} not rewindable`);
-  check('every part and angle restored exactly', fails > 0 && exact === fails - leftovers, `worst error ${worst.toExponential(2)} px, ${exact} exact`);
+  check('every part, raw angle, joint angle and the claw restored exactly', fails > 0 && exact === fails - leftovers, `worst error ${worst.toExponential(2)}, ${exact} exact`);
   check('claw back at its start, state idle, one rewind only', claw === 0, `${claw} bad`);
   check('a win is never offered a redo', winNoRedo === 0, `${wins} wins seen`);
   const sim = newSim(4); const t = runTurn(sim, 18);
   sim.startDrop(); // anything that changes the world ends the offer
   check('a new drop cancels the offer', !sim.canRedo());
+}
+{ // a bone tail lying across the +-PI seam: the case that used to come back with its joints off by 2*PI
+  const N = Math.max(8, Math.floor(SEEDS / 2));
+  const oldApply = function (H, f) { // the previous restore: setTransform() wraps each angle into (-PI, PI]
+    const V = planck.Vec2, nb = H.bodies.length, zero = V(0, 0);
+    for (let i = 0; i < nb; i++) { const b = H.bodies[i]; b.setTransform(V(f[i * 3], f[i * 3 + 1]), f[i * 3 + 2]); b.setLinearVelocity(zero); b.setAngularVelocity(0); }
+    let o = nb * 3;
+    this.carX = f[o++]; this.carV = 0;
+    this.carriage.setTransform(V(this.carX / PPM, MACHINE.railY / PPM), 0); this.carriage.setLinearVelocity(zero);
+    for (const b of [this.hub, this.prongL, this.prongR]) { b.setTransform(V(f[o], f[o + 1]), f[o + 2]); o += 3; b.setLinearVelocity(zero); b.setAngularVelocity(0); }
+  };
+  const straddle = (tail) => (sim) => tail.bodies.forEach((b, i) => { // segments at PI-0.03 ... PI+0.03 (raw)
+    const a = Math.PI + (i - (tail.bodies.length - 1) / 2) * 0.012;
+    b.setTransform(b.getPosition(), a); b.m_sweep.a = b.m_sweep.a0 = a;
+  });
+  const real = ClawSim.prototype.applyFrame, res = {};
+  for (const mode of ['fixed', 'old']) {
+    ClawSim.prototype.applyFrame = mode === 'fixed' ? real : oldApply;
+    const r = res[mode] = { n: 0, aerr: 0, jerr: 0, seam: 0 };
+    for (let s = 0; s < N; s++) {
+      const sim = newSim(15000 + s);
+      const tail = sim.spawnPart('tail', 96 + (s % 5) * 6, 40, Math.PI);
+      stepFor(sim, 3);
+      const turn = runTurn(sim, 18, { prep: straddle(tail) });
+      if (!turn || turn.result === 'win' || !sim.canRedo()) continue;
+      const raw = sim.pre.ang.get(tail.uid);
+      if (raw.some((a) => a > Math.PI) && raw.some((a) => a < Math.PI)) r.seam++; // really straddling at the drop
+      sim.rewind();
+      let guard = 0; while (sim.state === 'rewind' && guard++ < 2000) sim.fixedStep(1 / 120);
+      r.n++;
+      r.aerr = Math.max(r.aerr, worstDiff(tail.bodies.map((b) => b.getAngle()), raw));
+      r.jerr = Math.max(r.jerr, worstDiff(jointAngles(sim), sim.pre.joints));
+    }
+  }
+  ClawSim.prototype.applyFrame = real;
+  check('bone tail on the seam: raw angles and joint angles restored exactly', res.fixed.n >= 5 && res.fixed.seam === res.fixed.n && res.fixed.aerr < 1e-9 && res.fixed.jerr < 1e-9,
+    `${res.fixed.n} rewinds, tail straddled PI in ${res.fixed.seam}; worst angle error ${res.fixed.aerr.toExponential(1)}, joint ${res.fixed.jerr.toExponential(1)}`);
+  check('(the check has teeth: the old wrapped restore fails it)', res.old.n >= 5 && res.old.jerr > 1, `old restore: joint error ${res.old.jerr.toFixed(2)} rad (2*PI = ${(2 * Math.PI).toFixed(2)})`);
+}
+{ // the world comes back as it was, Iron Grip included (it was already paid for)
+  let n = 0, ironBack = 0, plainStaysPlain = 0, usable = 0, tried = 0;
+  for (let s = 0; s < SEEDS * 3 && n < 8; s++) {
+    for (const iron of [true, false]) {
+      const sim = newSim(16000 + s), rng = mulberry32(s + 5);
+      const turn = runTurn(sim, s % 2 ? aimAtRandomPart(sim, rng) : 18, { iron });
+      tried++;
+      if (!turn || turn.result === 'win' || !sim.canRedo()) continue;
+      if (turn.iron !== iron || sim.iron) continue; // Iron is consumed by the drop
+      sim.rewind(); let guard = 0; while (sim.state === 'rewind' && guard++ < 2000) sim.fixedStep(1 / 120);
+      if (iron) { n++; if (sim.iron) ironBack++; if (sim.startDrop() && sim.turn.iron === true) usable++; }
+      else if (!sim.iron) plainStaysPlain++;
+    }
+  }
+  check('redo re-arms the Iron Grip that failed, and only that one', n >= 4 && ironBack === n && usable === n && plainStaysPlain > 0, `${ironBack}/${n} re-armed, ${usable}/${n} usable on the next drop, ${plainStaysPlain} plain turns stayed plain`);
 }
 { // quakes / nudges / orders / restocks all cancel a pending redo
   const kinds = ['quake', 'nudge', 'spawn'];
@@ -335,9 +448,11 @@ section('rules (Luck, costs, TILT, Order)');
   check('the lock ends by itself', sim.lockT === 0 && Rig.can('quake').ok === (Rig.luck >= CONFIG.costQuake));
 
   sim = boot(); Rig.luck = 8;
+  const spent0 = Telemetry.c.luckSpent;
   r = Rig.use('grip'); const armed = sim.iron, afterArm = Rig.luck;
   r = Rig.use('grip');
   check('Iron Grip arms for 2 and disarming refunds it', armed && afterArm === 8 - CONFIG.costGrip && !sim.iron && Rig.luck === 8 && r.disarm);
+  check('...and the stats agree: a taken-back grip is not counted as spent', Telemetry.c.luckSpent === spent0, `spent ${spent0} -> ${Telemetry.c.luckSpent}`);
   Rig.luck = 7; Rig.use('grip'); sim.armIron(false); Rig.refund(5, 'x');
   check('a refund never passes the cap', Rig.luck <= CONFIG.luckMax, `luck ${Rig.luck}`);
 

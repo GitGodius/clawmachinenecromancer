@@ -61,6 +61,8 @@ const Rig = {
   refund(n, why) { // Luck handed back (disarming Iron Grip): not "earned", and never above the cap
     const got = Math.min(n, Math.max(0, CONFIG.luckMax - this.luck));
     this.luck += got;
+    const c = Telemetry.c;
+    c.luckSpent = Math.max(0, c.luckSpent - got); // it was never really spent
     if (got) this.emit('luck', { delta: got, total: this.luck, why });
     return got;
   },

@@ -98,9 +98,9 @@ An earthquake. The cabinet shakes, dust falls from the ceiling, the pile churns 
 The classic arcade trick, and the pinball one. A sideways bump with a little hop, strongest around the claw's x and weaker at the far ends.
 
 - **What it re-rolls:** *layout, locally.* Loosens a wedged stack, slides the pile away from the wall, tips a mound.
-- **Physics:** a velocity kick (about 90 px/s sideways, about 50 px/s up) with falloff from the claw, random spin per part.
+- **Physics:** a velocity kick (about 185 px/s sideways and 100 px/s up at full strength, each varied per part) with falloff from the claw, a little random spin per part. Average shift: about 14 px one way, hardest within 30 px of the claw.
 - **Risk:** TILT. Each nudge adds heat; heat drains at 0.45/s. Go past 3 and the next nudge trips **TILT**: the machine jolts, the claw locks for about 3 s, and you lose 1 Luck. The gauge in the panel header shows the heat. Three quick nudges are safe; a fourth is not.
-- **Limits:** only from idle. Free, so it cannot produce parts (§6).
+- **Limits:** only from idle. Seals the chute like a quake does (§6). Free, so it cannot produce parts.
 
 ### 5.3 IRON GRIP — hex the claw &nbsp;`[2]` &nbsp;2 Luck
 
@@ -109,6 +109,7 @@ Arms the **next drop** with a necromantic grip. Press again before dropping to d
 - **What it re-rolls:** *grip and slip.* Hold chance ×1.4 (still capped at 98%); swing, jolt and twitch slip odds are cut to 12% of normal for that grab.
 - **Does not** fix your aim, and does not stop a part that is physically wedged in the pile from tearing free. It turns "it had it, then dropped it" into a rare event, not into a certainty.
 - **Feedback:** gold aura and status light on the claw; the Lens shows the boosted odds before you drop.
+- **With Redo:** if the armed drop fails and you Redo it, the Iron Grip is armed again. The rewind puts the world back exactly as it was before the drop, and the Luck for the grip was already spent.
 
 ### 5.4 ORDER — special order &nbsp;`[3]` &nbsp;4 Luck
 
@@ -122,7 +123,7 @@ Opens a small menu of the six slots (head, torso, arm, leg, heart, back) with ho
 After a **missed or slipped** grab, rewinds the world to the moment before the drop and refunds the token. The last few seconds play backwards: parts slide home, the claw climbs back, the pile is exactly as you left it, and then the dice are rolled again.
 
 - **What it re-rolls:** *the outcome.* Same pile, same claw position, fresh dice. A physical miss stays a physical miss, so you may want to adjust your aim.
-- **Physics:** the sim records every part and the claw about 30 times a second during a turn. Rewinding replays those frames in reverse by setting body transforms directly, with no physics stepping, so it is exact.
+- **Physics:** the sim records every part and the claw about 30 times a second during a turn. Rewinding replays those frames in reverse by setting body transforms directly, with no physics stepping, so it is exact. Angles are restored *raw*: planck's `setTransform()` wraps a body's angle into (-π, π], but a revolute joint measures its angle from the raw difference of its two bodies, so a wrapped restore left a bone tail that lay across the ±π seam with its joints off by 2π and the limit solver thrashing it. (Found in review and reproduced; `tools/rig_check.mjs` forces that case.)
 - **Limits:** one rewind per failed grab. It is lost the moment anything changes the world (a new drop, a quake, a nudge, an order, a restock) or a part fell out of the machine. The Luck you earned from the failure is kept, so a failure can pay for its own undo.
 
 ### 5.6 LENS — see the odds &nbsp;(always on)
@@ -138,12 +139,12 @@ The number comes from the **same function** the sim uses to roll the grab, times
 
 | Risk | Rail |
 |---|---|
-| Shaking parts over the chute guard for free parts | **Chute seal.** From the first shake until the next drop begins, an invisible wall (collides with parts only, the claw ignores it) runs from the top of the guard to the glass ceiling. Shaken parts bounce off it. It has to last that long: an earlier version dropped it a few seconds after the shaking and a shaken mound occasionally toppled into the chute later. Measured: without the seal 8 of 40 quakes spilled a part; with it, none. |
+| Shaking parts over the chute guard for free parts | **Chute seal.** From the first shake or nudge, an invisible wall (collides with parts only, the claw ignores it) runs from the top of the guard to the glass ceiling. Shaken parts bounce off it. It stays up through the whole drop, close and lift, and comes down when the claw starts carrying (a held part then has to cross the guard, as always), or when the turn ends. It has to last that long: an earlier version dropped it a few seconds after the shaking, and a shaken mound occasionally toppled into the chute later; a later one dropped it the instant the claw started down, so a part still in flight from a nudge could land in the chute during the drop. Measured: without the seal 8 of 40 quakes spilled a part, and a part thrown at the chute mid-drop got in 29 times out of 30; with it, never. |
 | Farming Luck by throwing grabs | Converting tokens to Luck is a losing trade (§4). |
 | Infinite free retries | Redo costs 3 Luck and Luck only comes from failures and battles; a redo consumes the benefit of about 2–3 failures. |
 | Luck hoarding | Cap of 8. |
 | Spamming the free lever | TILT: heat, lockout, Luck penalty. |
-| Unsafe state after a rewind | Redo is invalidated by anything that changes the world. Any part removed or added since the drop cancels it. |
+| Unsafe state after a rewind | Redo is invalidated by anything that changes the world. Any part removed or added since the drop cancels it. The restore is exact, raw angles and joint angles included (§5.5). |
 | Changing the tuned claw | The layer adds hooks, not new rolls. With no lever used, the grab roll, slip roll and physics are unchanged (checked by `tools/rig_check.mjs` against the same seeded runs as `tools/tune.mjs`). |
 
 ## 7. Architecture and integration
@@ -209,12 +210,12 @@ Every number is in the **Rig** group of the tuning panel (`` ` ``): costs, Luck 
 
 - **Quake quality:** average part displacement (about 15 px), how many parts change what sits on top of them (about 59%), how high parts heave (average 26 px, worst about 41 px), and when the drop unlocks (about 3.1 s after the quake starts).
 - **Quake safety:** no part lost, no part won, no NaN, claw intact, across many seeds.
-- **Chute seal:** with the seal, zero spills; without it, spills do occur (8 in 40 quakes), so the seal is doing real work.
+- **Chute seal:** with the seal, zero spills; without it, spills do occur (8 in 40 quakes), so the seal is doing real work. The lid stays up through the drop, close and lift, is down while the claw carries and when the turn is over, and a part thrown at the chute mid-drop never gets in (29 of 30 do without the lid).
 - **Nudge:** shoves the right way (about 14 px), hardest near the claw, no spills, no NaN.
-- **Redo:** after a failed grab, every part and the claw are restored to the recorded pre-drop state, exactly (angles compared modulo 2π, since planck reports them in (-π, π]).
+- **Redo:** after a failed grab, every part and the claw are restored to the recorded pre-drop state, exactly: positions, raw angles (no modulo 2π; comparing modulo hid a real bug), every revolute joint angle, the joint count. A bone tail is forced to lie across the ±π seam, and the same check is shown to fail (joint error 2π) with the old wrapped restore. Iron Grip comes back with the rewind, and only when it was armed.
 - **Iron Grip:** win rate 59% → 68%, and the share of grabs that lose their grip 31% → 8%.
 - **Lens:** the badge equals the sim's own chance function times the measured shift, the revealed roll matches the grab info, and the badge is calibrated (54% shown vs 56% actually held; green and yellow badges hold about equally often, so read it as "how good is this drop overall", not as a sharp discriminator).
-- **Economy and rules:** Luck gains, cap, spending, refunds, costs, TILT (the fourth quick nudge), Order delivery by slot, `rigOn=0`, `rigFree=1`.
+- **Economy and rules:** Luck gains, cap, spending, refunds (also in the stats: a taken-back Iron Grip is not counted as spent), costs, TILT (the fourth quick nudge), Order delivery by slot, `rigOn=0`, `rigFree=1`.
 - **Hooks are invisible:** the same seeded grabs with the recording hooks stubbed out give identical results. And `VERBOSE=1 node tools/tune.mjs 80` before and after the layer was added produced bit-identical results for all 80 seeds.
 - **Fuzz:** hundreds of random lever pulls, drops, releases and steps keep every invariant.
 

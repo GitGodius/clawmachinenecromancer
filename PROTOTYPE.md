@@ -175,11 +175,11 @@ Plain JavaScript files with no framework. `node tools/build.mjs` joins `src/js/*
 | **Nudge ◀ ▶** | free | the layout, locally | A sideways bump with a hop, strongest under the claw. The fourth quick nudge trips **TILT** (claw locks ~3 s, -1 Luck). |
 | **Iron Grip** | 2 | grip and slip | Next drop only: hold chance x1.4, slip odds cut to 12%. Does not fix aim. |
 | **Order** | 4 | composition | Pick a slot; one part of that slot drops in at a random spot. Rarity is still rolled. |
-| **Redo** | 3 | the outcome | After a miss or slip, rewinds the world to the moment before the drop (every part and the claw are recorded ~30x/s), refunds the token, and rolls again. |
+| **Redo** | 3 | the outcome | After a miss or slip, rewinds the world to the moment before the drop (every part and the claw are recorded ~30x/s), refunds the token, and rolls again. A failed Iron Grip drop comes back armed. |
 
 A **Lens** shows the odds: the estimated hold chance of the part under the claw on the drop guide, and the real roll when the claw closes. It uses the same function as the dice.
 
-**Safety rails.** While anything shakes the machine, and until the next drop, an invisible wall (parts only, the claw ignores it) stops shaken parts spilling into the chute: without it 8 of 40 quakes spilled a part, with it none. Redo is cancelled by anything that changes the world. Luck is capped at 8. With no lever used, every grab result is bit-identical to the pre-Rig claw (`tools/tune.mjs` output diffed seed for seed).
+**Safety rails.** From the first shake or nudge until the claw starts carrying, an invisible wall (parts only, the claw ignores it) stops loose parts spilling into the chute: without it 8 of 40 quakes spilled a part, and a part thrown at the chute mid-drop got in 29 times in 30; with it, none. Redo is cancelled by anything that changes the world. Luck is capped at 8. With no lever used, every grab result is bit-identical to the pre-Rig claw (`tools/tune.mjs` output diffed seed for seed).
 
 **Tuned by measurement, not by feel.** Every number is in the tuning panel's **Rig** group. They were set by running the real sim headless (see `tools/rig_check.mjs`), so they are defensible but unproven with people. The things only a human can answer are listed in [docs/RNG_LAYER.md](docs/RNG_LAYER.md) §12, with the kill signals.
 

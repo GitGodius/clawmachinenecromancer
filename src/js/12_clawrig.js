@@ -48,9 +48,10 @@ Object.assign(ClawSim.prototype, {
 
   // ------------------------------------------------------------ chute lid
   // The moment the machine is shaken, the guard grows an invisible wall up to the glass ceiling.
-  // Only parts collide with it (the claw ignores it). It stays up until the next drop begins
-  // (startDrop -> unseal), so nothing the Rig does, now or a moment later when a shaken mound
-  // tips over, can put a free part in the chute.
+  // Only parts collide with it (the claw ignores it). It stays up through the whole drop, close and
+  // lift, and comes down when the claw starts carrying (a held part then has to cross the guard).
+  // So nothing the Rig does, now, a moment later when a shaken mound tips over, or while nudged
+  // parts are still in flight as the claw drops, can put a free part in the chute.
   seal() {
     if (this.lid) { this.sealAge = 0; return; }
     const pl = planck, M = MACHINE;
@@ -87,6 +88,7 @@ Object.assign(ClawSim.prototype, {
   // the pile has settled.  opts: {time, power, settle, tilt}
   quake(opts = {}) {
     if (this.state !== 'idle' || this.quakeS) return false;
+    this.settleS = null; // a new quake restarts the wait for the pile to settle
     const T = opts.time != null ? opts.time : CONFIG.quakeTime;
     const power = (opts.power != null ? opts.power : 1) * CONFIG.quakePower;
     this.quakeS = { t: 0, T, power, next: 0, bumpT: RIGSIM.bump.every, dir: RNG() < 0.5 ? -1 : 1, hit: false, after: false };
@@ -137,6 +139,7 @@ Object.assign(ClawSim.prototype, {
   damp(k) { for (const p of this.parts) for (const b of p.bodies) b.setLinearDamping(k); },
   // After a quake the drop stays locked until the pile is at rest (at least quakeSettle, at most settleCap).
   settleStep(h) {
+    if (this.quakeS) return;
     const S = this.settleS;
     S.t += h;
     S.rest = this.pileStill(RIGSIM.dropRest) ? S.rest + h : 0;
@@ -226,7 +229,8 @@ Object.assign(ClawSim.prototype, {
     if (!best) return null;
     const p = best.part;
     if (!p || p.won) return { part: null, y: best.y };
-    const lx = this.partPos(p)[0] - this.carX;
+    let lx = Infinity; // the body nearest the claw's axis (a bone tail is six bodies), as tryGrab() scores it
+    for (const b of p.bodies) { const d = b.getPosition().x * PPM - this.carX; if (Math.abs(d) < Math.abs(lx)) lx = d; }
     return { part: p, y: best.y, lx, chance: this.chanceFor(p, lx, 1, this.iron) * RIGSIM.lensShift };
   },
 
@@ -236,7 +240,7 @@ Object.assign(ClawSim.prototype, {
   beginRecord() {
     const bodies = [], parts = [];
     for (const p of this.parts) if (!p.won) { parts.push(p); for (const b of p.bodies) bodies.push(b); }
-    const H = this.hist = { bodies, parts, frames: [], acc: 0, dur: 0, tainted: false, v0: null };
+    const H = this.hist = { bodies, parts, frames: [], acc: 0, dur: 0, tainted: false, v0: null, iron: !!(this.turn && this.turn.iron) };
     this.redoHist = null;
     H.v0 = bodies.map((b) => { const v = b.getLinearVelocity(); return [v.x, v.y, b.getAngularVelocity()]; });
     H.frames.push(this.captureFrame(H));
@@ -284,22 +288,23 @@ Object.assign(ClawSim.prototype, {
     this.applyFrame(R.H, R.H.frames[Math.round((1 - easeInOutQuad(k)) * (R.n - 1))]);
     if (k >= 1) this.finishRewind();
   },
-  // Put every recorded body (and the claw) exactly where the frame says, at rest.
+  // Put every recorded body (and the claw) exactly where the frame says, at rest. The angle is restored RAW:
+  // planck's setTransform() wraps a body's angle into (-PI, PI] on its own, but a revolute joint computes its
+  // angle from the raw difference of its two bodies. A bone tail whose segments straddle PI would otherwise come
+  // back with its joints off by 2*PI, and the limit solver would thrash it (found in review, reproduced).
   applyFrame(H, f) {
     const V = planck.Vec2, nb = H.bodies.length, zero = V(0, 0);
-    for (let i = 0; i < nb; i++) {
-      const b = H.bodies[i];
-      b.setTransform(V(f[i * 3], f[i * 3 + 1]), f[i * 3 + 2]);
+    const put = (b, x, y, a) => {
+      b.setTransform(V(x, y), a);
+      b.m_sweep.a = b.m_sweep.a0 = a;
       b.setLinearVelocity(zero); b.setAngularVelocity(0);
-    }
+    };
+    for (let i = 0; i < nb; i++) put(H.bodies[i], f[i * 3], f[i * 3 + 1], f[i * 3 + 2]);
     let o = nb * 3;
     this.carX = f[o++]; this.carV = 0;
     this.carriage.setTransform(V(this.carX / PPM, MACHINE.railY / PPM), 0);
     this.carriage.setLinearVelocity(zero);
-    for (const b of [this.hub, this.prongL, this.prongR]) {
-      b.setTransform(V(f[o], f[o + 1]), f[o + 2]); o += 3;
-      b.setLinearVelocity(zero); b.setAngularVelocity(0);
-    }
+    for (const b of [this.hub, this.prongL, this.prongR]) { put(b, f[o], f[o + 1], f[o + 2]); o += 3; }
   },
   finishRewind() {
     const V = planck.Vec2, H = this.rw.H;
@@ -308,6 +313,7 @@ Object.assign(ClawSim.prototype, {
     H.bodies.forEach((b, i) => { const v = H.v0[i]; b.setLinearVelocity(V(v[0], v[1])); b.setAngularVelocity(v[2]); b.setAwake(true); });
     this.ropeLen = MACHINE.topLen;
     this.turn = null; this.grips = []; this.held = new Set(); this.landed = false;
+    this.iron = H.iron; // the world is as it was before the drop, Iron Grip included (it was already paid for)
     this.setState('idle');
     this.emit('rewind', { phase: 'end' });
   },

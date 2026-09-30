@@ -226,7 +226,6 @@ class ClawSim {
 
   startDrop() {
     if (this.state !== 'idle' || this.lockT > 0) return false;
-    this.unseal(); // a carried part would collide with the chute lid
     this.setState('drop');
     this.turn = { won: [], grabbed: new Set(), slips: 0, startT: this.time, n: ++this.turnCount, iron: this.iron };
     this.iron = false; // Iron Grip lasts for exactly one drop
@@ -351,6 +350,7 @@ class ClawSim {
         if (this.ropeLen <= M.topLen + 0.01 && this.stateT > 0.2) {
           for (const g of this.grips.slice()) this.rollSlip(g.part, CONFIG.topSlip, 'jolt');
           this.setState(CONFIG.carryManual ? 'carry' : 'return');
+          this.unseal(); // a held part now has to cross the guard: the chute lid comes down
           this.emit('top', { held: [...this.held] });
         }
         break;
@@ -546,6 +546,7 @@ class ClawSim {
     const t = this.turn;
     const result = t && t.won.length ? 'win' : t && t.grabbed.size ? 'slip' : 'miss';
     this.setState('idle');
+    this.unseal(); // (already down since the lift; belt and braces)
     this.endRecord(result); // a failed grab keeps its recording so REDO can rewind it
     this.emit('turnEnd', { result, won: t ? t.won.slice() : [], grabbed: t ? [...t.grabbed] : [], turn: t, iron: !!(t && t.iron), redo: this.canRedo() });
     this.turn = null;
