@@ -16,6 +16,7 @@ const Game = {
   started: false,
   won: false, // the final boss is down: the run is over
   playTime: 0, // seconds of play in this run (menus and pauses don't count)
+  stats: {},   // what this run has done, for the end screen (saved with the run)
   failStreak: 0, // failed fights in a row; the Reaper adds a token per failure (up to ladderMax) so bad luck cannot become a dead end
 
   newGame(opts = {}) {
@@ -29,10 +30,14 @@ const Game = {
     this.seen = {};
     this.talk = new Talker({ voice: 0.62, cps: 40 });
     this.playTime = 0;
+    this.stats = Game.newStats();
     if (typeof Scenes !== 'undefined' && Scenes.slab && Scenes.slab.reset) Scenes.slab.reset();
     this.sim = new ClawSim({ onEvent: (t, d) => Scenes.claw && Scenes.claw.onSim(t, d) });
     if (opts.pile !== false) this.sim.fillPile(CONFIG.partCount);
   },
+
+  newStats() { return { grabs: 0, parts: 0, creatures: 0, lost: 0, fightsWon: 0, fightsLost: 0, retreats: 0, zaps: 0 }; },
+  tally(key, n = 1) { this.stats[key] = (this.stats[key] || 0) + n; },
 
   // ---- saving: the run as plain data. Positions are not kept; the pile is rebuilt from part types.
   toSave() {
@@ -41,7 +46,7 @@ const Game = {
     const inGrab = !!sim && sim.state !== 'idle'; // a drop in flight: the token comes back, the part it carries is in the pile
     return {
       tokens: this.tokens + (inGrab ? 1 : 0), stage: this.stage, bestStage: this.bestStage, won: this.won, failStreak: this.failStreak,
-      playTime: Math.round(this.playTime || 0), seen: this.seen,
+      playTime: Math.round(this.playTime || 0), seen: this.seen, stats: this.stats,
       inventory: [...this.inventory.map((i) => i.type), ...(typeof Scenes !== 'undefined' && Scenes.slab && Scenes.slab.buildTypes ? Scenes.slab.buildTypes() : [])],
       party: this.party.map((c) => ({ slots: c.slots, hp: c.hp, name: c.name, kills: c.kills })),
       machine,
@@ -67,6 +72,7 @@ const Game = {
     this.failStreak = Math.round(num(run.failStreak, 0, 0, 99));
     this.playTime = num(run.playTime, 0, 0, 1e7);
     this.seen = run.seen && typeof run.seen === 'object' ? run.seen : {};
+    for (const k of Object.keys(this.stats)) this.stats[k] = Math.round(num(run.stats && run.stats[k], 0, 0, 1e6));
     for (const t of run.inventory || []) { const f = fix(t); if (f) this.inventory.push(makePartItem(f)); }
     for (const c of (run.party || []).slice(0, 3)) {
       const slots = {};
@@ -139,6 +145,8 @@ const Game = {
     this.party = this.party.filter((c) => c.hp > 0);
     const restocked = [];
     const reward = this.battlePay(this.stage, kind, kind === 'win' ? 1 : sim.progress(), survivors.some((u) => u.traits.includes('golden')));
+    this.tally('lost', deadAllies.length);
+    this.tally(kind === 'win' ? 'fightsWon' : kind === 'lose' ? 'fightsLost' : 'retreats');
     if (kind === 'win') {
       const boost = 1 + this.stage * 0.2;
       for (let i = 0; i < CONFIG.restockParts; i++) restocked.push(randomPartType({ boost }));

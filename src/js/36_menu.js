@@ -298,7 +298,7 @@ const Overlays = (() => {
 
   // ------------------------------------------------------------------- title
   function title() {
-    const cont = () => { Engine.close(); Game.fromSave(Save.data.run); Scenes.shop.open(true); };
+    const cont = () => { Engine.close(); Game.fromSave(Save.data.run); Save.runActive = true; Scenes.shop.open(true); };
     const fresh = () => { Engine.close(); Game.newGame(); Save.data.records.runs++; Save.reset(); Scenes.shop.open(false); };
     let t = 0;
     const has = Save.hasRun();
@@ -346,3 +346,19 @@ const Overlays = (() => {
 
   return { confirm, help, controls, settings, pause, title, toast, drawToast };
 })();
+
+// ------------------------------------------------------------ stage preview
+// "Next: stage 4. 2 Shades, 1 Wisp. Armoured: big hits work." Drawn in the shop and on the slab so the claw
+// has a shopping list (pillar 4). It reads STAGES, so it can never disagree with the fight.
+const HELPS = { wisp: 'armour, health', shade: 'big hits', wraith: 'health, burst' };
+function drawStagePreview(ctx, x, y, w, stage) {
+  if (Game.won) return;
+  const P = stagePreview(Math.min(stage, FINAL_STAGE));
+  const kinds = [...new Set(P.kinds)];
+  let helps = kinds.map((k) => HELPS[k]).join(' / ');
+  while (Font.measure('Helps: ' + helps, 'small') > w - 12 && kinds.length > 1) { kinds.pop(); helps = kinds.map((k) => HELPS[k]).join(' / '); }
+  Draw.panel(ctx, x, y, w, 36, 'dark');
+  Font.draw(ctx, 'NEXT  STAGE ' + P.n + (P.final ? '  ·  THE LANDLORD' : P.boss ? '  ·  BOSS' : ''), x + 6, y + 5, { color: P.boss ? '#f6c64b' : '#ecdcbc', shadow: PAL.k });
+  Font.draw(ctx, P.text + '  (' + [...new Set(P.kinds)].map((k) => ENEMY_KINDS[k].tag).join(', ') + ')', x + 6, y + 16, { font: 'small', color: '#a6aec2', shadow: PAL.k });
+  Font.draw(ctx, 'Helps: ' + helps, x + 6, y + 26, { font: 'small', color: '#9be38f', shadow: PAL.k });
+}

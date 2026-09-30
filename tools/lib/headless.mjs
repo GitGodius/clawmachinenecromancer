@@ -34,7 +34,7 @@ export function loadGame(opts = {}) {
     navigator: {}, window: null, ...(opts.globals || {}),
   };
   ctx.window = ctx;
-  ctx.localStorage = opts.storage === false ? undefined : {
+  if (!(opts.globals && opts.globals.localStorage)) ctx.localStorage = opts.storage === false ? undefined : {
     getItem: (k) => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => { store.set(k, String(v)); },
     removeItem: (k) => { store.delete(k); },
@@ -42,6 +42,7 @@ export function loadGame(opts = {}) {
   vm.createContext(ctx);
   vm.runInContext(files.map((f) => fs.readFileSync(new URL(f, SRC), 'utf8')).join('\n'), ctx, { filename: 'game.js' });
   const run = (code) => vm.runInContext(code, ctx);
+  if (files.includes('09_store.js')) run('Save.enabled = false'); // bots and tests never write a save unless a test turns it on
   const api = {
     ctx, run, files, storage: store,
     get: (name) => run(name),

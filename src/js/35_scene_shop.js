@@ -86,6 +86,7 @@ Scenes.shop = (() => {
       UI.set([]);
       return;
     }
+    if (Input.hit('b')) Overlays.pause();
     chatT -= dt;
     if (chatT < 0 && !Game.talk.visible()) { chatT = vrand(14, 22); say(vpick(IDLE_LINES), 3.2); }
     const h = hint();
@@ -210,6 +211,7 @@ Scenes.shop = (() => {
     Font.draw(ctx, String(Game.tokens), 224, 8 - Math.round(tokenPop * 3), { color: PAL.L });
     Font.draw(ctx, 'PARTY ' + Game.party.length, 270, 9, { font: 'small', color: '#a6aec2', align: 'right' });
     if (Game.bestStage) Font.draw(ctx, 'BEST ' + Game.bestStage, 308, 9, { font: 'small', color: '#9be38f', align: 'right' });
+    if (opened) drawStagePreview(ctx, 318, 4, 156, Game.stage);
     // speech bubble
     if (Game.talk.visible()) Game.talk.drawBubble(ctx, REAPER_X - 70, 150, 170, REAPER_X - 8, 158, { anchorBottom: true });
     fx.draw(ctx);

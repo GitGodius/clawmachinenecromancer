@@ -12,11 +12,11 @@
 //   Wraith  is a boss. Big, slow, a lot of health, so sustain and burst answer it.
 // ---------------------------------------------------------------------------
 const ENEMY_KINDS = {
-  wisp:   { name: 'Wisp',   hp: 10, atk: 2, def: 0, atkTime: 1.1, speed: 34, range: 24, dodge: 0.1, spr: 'wisp', hover: 10, w: 14,
+  wisp:   { name: 'Wisp',   hp: 10, atk: 2, def: 0, atkTime: 1.1, speed: 34, range: 24, dodge: 0.1, spr: 'wisp', hover: 10, w: 14, tag: 'swarm',
             ask: 'Swarms in. Many small hits: armour and health answer it.' },
-  shade:  { name: 'Shade',  hp: 24, atk: 4, def: 2, atkTime: 1.25, speed: 22, range: 28, dodge: 0.05, spr: 'shade', hover: 3, w: 22,
+  shade:  { name: 'Shade',  hp: 24, atk: 4, def: 2, atkTime: 1.25, speed: 22, range: 28, dodge: 0.05, spr: 'shade', hover: 3, w: 22, tag: 'armoured',
             ask: 'Armoured. Small hits barely scratch it: big hits answer it.' },
-  wraith: { name: 'Wraith', hp: 70, atk: 8, def: 0, atkTime: 1.6, speed: 15, range: 38, dodge: 0, spr: 'wraith', hover: 4, w: 36, boss: true,
+  wraith: { name: 'Wraith', hp: 70, atk: 8, def: 0, atkTime: 1.6, speed: 15, range: 38, dodge: 0, spr: 'wraith', hover: 4, w: 36, boss: true, tag: 'boss',
             ask: 'A boss. Huge and slow: staying power and burst answer it.' },
 };
 

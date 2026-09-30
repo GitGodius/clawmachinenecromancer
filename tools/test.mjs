@@ -114,9 +114,178 @@ function claw() {
   return out;
 }
 
+
+// ------------------------------------------------------------------ the rules
+// Things docs/DESIGN.md promises, checked against the real code.
+const partsInWorld = () => game.run(`(() => { const G = Game; return G.sim.parts.filter((p) => !p.won).length + G.sim.pending.length + G.inventory.length + G.party.reduce((a, c) => a + c.parts().length, 0); })()`);
+
+function rules() {
+  const G = game.get('Game');
+  const eq = (a, b, msg) => { if (JSON.stringify(a) !== JSON.stringify(b)) fail(`${msg}: got ${JSON.stringify(a)}, want ${JSON.stringify(b)}`); };
+  const fresh = () => { game.seed(3); game.run('Game.newGame()'); G.sim.pending = []; };
+  const fight = (party, stage, seed, opts = {}) => {
+    G.stage = stage; G.party = party; G.won = false; G.failStreak = opts.streak || 0;
+    game.seedGameplay(seed);
+    const sim = game.run(`new BattleSim({ party: Game.party, stage: ${stage} })`);
+    sim.start();
+    let t = 0;
+    while (!sim.over && t < 180) { sim.step(1 / 30); t += 1 / 30; if (opts.stopAt != null && sim.progress() >= opts.stopAt) break; }
+    return sim;
+  };
+  const strong = () => [0, 1, 2].map(() => game.run('new Creature({ head: "wolfskull", torso: "ogregut", armL: "ogrearm", armR: "swordarm", legL: "goatleg", legR: "goatleg", heart: "heart" })'));
+  const weak = () => [game.run('new Creature({ head: "skull" })')];
+
+  // pillar 2: nothing is wasted. Across a fight the parts in the world only go up by what the battle restocked.
+  fresh();
+  let party = weak(); G.party = party;
+  let before = partsInWorld();
+  let sim = fight(party, 5, 1);
+  eq(sim.over && !sim.won, true, 'a lone skull loses to the stage 5 boss');
+  let r = G.applyBattle(sim, 'lose');
+  eq(partsInWorld() - before, r.restocked.length, 'defeat: parts in the world change only by the restock');
+  eq(r.deadParts.length, 1, 'the dead skull returns to the machine');
+  eq(G.sim.pending.length, r.deadParts.length + r.restocked.length, 'dead creatures and restocks go to the MACHINE (pending), not the bag');
+  eq(G.inventory.length, 0, 'pillar 1: a battle never puts a part in the bag');
+
+  // a win pays full, restocks 3 into the machine, advances the stage, heals
+  fresh(); party = strong(); G.party = party; before = partsInWorld();
+  sim = fight(party, 1, 2);
+  eq(sim.won, true, 'a strong party wins stage 1');
+  const tok = G.tokens; const st = G.stage;
+  r = G.applyBattle(sim, 'win');
+  eq(r.reward, CONFIG.winTokens + 1, 'win pays winTokens + stage');
+  eq(G.tokens - tok, r.reward + r.gold, 'tokens go up by the reward');
+  eq(G.stage, st + 1, 'a win advances the stage');
+  eq(r.restocked.length, CONFIG.restockParts, 'a win restocks the machine');
+  eq(G.inventory.length, 0, 'pillar 1: a win puts nothing in the bag');
+  eq(G.party.every((c) => c.hp === c.maxHp), true, 'the party is healed after a win');
+
+  // retreat: nobody dies because of it, everyone standing is healed, pay is for damage only
+  fresh(); party = strong();
+  sim = fight(party, 6, 4, { stopAt: 0.4 });
+  const prog = sim.progress();
+  if (!(prog > 0.3 && !sim.over)) fail(`retreat setup: wanted an unfinished fight past 30%, got ${prog}, over ${sim.over}`);
+  sim.stop();
+  const t0 = G.tokens; r = G.applyBattle(sim, 'retreat');
+  eq(r.reward, Math.round(CONFIG.partialPay * (CONFIG.winTokens + 6) * prog) + Math.round(Math.min(CONFIG.ladderMax, 1) * prog), 'retreat pays a share for the damage done, plus the ladder scaled the same way');
+  eq(G.party.every((c) => c.hp === c.maxHp), true, 'retreat heals everyone still standing');
+  eq(G.stage, 6, 'retreat does not advance the stage');
+  eq(G.tokens - t0, r.reward + r.gold, 'retreat pays tokens');
+
+  // the ladder cannot be farmed: FIGHT then RETREAT (no damage) pays nothing, at any streak
+  fresh(); party = strong();
+  for (const streak of [0, 3, 9]) {
+    G.failStreak = streak; G.stage = 6;
+    eq(G.battlePay(6, 'retreat', 0, false), 0, `retreat with no damage pays nothing (streak ${streak})`);
+    eq(G.battlePay(6, 'lose', 0, false), 1, `a defeat with no damage pays the 1 token floor (streak ${streak})`);
+  }
+  // ...and it is bounded: more failures never pay more than the cap on top of the share
+  G.failStreak = 99; const capped = G.battlePay(6, 'retreat', 1, false);
+  eq(capped <= Math.round(CONFIG.partialPay * (CONFIG.winTokens + 6)) + CONFIG.ladderMax, true, 'the ladder is capped');
+
+  // the run ends at the final boss
+  fresh(); party = strong();
+  sim = fight(party, FINAL, 5);
+  if (sim.won) { G.applyBattle(sim, 'win'); eq(G.won, true, 'clearing the final stage ends the run'); eq(G.stage, FINAL, 'the stage does not run past the end'); }
+  else { // the party we built can lose the last stage; force the rule instead
+    G.stage = FINAL; const s2 = game.run('new BattleSim({ party: Game.party, stage: FINAL_STAGE })'); s2.killEnemies(); s2.step(0.1);
+    G.applyBattle(s2, 'win'); eq(G.won, true, 'clearing the final stage ends the run');
+  }
+
+  // top-up: the machine never runs dry
+  fresh(); G.sim.clearParts(); G.sim.pending = [];
+  eq(G.topUpMachine(), 7, 'an empty machine is topped up'); eq(G.topUpMachine(), 0, '...once');
+}
+const FINAL = game.get('FINAL_STAGE');
+
+// -------------------------------------------------------- settings, keys, saves
+function saves() {
+  const Settings = game.get('Settings'), Save = game.get('Save'), Store = game.get('Store'), G = game.get('Game');
+  const eq = (a, b, msg) => { if (JSON.stringify(a) !== JSON.stringify(b)) fail(`${msg}: got ${JSON.stringify(a)}, want ${JSON.stringify(b)}`); };
+  Save.enabled = false;
+  game.storage.clear();
+
+  // defaults and bad data
+  Settings.load({ master: 5, shake: 0.7, carryTime: 99, steering: 'sideways', keys: { left: ['KeyQ', 'KeyQ'], right: [] } });
+  eq(Settings.v.master, 1, 'volume is clamped'); eq(Settings.v.shake, 1, 'an unknown shake level falls back'); eq(Settings.v.carryTime, 8, 'an unknown carry time falls back'); eq(Settings.v.steering, 'hold', 'an unknown steering mode falls back');
+  eq(Settings.v.keys.left, ['KeyQ', null], 'a key cannot sit on an action twice');
+  eq(Settings.v.keys.right.some(Boolean), true, 'an action left with no key gets a default back');
+  Settings.load(null);
+
+  // rebinding: a key belongs to one action; movement can never be left with no key
+  const stolen = Settings.bind('pause', 0, 'KeyA');
+  eq(stolen, 'left', 'binding a taken key reports who lost it'); eq(Settings.v.keys.left, [ 'ArrowLeft', null ], 'the loser keeps its other key');
+  eq(Settings.v.keys.pause[0], 'KeyA', 'the new binding took');
+  eq(Settings.unbind('left', 0), false, 'the last key for a movement action cannot be cleared');
+  eq(Settings.unbind('mute', 0), true, 'an optional action can be cleared');
+  const seen = new Set(); let dup = false;
+  for (const a of game.get('KEY_ACTIONS')) for (const c of Settings.v.keys[a.id]) if (c) { if (seen.has(c)) dup = true; seen.add(c); }
+  eq(dup, false, 'no key code is bound to two actions');
+  Settings.resetKeys(); eq(Settings.v.keys.pause, ['KeyP', null], 'reset restores the defaults');
+
+  // settings reach the game
+  Settings.v.autoCarry = true; Settings.v.shake = 0.5; Settings.v.carryTime = 16; Settings.apply();
+  eq([CONFIG.carryManual, CONFIG.shake, CONFIG.carryTime], [0, 0.5, 16], 'settings are applied to CONFIG');
+  Settings.load(null); Settings.apply();
+
+  // a run round-trips: build one with the bot, save it, load it, compare
+  game.seed(9); game.run('Game.newGame()');
+  G.tokens = 7; G.stage = 4; G.bestStage = 3; G.failStreak = 2; G.playTime = 321; G.tally('grabs', 12); G.tally('parts', 6);
+  G.inventory.push(...['skull', 'goatleg', 'crownskull'].map((t) => game.run(`makePartItem(${JSON.stringify(t)})`)));
+  const c = game.run('new Creature({ head: "wolfskull", torso: "armor", armL: "swordarm", legL: "goatleg" })'); c.hp = 5; c.kills = 3; G.party.push(c);
+  const saved = JSON.parse(JSON.stringify(G.toSave()));
+  const machineTypes = saved.machine.slice().sort();
+  game.seed(10); G.fromSave(saved);
+  const again = JSON.parse(JSON.stringify(G.toSave()));
+  eq(again.machine.slice().sort(), machineTypes, 'the machine holds the same parts after a reload');
+  eq({ ...again, machine: 0 }, { ...saved, machine: 0 }, 'a saved run loads back identical (the pile is rebuilt, its parts are the same)');
+  eq(G.party[0].hp, 5, 'creature health survives'); eq(G.party[0].kills, 3, 'creature kills survive');
+
+  // stitched-but-not-yet-alive parts are not lost by a save
+  const slab = game.get('Scenes').slab;
+  slab.reset();
+  eq(slab.buildTypes(), [], 'reset clears the slab');
+
+  // the file: versions, corruption, newer builds, retired parts
+  Save.enabled = true;
+  Save.load(); Settings.v.master = 0.3; Save.flush();
+  Save.load(); eq(Settings.v.master, 0.3, 'settings persist through a save file');
+  Store.set('thegoodparts.save', '{not json'); Save.load();
+  eq(Save.problem, 'corrupt', 'a broken file is noticed'); eq(Store.get('thegoodparts.save.corrupt'), '{not json', 'and kept, not destroyed'); eq(Save.data.run, null, 'and it starts fresh');
+  Store.set('thegoodparts.save', JSON.stringify({ v: 99, settings: { master: 0.1 }, run: { tokens: 5 } })); Save.load();
+  eq(Save.problem, 'newer', 'a save from a newer build is recognised'); eq(Save.readOnly, true, 'and never overwritten');
+  const before = Store.get('thegoodparts.save'); Save.flush(); eq(Store.get('thegoodparts.save'), before, 'flush leaves a newer save untouched');
+  Store.set('thegoodparts.save', JSON.stringify({ v: 0, run: { tokens: 3, stage: 2, inventory: ['skull', 'retiredPart', 'goatleg'], party: [{ slots: { head: 'nope', torso: 'ribcage' } }], machine: ['skull', 'ribcage', 'heart', 'bonearm', 'boneleg', 'skull'] } }));
+  Save.load(); eq(Save.data.v, game.get('SAVE_VERSION'), 'an old save is migrated to the current version');
+  G.fromSave(Save.data.run);
+  eq(G.inventory.map((i) => i.type), ['skull', 'goatleg'], 'a part that no longer exists is dropped, the rest survive');
+  eq(/^2 parts from an older version were retired\.$/.test(Save.notes[0] || ''), true, 'and the player is told once how many (one in the bag, one on a creature)'); eq(G.party.length, 1, 'a creature with one retired part keeps the rest');
+  // the boot-time blank game must not overwrite a waiting run (this once wiped every save on page load)
+  Store.set('thegoodparts.save', JSON.stringify({ v: 1, run: { tokens: 11, stage: 3 } })); Save.load(); Save.runActive = false;
+  G.newGame(); Save.flush();
+  eq(JSON.parse(Store.get('thegoodparts.save')).run.tokens, 11, 'a flush before the player picks CONTINUE leaves the saved run alone');
+  Save.runActive = true; G.newGame(); Save.flush();
+  eq(JSON.parse(Store.get('thegoodparts.save')).run.tokens, G.tokens, 'once a run is active it is saved');
+  Save.runActive = false;
+  // a finished run is not saved as something to continue
+  G.won = true; Save.runActive = true; Save.flush(); Save.load(); eq(Save.data.run, null, 'a won run is not continued'); G.won = false; Save.runActive = false;
+  Save.enabled = false; game.storage.clear(); Save.wipe();
+
+  // storage that throws (sandboxed frame, blocked site data) must not take the game down
+  const blocked = loadGame({ storage: false });
+  eq(blocked.run('Store.persistent'), false, 'no storage: Store says so');
+  blocked.run('Store.set("k", "v")'); eq(blocked.run('Store.get("k")'), 'v', 'no storage: it still remembers for this page load');
+  const throwing = loadGame({ globals: { localStorage: { getItem() { throw new Error('SecurityError'); }, setItem() { throw new Error('SecurityError'); }, removeItem() { throw new Error('SecurityError'); } } } });
+  eq(throwing.run('Store.persistent'), false, 'a localStorage that throws: Store falls back to memory');
+  throwing.run('Store.set("k", "v")'); eq(throwing.run('Store.get("k")'), 'v', 'and keeps working');
+  throwing.run('Save.load(); Save.enabled = true; Save.flush()'); eq(throwing.run('Save.data.v'), game.get('SAVE_VERSION'), 'the save layer survives blocked storage');
+}
+
 // --------------------------------------------------------------------- runner
 const sections = [
   ['invariants', invariants, false],
+  ['rules', rules, false],
+  ['saves', saves, false],
   ['creatures', creatures, true],
   ['rolls', rolls, true],
   ['battles', () => battles(fightScene), true],

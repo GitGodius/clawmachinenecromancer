@@ -15,6 +15,7 @@ Scenes.claw = (() => {
   let lastBumpSfx = 0;
   let neonOff = 0;
   let turnWins = 0;
+  let toggleDir = 0; // steering mode 'toggle': tap a direction to start, tap again to stop
   const btn = {};
   const toScreen = (x, y) => [(x + GX) * 2, (y + GY) * 2];
   const say = (text, hold) => Game.talk.say(text, hold);
@@ -91,6 +92,7 @@ Scenes.claw = (() => {
   // ---------------------------------------------------------------- scene api
   const S = {
     enter() {
+      toggleDir = 0;
       if (!buf) { [buf, g] = mk(BW, BH); buildGlass(); buildFrame(); }
       Music.play('claw');
       idleT = 0;
@@ -106,8 +108,18 @@ Scenes.claw = (() => {
       t += dt;
       const sim = Game.sim;
       let move = 0;
-      if (Input.held('left') || btn.left.held) move -= 1;
-      if (Input.held('right') || btn.right.held) move += 1;
+      const tog = Settings.v.steering === 'toggle';
+      if (tog) {
+        if (sim.state !== 'idle' && sim.state !== 'carry') toggleDir = 0;
+        else {
+          if (Input.hit('left')) toggleDir = toggleDir === -1 ? 0 : -1;
+          if (Input.hit('right')) toggleDir = toggleDir === 1 ? 0 : 1;
+          if (Input.hit('a')) toggleDir = 0; // dropping or releasing stops the carriage first
+        }
+        move = toggleDir;
+      } else toggleDir = 0;
+      if ((!tog && Input.held('left')) || btn.left.held) move -= 1;
+      if ((!tog && Input.held('right')) || btn.right.held) move += 1;
       // hold the mouse / a finger on the glass to steer the claw toward the pointer
       const mp = Input.mouse;
       if (!move && mp.down && mp.x >= 14 && mp.x < 374 && mp.y >= 14 && mp.y < 258 && (sim.state === 'idle' || sim.state === 'carry')) {
@@ -178,6 +190,7 @@ Scenes.claw = (() => {
           return;
         }
         Game.tokens--;
+        Game.tally('grabs');
         tokenBump = 1;
         turnWins = 0;
         slowmoDone = new Set();
@@ -271,6 +284,7 @@ Scenes.claw = (() => {
   function onWin(d) {
     const p = d.part, def = p.def, r = RARITY[def.rarity];
     Game.addPart(p.type);
+    Game.tally('parts');
     turnWins++;
     Telemetry.c.wonRarity[def.rarity]++;
     if (!d.inTurn) Telemetry.c.freebies++;
@@ -337,7 +351,7 @@ Scenes.claw = (() => {
     // chute interior
     g.fillStyle = 'rgba(111,211,255,0.07)'; g.fillRect(M.chuteX0, M.lipY, M.chuteX1 - M.chuteX0, 122 - M.lipY);
     g.fillStyle = '#0e0b16'; g.fillRect(M.chuteX0, 116, M.chuteX1 - M.chuteX0, 6);
-    const chuteGlow = winFx > 0 ? (Math.sin(t * 30) > 0 ? 0.5 : 0.2) : 0.12 + 0.05 * Math.sin(t * 3);
+    const chuteGlow = winFx > 0 ? (blinkOn(t, 5) ? 0.5 : 0.2) : 0.12 + 0.05 * Math.sin(t * 3);
     g.fillStyle = `rgba(111,211,255,${chuteGlow})`; g.fillRect(M.chuteX0 + 2, 114, M.chuteX1 - M.chuteX0 - 4, 2);
     // down-arrow painted on the chute's back wall
     g.fillStyle = sim.state === 'carry' && Math.sin(t * 8) > 0 ? '#6fd3ff' : '#2e4f78';
@@ -399,7 +413,7 @@ Scenes.claw = (() => {
   function drawPart(p, held, P) {
     const def = p.def;
     const rar = RARITY[def.rarity];
-    const glow = rar.glow ? 0.55 + 0.45 * Math.sin(t * 4 + p.glowT) : 0;
+    const glow = rar.glow ? 0.55 + 0.45 * Math.sin(t * [0, 2, 4, 6][rar.order] + p.glowT) : 0; // a faster pulse means rarer, so the pile never relies on colour alone
     for (let i = 0; i < p.bodies.length; i++) {
       const b = p.bodies[i];
       const q = b.getPosition(), a = b.getAngle();
@@ -408,7 +422,7 @@ Scenes.claw = (() => {
       g.save();
       g.translate(q.x * PPM, q.y * PPM);
       g.rotate(a);
-      if (held && Math.sin(t * 16) > 0) { g.drawImage(SPR.outline(name, '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
+      if (held && blinkOn(t, 2.5)) { g.drawImage(SPR.outline(name, '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
       else if (glow > 0) { g.globalAlpha = glow; g.drawImage(SPR.outline(name, rar.glow), -s.w / 2 - 1, -s.h / 2 - 1); g.globalAlpha = 1; }
       g.drawImage(s.c, -s.w / 2, -s.h / 2);
       g.restore();
@@ -426,7 +440,7 @@ Scenes.claw = (() => {
     for (let i = 0; i < n; i++) {
       const [x, y] = spots[i];
       let on, col;
-      if (winFx > 0) { on = Math.sin(t * 20 + i * 1.3) > 0; col = vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
+      if (winFx > 0) { on = Settings.v.reduceFlash ? (i + Math.floor(t * 1.5)) % 2 === 0 : Math.sin(t * 20 + i * 1.3) > 0; col = vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
       else { on = (i + Math.floor(t * 7)) % 4 === 0 || (i + Math.floor(t * 7)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
       g.fillStyle = on ? col : '#6b3a1c';
       g.fillRect(x, y, 1, 1);
@@ -453,12 +467,31 @@ Scenes.claw = (() => {
     Draw.panel(g, 197, 102, 42, 31, 'dark');
   }
 
+  // The carry meter: how hard the load is swaying, so a slip is never a mystery. The word, the length of the
+  // bar and its texture all say the same thing (steady / swaying / slipping), so colour is a bonus, not the message.
+  function drawSway(ctx, cx, y) {
+    const sw = Game.sim.swayInfo();
+    if (!sw) return;
+    const lvl = sw.ratio <= 1 ? 0 : sw.ratio <= 1.5 ? 1 : 2;
+    const col = ['#9be38f', '#f6c64b', '#e8405a'][lvl];
+    const x0 = cx - 21, w = 42, fill = Math.round(clamp(sw.ratio / 2, 0, 1) * (w - 2));
+    Draw.rect(ctx, x0, y, w, 5, PAL.k);
+    for (let i = 0; i < fill; i++) {
+      if (lvl === 1 && i % 2) continue; // swaying: dotted
+      if (lvl === 2 && i % 3 === 2) continue; // slipping: striped
+      Draw.rect(ctx, x0 + 1 + i, y + 1, 1, 3, col);
+    }
+    Draw.rect(ctx, x0 + 1 + Math.round((w - 2) / 2), y - 1, 1, 7, '#fff6e3'); // the line between steady and swaying
+    const word = ['STEADY', 'SWAYING', 'SLIPPING!'][lvl];
+    if (lvl < 2 || blinkOn(t, 3)) Font.draw(ctx, word, cx, y + 7, { font: 'small', color: col, align: 'center', outline: PAL.k });
+  }
+
   function drawOverlay(ctx) {
     const sim = Game.sim;
     // TOKENS
     Font.draw(ctx, 'TOKENS', 436, 11 - Math.round(tokenBump * 2), { font: 'small', color: '#a6aec2', align: 'center' });
     const tk = String(Game.tokens);
-    Font.draw(ctx, tk, 436, 21 - Math.round(tokenBump * 2), { scale: 3, color: Game.tokens > 0 ? '#fff6e3' : noTokenT > 0 && Math.sin(t * 16) > 0 ? '#e8405a' : '#7a6a9a', align: 'center', shadow: PAL.k });
+    Font.draw(ctx, tk, 436, 21 - Math.round(tokenBump * 2), { scale: 3, color: Game.tokens > 0 ? '#fff6e3' : noTokenT > 0 && blinkOn(t, 2.5) ? '#e8405a' : '#7a6a9a', align: 'center', shadow: PAL.k });
     // reaper speech inside the neon box
     if (Game.talk.visible()) {
       Game.talk.drawBubble(ctx, 398, 90, 78, null, null, {});
@@ -468,6 +501,8 @@ Scenes.claw = (() => {
     Font.draw(ctx, String(Game.inventory.length), 472, 151, { font: 'small', color: '#ecdcbc', align: 'right' });
     Game.recent.slice(0, 3).forEach((type, i) => {
       drawPartIcon(ctx, type, 413 + i * 24, 180 + Math.round(bagBump * 2), 17, { outline: RARITY[PART_DEFS[type].rarity].glow || undefined });
+      const ro = RARITY[PART_DEFS[type].rarity].order;
+      if (ro) Font.draw(ctx, '★'.repeat(ro), 413 + i * 24, 192, { font: 'small', color: RARITY[PART_DEFS[type].rarity].color, align: 'center' });
     });
     // flying prizes
     for (const f of flying) {
@@ -482,7 +517,7 @@ Scenes.claw = (() => {
     Font.draw(ctx, 'MOVE', 442, 217, { color: '#ecdcbc' });
     for (const b of [btn.drop, btn.back]) {
       const hot = b.hover || b.held;
-      const pulse = b === btn.back && noTokenT > 0 && Math.sin(t * 10) > 0;
+      const pulse = b === btn.back && noTokenT > 0 && blinkOn(t, 1.6);
       if (hot || pulse) Draw.rect(ctx, b.x, b.y, b.w, b.h, pulse ? '#5a1834' : '#2b2d3d');
       ico(b === btn.drop ? 'btn_a' : 'btn_b', b.x + 9, b.y + 7, b === btn.drop ? 'A' : 'B');
       Font.draw(ctx, b.label, b.x + 20, b.y + 4, { color: b === btn.drop && Game.tokens <= 0 && sim.state === 'idle' ? '#7a6a9a' : '#ecdcbc' });
@@ -498,21 +533,24 @@ Scenes.claw = (() => {
       const r = RARITY[gp.def.rarity];
       const txt = gp.def.name + (r.order ? ' · ' + r.name : '');
       Font.draw(ctx, txt, clamp(sx, 60, 330), sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      drawSway(ctx, clamp(sx, 60, 330), sy + 38);
     }
     if (sim.state === 'carry' && CONFIG.carryTime > 0) {
       const k = 1 - sim.stateT / CONFIG.carryTime;
       const [cx] = toScreen(sim.carX, 0);
       Draw.rect(ctx, cx - 16, 44, 32, 3, PAL.k);
-      Draw.rect(ctx, cx - 15, 45, Math.max(0, 30 * k), 1, k < 0.3 && Math.sin(t * 20) > 0 ? PAL.R : PAL.d);
+      Draw.rect(ctx, cx - 15, 45, Math.max(0, 30 * k), 1, k < 0.3 && blinkOn(t, 3) ? PAL.R : PAL.d);
+      const left = Math.max(0, Math.ceil(CONFIG.carryTime - sim.stateT));
+      if (left <= 3) Font.draw(ctx, String(left), cx, 36, { font: 'small', color: '#fff6e3', align: 'center', outline: PAL.k }); // the number, not just the colour
     }
     // first-time controls hint, inside the glass, until the player does anything
     if (!movedOnce && sim.state === 'idle' && Game.tokens === CONFIG.startTokens) {
       const a = 0.55 + 0.25 * Math.sin(t * 3);
-      Font.draw(ctx, '← →  or  HOLD MOUSE ON THE GLASS TO STEER', 190, 96, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
-      Font.draw(ctx, 'THEN  DROP', 190, 108, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
+      Font.draw(ctx, `${Settings.hint('left')} ${Settings.hint('right')}  or  HOLD MOUSE ON THE GLASS TO STEER`, 190, 96, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
+      Font.draw(ctx, `THEN  DROP (${Settings.hint('a')})`, 190, 108, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
     }
     // first-time nudge: flash the controls if the player hasn't moved yet
-    if (!movedOnce && idleT > 5 && Math.sin(t * 6) > 0) Draw.frame(ctx, 396, 206, 80, 58, '#ff8ac6');
+    if (!movedOnce && idleT > 5 && blinkOn(t, 1)) Draw.frame(ctx, 396, 206, 80, 58, '#ff8ac6');
     fxS.draw(ctx);
   }
 

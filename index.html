@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>The Good Parts</title>
 <meta name="description" content="A claw machine necromancer game: win body parts from the claw, stitch them into monsters, send them to fight, and get the parts back.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27 shape-rendering=%27crispEdges%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%230e0b16%27/%3E%3Cpath fill=%27%23fff6e3%27 d=%27M4 2h8v2h2v6h-2v2h-1v2H5v-2H4v-2H2V4h2z%27/%3E%3Cpath fill=%27%230e0b16%27 d=%27M5 6h2v2H5zM9 6h2v2H9zM7 10h2v2H7z%27/%3E%3C/svg%3E">
 <style>
 /* The Good Parts: one deliberate dark world (a night-time arcade), so no light theme.
    Layout: a single canvas centred in the viewport; overlays (tuning panel, report) slide over it. */
@@ -4253,8 +4254,11 @@ const Settings = {
     const out = {}, used = new Set();
     for (const a of KEY_ACTIONS) {
       const src = saved && Array.isArray(saved[a.id]) ? saved[a.id] : DEFAULT_KEYS[a.id];
-      const slots = [0, 1].map((i) => (typeof src[i] === 'string' && src[i].length < 24 && !used.has(src[i]) ? src[i] : null));
-      slots.forEach((c) => c && used.add(c));
+      const slots = [null, null];
+      for (let i = 0; i < 2; i++) { // one at a time, so the same key twice in one action is caught too
+        const c = src[i];
+        if (typeof c === 'string' && c.length < 24 && !used.has(c)) { slots[i] = c; used.add(c); }
+      }
       if (a.fixed && !slots[0] && !slots[1]) { // never leave a movement key unbound
         const fb = DEFAULT_KEYS[a.id].find((c) => c && !used.has(c)) || DEFAULT_KEYS[a.id][0];
         slots[0] = fb; used.add(fb);
@@ -4315,6 +4319,8 @@ const MIGRATIONS = {};
 
 const Save = {
   enabled: true,     // tools turn this off so bots never write a save
+  runActive: false,  // true once the player has started or continued a run THIS session. Until then the boot-time
+                     // blank game must never overwrite the run that is waiting in the file (it once did)
   readOnly: false,   // set when the file came from a newer build: we may read what we understand, never write
   notes: [],         // things to tell the player once ("2 parts from an older version were retired")
   problem: null,     // 'corrupt' | 'newer' | null
@@ -4357,7 +4363,7 @@ const Save = {
   // flush the current settings + run to storage (debounced by callers via Save.soon)
   flush() {
     if (!Save.enabled || Save.readOnly || !Save.data) return false;
-    if (typeof Game !== 'undefined') Save.data.run = Game.toSave();
+    if (typeof Game !== 'undefined' && Save.runActive) Save.data.run = Game.won ? null : Game.toSave(); // a finished run is not something to continue
     Save.data.settings = JSON.parse(JSON.stringify(Settings.v));
     Save.data.v = SAVE_VERSION;
     const prev = Store.get(SAVE_KEY);
@@ -4370,9 +4376,10 @@ const Save = {
   },
   reset() { // "new run" keeps settings and records, drops only the run
     if (Save.data) Save.data.run = null;
+    Save.runActive = true; // from here the game in memory IS the run
     Save.flush();
   },
-  wipe() { Save.data = Save.blank(); Settings.load(null); Store.remove(SAVE_KEY); },
+  wipe() { Save.data = Save.blank(); Save.runActive = false; Settings.load(null); Store.remove(SAVE_KEY); },
   hasRun() { return !!(Save.data && Save.data.run); },
 };
 
@@ -5115,11 +5122,11 @@ class ClawSim {
 //   Wraith  is a boss. Big, slow, a lot of health, so sustain and burst answer it.
 // ---------------------------------------------------------------------------
 const ENEMY_KINDS = {
-  wisp:   { name: 'Wisp',   hp: 10, atk: 2, def: 0, atkTime: 1.1, speed: 34, range: 24, dodge: 0.1, spr: 'wisp', hover: 10, w: 14,
+  wisp:   { name: 'Wisp',   hp: 10, atk: 2, def: 0, atkTime: 1.1, speed: 34, range: 24, dodge: 0.1, spr: 'wisp', hover: 10, w: 14, tag: 'swarm',
             ask: 'Swarms in. Many small hits: armour and health answer it.' },
-  shade:  { name: 'Shade',  hp: 24, atk: 4, def: 2, atkTime: 1.25, speed: 22, range: 28, dodge: 0.05, spr: 'shade', hover: 3, w: 22,
+  shade:  { name: 'Shade',  hp: 24, atk: 4, def: 2, atkTime: 1.25, speed: 22, range: 28, dodge: 0.05, spr: 'shade', hover: 3, w: 22, tag: 'armoured',
             ask: 'Armoured. Small hits barely scratch it: big hits answer it.' },
-  wraith: { name: 'Wraith', hp: 70, atk: 8, def: 0, atkTime: 1.6, speed: 15, range: 38, dodge: 0, spr: 'wraith', hover: 4, w: 36, boss: true,
+  wraith: { name: 'Wraith', hp: 70, atk: 8, def: 0, atkTime: 1.6, speed: 15, range: 38, dodge: 0, spr: 'wraith', hover: 4, w: 36, boss: true, tag: 'boss',
             ask: 'A boss. Huge and slow: staying power and burst answer it.' },
 };
 
@@ -5842,9 +5849,41 @@ const UI = {
   buttons: [],
   tooltip: null,
   hoverId: null,
+  focusId: null, // keyboard / gamepad focus, for scenes that opt in with `uiNav` (the slab): arrows move it, confirm presses it
   set(buttons) { this.buttons = buttons; },
+  focusable() { return this.buttons.filter((b) => !b.hidden && b.kind !== 'hot' && b.w > 0); },
+  focused() { return this.focusId ? this.buttons.find((b) => b.id === this.focusId) : null; },
+  // move focus to the nearest button in a direction (centre to centre; sideways drift counts double)
+  moveFocus(dx, dy) {
+    const list = this.focusable();
+    if (!list.length) return;
+    const cur = this.focused();
+    if (!cur) { this.focusId = list[0].id; return; }
+    const cx = cur.x + cur.w / 2, cy = cur.y + cur.h / 2;
+    let best = null, bs = 1e9;
+    for (const b of list) {
+      if (b === cur) continue;
+      const ax = b.x + b.w / 2 - cx, ay = b.y + b.h / 2 - cy;
+      const along = ax * dx + ay * dy, across = Math.abs(ax * dy) + Math.abs(ay * dx);
+      if (along <= 1) continue;
+      const sc = along + across * 2;
+      if (sc < bs) { bs = sc; best = b; }
+    }
+    if (best) { this.focusId = best.id; Sfx.play('ui_hover'); } else Sfx.play('ui_deny');
+  },
   update() {
     const m = Input.mouse;
+    if (Engine.scene && Engine.scene.uiNav && !Engine.overlays.length && !Engine.trans) {
+      if (m.moved) this.focusId = null; // the mouse takes over
+      const dir = [['left', -1, 0], ['right', 1, 0], ['up', 0, -1], ['down', 0, 1]].find(([a]) => Input.hit(a));
+      if (dir) this.moveFocus(dir[1], dir[2]);
+      const f = this.focused();
+      if (f && !this.buttons.includes(f)) this.focusId = null;
+      if (f && Input.hit('a')) {
+        if (f.disabled) { Sfx.play('ui_deny'); if (f.onDeny) f.onDeny(); }
+        else if (f.onClick) { f.pressT = 1; if (!f.silent) Sfx.play(f.sound || 'ui_click'); f.onClick(); }
+      }
+    } else if (this.focusId && !(Engine.scene && Engine.scene.uiNav)) this.focusId = null;
     let hover = null;
     for (const b of this.buttons) {
       if (b.hidden) continue;
@@ -5882,20 +5921,27 @@ const UI = {
     }
   },
   drawOverlay(ctx) {
-    if (AudioSys.muted) Font.draw(ctx, 'MUTED (M)', W - 3, H - 9, { font: 'small', color: '#7a6a9a', align: 'right' });
-    if (this.tooltip && Input.mouse.x >= 0) {
-      const lines = Array.isArray(this.tooltip) ? this.tooltip : [this.tooltip];
-      const w = Math.max(...lines.map((l) => Font.measure(typeof l === 'string' ? l : l.t))) + 10;
-      const h = lines.length * 10 + 6;
-      let x = Math.round(Input.mouse.x + 8), y = Math.round(Input.mouse.y + 10);
-      if (x + w > W - 2) x = W - 2 - w;
-      if (y + h > H - 2) y = Math.round(Input.mouse.y - h - 4);
-      Draw.panel(ctx, x, y, w, h, 'dark');
-      lines.forEach((l, i) => {
-        const o = typeof l === 'string' ? { t: l, c: '#ecdcbc' } : l;
-        Font.draw(ctx, o.t, x + 5, y + 4 + i * 10, { color: o.c, shadow: PAL.k });
-      });
+    if (AudioSys.muted) Font.draw(ctx, 'MUTED (' + Settings.hint('mute') + ')', W - 3, H - 9, { font: 'small', color: '#7a6a9a', align: 'right' });
+    const fb = Engine.overlays.length ? null : this.focused();
+    if (fb) {
+      Draw.frame(ctx, fb.x - 2, fb.y - 2, fb.w + 4, fb.h + 4, '#000000');
+      Draw.frame(ctx, fb.x - 1, fb.y - 1, fb.w + 2, fb.h + 2, '#fff6e3');
+      if (fb.tip) this.drawTip(ctx, fb.tip, fb.x + fb.w + 4, fb.y);
     }
+    if (this.tooltip && Input.mouse.x >= 0 && !fb) this.drawTip(ctx, this.tooltip, Input.mouse.x + 8, Input.mouse.y + 10, Input.mouse.y);
+  },
+  drawTip(ctx, tip, tx, ty, flipY) {
+    const lines = Array.isArray(tip) ? tip : [tip];
+    const w = Math.max(...lines.map((l) => Font.measure(typeof l === 'string' ? l : l.t))) + 10;
+    const h = lines.length * 10 + 6;
+    let x = Math.round(tx), y = Math.round(ty);
+    if (x + w > W - 2) x = Math.max(2, Math.round(W - 2 - w));
+    if (y + h > H - 2) y = flipY != null ? Math.round(flipY - h - 4) : H - 2 - h;
+    Draw.panel(ctx, x, y, w, h, 'dark');
+    lines.forEach((l, i) => {
+      const o = typeof l === 'string' ? { t: l, c: '#ecdcbc' } : l;
+      Font.draw(ctx, o.t, x + 5, y + 4 + i * 10, { color: o.c, shadow: PAL.k });
+    });
   },
 };
 
@@ -5906,6 +5952,7 @@ class Talker {
     if (!force && (this.busy() || this.queue.length)) { this.queue.push([text, hold]); return; }
     this.queue = [];
     this.text = text; this.shown = 0; this.t = 0; this.hold = hold;
+    if (typeof Announce !== 'undefined') Announce.say(text);
   }
   sayRandom(lines, hold) { this.say(vpick(lines), hold); }
   busy() { return this.text && this.shown < this.text.length; }
@@ -7432,6 +7479,7 @@ const Game = {
   started: false,
   won: false, // the final boss is down: the run is over
   playTime: 0, // seconds of play in this run (menus and pauses don't count)
+  stats: {},   // what this run has done, for the end screen (saved with the run)
   failStreak: 0, // failed fights in a row; the Reaper adds a token per failure (up to ladderMax) so bad luck cannot become a dead end
 
   newGame(opts = {}) {
@@ -7445,10 +7493,14 @@ const Game = {
     this.seen = {};
     this.talk = new Talker({ voice: 0.62, cps: 40 });
     this.playTime = 0;
+    this.stats = Game.newStats();
     if (typeof Scenes !== 'undefined' && Scenes.slab && Scenes.slab.reset) Scenes.slab.reset();
     this.sim = new ClawSim({ onEvent: (t, d) => Scenes.claw && Scenes.claw.onSim(t, d) });
     if (opts.pile !== false) this.sim.fillPile(CONFIG.partCount);
   },
+
+  newStats() { return { grabs: 0, parts: 0, creatures: 0, lost: 0, fightsWon: 0, fightsLost: 0, retreats: 0, zaps: 0 }; },
+  tally(key, n = 1) { this.stats[key] = (this.stats[key] || 0) + n; },
 
   // ---- saving: the run as plain data. Positions are not kept; the pile is rebuilt from part types.
   toSave() {
@@ -7457,7 +7509,7 @@ const Game = {
     const inGrab = !!sim && sim.state !== 'idle'; // a drop in flight: the token comes back, the part it carries is in the pile
     return {
       tokens: this.tokens + (inGrab ? 1 : 0), stage: this.stage, bestStage: this.bestStage, won: this.won, failStreak: this.failStreak,
-      playTime: Math.round(this.playTime || 0), seen: this.seen,
+      playTime: Math.round(this.playTime || 0), seen: this.seen, stats: this.stats,
       inventory: [...this.inventory.map((i) => i.type), ...(typeof Scenes !== 'undefined' && Scenes.slab && Scenes.slab.buildTypes ? Scenes.slab.buildTypes() : [])],
       party: this.party.map((c) => ({ slots: c.slots, hp: c.hp, name: c.name, kills: c.kills })),
       machine,
@@ -7483,6 +7535,7 @@ const Game = {
     this.failStreak = Math.round(num(run.failStreak, 0, 0, 99));
     this.playTime = num(run.playTime, 0, 0, 1e7);
     this.seen = run.seen && typeof run.seen === 'object' ? run.seen : {};
+    for (const k of Object.keys(this.stats)) this.stats[k] = Math.round(num(run.stats && run.stats[k], 0, 0, 1e6));
     for (const t of run.inventory || []) { const f = fix(t); if (f) this.inventory.push(makePartItem(f)); }
     for (const c of (run.party || []).slice(0, 3)) {
       const slots = {};
@@ -7555,6 +7608,8 @@ const Game = {
     this.party = this.party.filter((c) => c.hp > 0);
     const restocked = [];
     const reward = this.battlePay(this.stage, kind, kind === 'win' ? 1 : sim.progress(), survivors.some((u) => u.traits.includes('golden')));
+    this.tally('lost', deadAllies.length);
+    this.tally(kind === 'win' ? 'fightsWon' : kind === 'lose' ? 'fightsLost' : 'retreats');
     if (kind === 'win') {
       const boost = 1 + this.stage * 0.2;
       for (let i = 0; i < CONFIG.restockParts; i++) restocked.push(randomPartType({ boost }));
@@ -7610,6 +7665,7 @@ Scenes.claw = (() => {
   let lastBumpSfx = 0;
   let neonOff = 0;
   let turnWins = 0;
+  let toggleDir = 0; // steering mode 'toggle': tap a direction to start, tap again to stop
   const btn = {};
   const toScreen = (x, y) => [(x + GX) * 2, (y + GY) * 2];
   const say = (text, hold) => Game.talk.say(text, hold);
@@ -7686,6 +7742,7 @@ Scenes.claw = (() => {
   // ---------------------------------------------------------------- scene api
   const S = {
     enter() {
+      toggleDir = 0;
       if (!buf) { [buf, g] = mk(BW, BH); buildGlass(); buildFrame(); }
       Music.play('claw');
       idleT = 0;
@@ -7701,8 +7758,18 @@ Scenes.claw = (() => {
       t += dt;
       const sim = Game.sim;
       let move = 0;
-      if (Input.held('left') || btn.left.held) move -= 1;
-      if (Input.held('right') || btn.right.held) move += 1;
+      const tog = Settings.v.steering === 'toggle';
+      if (tog) {
+        if (sim.state !== 'idle' && sim.state !== 'carry') toggleDir = 0;
+        else {
+          if (Input.hit('left')) toggleDir = toggleDir === -1 ? 0 : -1;
+          if (Input.hit('right')) toggleDir = toggleDir === 1 ? 0 : 1;
+          if (Input.hit('a')) toggleDir = 0; // dropping or releasing stops the carriage first
+        }
+        move = toggleDir;
+      } else toggleDir = 0;
+      if ((!tog && Input.held('left')) || btn.left.held) move -= 1;
+      if ((!tog && Input.held('right')) || btn.right.held) move += 1;
       // hold the mouse / a finger on the glass to steer the claw toward the pointer
       const mp = Input.mouse;
       if (!move && mp.down && mp.x >= 14 && mp.x < 374 && mp.y >= 14 && mp.y < 258 && (sim.state === 'idle' || sim.state === 'carry')) {
@@ -7773,6 +7840,7 @@ Scenes.claw = (() => {
           return;
         }
         Game.tokens--;
+        Game.tally('grabs');
         tokenBump = 1;
         turnWins = 0;
         slowmoDone = new Set();
@@ -7866,6 +7934,7 @@ Scenes.claw = (() => {
   function onWin(d) {
     const p = d.part, def = p.def, r = RARITY[def.rarity];
     Game.addPart(p.type);
+    Game.tally('parts');
     turnWins++;
     Telemetry.c.wonRarity[def.rarity]++;
     if (!d.inTurn) Telemetry.c.freebies++;
@@ -7932,7 +8001,7 @@ Scenes.claw = (() => {
     // chute interior
     g.fillStyle = 'rgba(111,211,255,0.07)'; g.fillRect(M.chuteX0, M.lipY, M.chuteX1 - M.chuteX0, 122 - M.lipY);
     g.fillStyle = '#0e0b16'; g.fillRect(M.chuteX0, 116, M.chuteX1 - M.chuteX0, 6);
-    const chuteGlow = winFx > 0 ? (Math.sin(t * 30) > 0 ? 0.5 : 0.2) : 0.12 + 0.05 * Math.sin(t * 3);
+    const chuteGlow = winFx > 0 ? (blinkOn(t, 5) ? 0.5 : 0.2) : 0.12 + 0.05 * Math.sin(t * 3);
     g.fillStyle = `rgba(111,211,255,${chuteGlow})`; g.fillRect(M.chuteX0 + 2, 114, M.chuteX1 - M.chuteX0 - 4, 2);
     // down-arrow painted on the chute's back wall
     g.fillStyle = sim.state === 'carry' && Math.sin(t * 8) > 0 ? '#6fd3ff' : '#2e4f78';
@@ -7994,7 +8063,7 @@ Scenes.claw = (() => {
   function drawPart(p, held, P) {
     const def = p.def;
     const rar = RARITY[def.rarity];
-    const glow = rar.glow ? 0.55 + 0.45 * Math.sin(t * 4 + p.glowT) : 0;
+    const glow = rar.glow ? 0.55 + 0.45 * Math.sin(t * [0, 2, 4, 6][rar.order] + p.glowT) : 0; // a faster pulse means rarer, so the pile never relies on colour alone
     for (let i = 0; i < p.bodies.length; i++) {
       const b = p.bodies[i];
       const q = b.getPosition(), a = b.getAngle();
@@ -8003,7 +8072,7 @@ Scenes.claw = (() => {
       g.save();
       g.translate(q.x * PPM, q.y * PPM);
       g.rotate(a);
-      if (held && Math.sin(t * 16) > 0) { g.drawImage(SPR.outline(name, '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
+      if (held && blinkOn(t, 2.5)) { g.drawImage(SPR.outline(name, '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
       else if (glow > 0) { g.globalAlpha = glow; g.drawImage(SPR.outline(name, rar.glow), -s.w / 2 - 1, -s.h / 2 - 1); g.globalAlpha = 1; }
       g.drawImage(s.c, -s.w / 2, -s.h / 2);
       g.restore();
@@ -8021,7 +8090,7 @@ Scenes.claw = (() => {
     for (let i = 0; i < n; i++) {
       const [x, y] = spots[i];
       let on, col;
-      if (winFx > 0) { on = Math.sin(t * 20 + i * 1.3) > 0; col = vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
+      if (winFx > 0) { on = Settings.v.reduceFlash ? (i + Math.floor(t * 1.5)) % 2 === 0 : Math.sin(t * 20 + i * 1.3) > 0; col = vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
       else { on = (i + Math.floor(t * 7)) % 4 === 0 || (i + Math.floor(t * 7)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
       g.fillStyle = on ? col : '#6b3a1c';
       g.fillRect(x, y, 1, 1);
@@ -8048,12 +8117,31 @@ Scenes.claw = (() => {
     Draw.panel(g, 197, 102, 42, 31, 'dark');
   }
 
+  // The carry meter: how hard the load is swaying, so a slip is never a mystery. The word, the length of the
+  // bar and its texture all say the same thing (steady / swaying / slipping), so colour is a bonus, not the message.
+  function drawSway(ctx, cx, y) {
+    const sw = Game.sim.swayInfo();
+    if (!sw) return;
+    const lvl = sw.ratio <= 1 ? 0 : sw.ratio <= 1.5 ? 1 : 2;
+    const col = ['#9be38f', '#f6c64b', '#e8405a'][lvl];
+    const x0 = cx - 21, w = 42, fill = Math.round(clamp(sw.ratio / 2, 0, 1) * (w - 2));
+    Draw.rect(ctx, x0, y, w, 5, PAL.k);
+    for (let i = 0; i < fill; i++) {
+      if (lvl === 1 && i % 2) continue; // swaying: dotted
+      if (lvl === 2 && i % 3 === 2) continue; // slipping: striped
+      Draw.rect(ctx, x0 + 1 + i, y + 1, 1, 3, col);
+    }
+    Draw.rect(ctx, x0 + 1 + Math.round((w - 2) / 2), y - 1, 1, 7, '#fff6e3'); // the line between steady and swaying
+    const word = ['STEADY', 'SWAYING', 'SLIPPING!'][lvl];
+    if (lvl < 2 || blinkOn(t, 3)) Font.draw(ctx, word, cx, y + 7, { font: 'small', color: col, align: 'center', outline: PAL.k });
+  }
+
   function drawOverlay(ctx) {
     const sim = Game.sim;
     // TOKENS
     Font.draw(ctx, 'TOKENS', 436, 11 - Math.round(tokenBump * 2), { font: 'small', color: '#a6aec2', align: 'center' });
     const tk = String(Game.tokens);
-    Font.draw(ctx, tk, 436, 21 - Math.round(tokenBump * 2), { scale: 3, color: Game.tokens > 0 ? '#fff6e3' : noTokenT > 0 && Math.sin(t * 16) > 0 ? '#e8405a' : '#7a6a9a', align: 'center', shadow: PAL.k });
+    Font.draw(ctx, tk, 436, 21 - Math.round(tokenBump * 2), { scale: 3, color: Game.tokens > 0 ? '#fff6e3' : noTokenT > 0 && blinkOn(t, 2.5) ? '#e8405a' : '#7a6a9a', align: 'center', shadow: PAL.k });
     // reaper speech inside the neon box
     if (Game.talk.visible()) {
       Game.talk.drawBubble(ctx, 398, 90, 78, null, null, {});
@@ -8063,6 +8151,8 @@ Scenes.claw = (() => {
     Font.draw(ctx, String(Game.inventory.length), 472, 151, { font: 'small', color: '#ecdcbc', align: 'right' });
     Game.recent.slice(0, 3).forEach((type, i) => {
       drawPartIcon(ctx, type, 413 + i * 24, 180 + Math.round(bagBump * 2), 17, { outline: RARITY[PART_DEFS[type].rarity].glow || undefined });
+      const ro = RARITY[PART_DEFS[type].rarity].order;
+      if (ro) Font.draw(ctx, '★'.repeat(ro), 413 + i * 24, 192, { font: 'small', color: RARITY[PART_DEFS[type].rarity].color, align: 'center' });
     });
     // flying prizes
     for (const f of flying) {
@@ -8077,7 +8167,7 @@ Scenes.claw = (() => {
     Font.draw(ctx, 'MOVE', 442, 217, { color: '#ecdcbc' });
     for (const b of [btn.drop, btn.back]) {
       const hot = b.hover || b.held;
-      const pulse = b === btn.back && noTokenT > 0 && Math.sin(t * 10) > 0;
+      const pulse = b === btn.back && noTokenT > 0 && blinkOn(t, 1.6);
       if (hot || pulse) Draw.rect(ctx, b.x, b.y, b.w, b.h, pulse ? '#5a1834' : '#2b2d3d');
       ico(b === btn.drop ? 'btn_a' : 'btn_b', b.x + 9, b.y + 7, b === btn.drop ? 'A' : 'B');
       Font.draw(ctx, b.label, b.x + 20, b.y + 4, { color: b === btn.drop && Game.tokens <= 0 && sim.state === 'idle' ? '#7a6a9a' : '#ecdcbc' });
@@ -8093,21 +8183,24 @@ Scenes.claw = (() => {
       const r = RARITY[gp.def.rarity];
       const txt = gp.def.name + (r.order ? ' · ' + r.name : '');
       Font.draw(ctx, txt, clamp(sx, 60, 330), sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      drawSway(ctx, clamp(sx, 60, 330), sy + 38);
     }
     if (sim.state === 'carry' && CONFIG.carryTime > 0) {
       const k = 1 - sim.stateT / CONFIG.carryTime;
       const [cx] = toScreen(sim.carX, 0);
       Draw.rect(ctx, cx - 16, 44, 32, 3, PAL.k);
-      Draw.rect(ctx, cx - 15, 45, Math.max(0, 30 * k), 1, k < 0.3 && Math.sin(t * 20) > 0 ? PAL.R : PAL.d);
+      Draw.rect(ctx, cx - 15, 45, Math.max(0, 30 * k), 1, k < 0.3 && blinkOn(t, 3) ? PAL.R : PAL.d);
+      const left = Math.max(0, Math.ceil(CONFIG.carryTime - sim.stateT));
+      if (left <= 3) Font.draw(ctx, String(left), cx, 36, { font: 'small', color: '#fff6e3', align: 'center', outline: PAL.k }); // the number, not just the colour
     }
     // first-time controls hint, inside the glass, until the player does anything
     if (!movedOnce && sim.state === 'idle' && Game.tokens === CONFIG.startTokens) {
       const a = 0.55 + 0.25 * Math.sin(t * 3);
-      Font.draw(ctx, '← →  or  HOLD MOUSE ON THE GLASS TO STEER', 190, 96, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
-      Font.draw(ctx, 'THEN  DROP', 190, 108, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
+      Font.draw(ctx, `${Settings.hint('left')} ${Settings.hint('right')}  or  HOLD MOUSE ON THE GLASS TO STEER`, 190, 96, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
+      Font.draw(ctx, `THEN  DROP (${Settings.hint('a')})`, 190, 108, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
     }
     // first-time nudge: flash the controls if the player hasn't moved yet
-    if (!movedOnce && idleT > 5 && Math.sin(t * 6) > 0) Draw.frame(ctx, 396, 206, 80, 58, '#ff8ac6');
+    if (!movedOnce && idleT > 5 && blinkOn(t, 1)) Draw.frame(ctx, 396, 206, 80, 58, '#ff8ac6');
     fxS.draw(ctx);
   }
 
@@ -8424,6 +8517,7 @@ Scenes.slab = (() => {
       say(Game.inventory.length ? 'The slab. Click a part to stitch it on. Any combination works. Some work better.' : 'Nothing to stitch. The machine is that way.', 4);
     } else if (!Game.inventory.length && !count()) say('Empty-handed? The claw awaits.', 2.5);
   };
+  S.uiNav = true; // arrows move a focus ring over the parts, slots and buttons; confirm presses it
   S.exit = function () {};
   // Parts stitched on but not yet brought to life still belong to the player: a save counts them as bag parts.
   S.buildTypes = () => (build ? Object.values(build).filter(Boolean).map((i) => i.type) : []);
@@ -8464,6 +8558,7 @@ Scenes.slab = (() => {
     Music.duck(0.7, 3);
     Sfx.play('zap');
     Telemetry.c.creatures++;
+    Game.tally('creatures');
     Telemetry.log('create', { name: c.name, parts: c.parts().join(',') });
   }
 
@@ -8519,7 +8614,7 @@ Scenes.slab = (() => {
       if (life.stage === 2 && lt > 3.2) finishLife();
     }
     if (Input.hit('b') && !life) Engine.go('shop');
-    if (Input.hit('a') && !life && canBring()) bringToLife();
+    if (Input.hit('a') && !UI.focusId && !life && canBring()) bringToLife();
     buildButtons();
   };
 
@@ -8578,11 +8673,11 @@ Scenes.slab = (() => {
     drawCreature(ctx, ty, FEET_X + shakeX, FEET_Y + shakeY, {
       scale: 2, t, anim: 'idle', ghost: life ? null : 'rgba(155,227,143,0.16)', noLump: !count(),
       eyes: life && life.stage >= 2 ? '#9be38f' : null,
-      flash: life && life.stage === 1 && Math.sin(life.t * 50) > 0,
+      flash: life && life.stage === 1 && !Settings.v.reduceFlash && Math.sin(life.t * 50) > 0,
     });
     if (life && life.stage >= 1 && life.t < 1.3) {
       for (const b of life.bolts) {
-        if (Math.sin(life.t * 40 + b.seed) > -0.3) {
+        if (Settings.v.reduceFlash || Math.sin(life.t * 40 + b.seed) > -0.3) {
           Draw.bolt(ctx, b.x0, 0, FEET_X + vrand(-20, 20), FEET_Y - vrand(40, 110), '#e7f7ff', 10, b.seed + Math.floor(life.t * 20));
           Draw.glow(ctx, FEET_X, FEET_Y - 70, 90, '#6fd3ff', 0.25);
         }
@@ -8613,6 +8708,7 @@ Scenes.slab = (() => {
         if (r.glow) Draw.frame(ctx, b.x + 1, b.y + 1, b.w - 2, b.h - 2, r.glow);
         if (b.hover) Draw.frame(ctx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, '#fff6e3');
         drawPartIcon(ctx, b.item.type, b.x + b.w / 2, b.y + b.h / 2 + (b.hover ? -1 : 0), 24);
+        if (r.order) Font.draw(ctx, '★'.repeat(r.order), b.x + 3, b.y + 3, { font: 'small', color: r.color, shadow: PAL.k }); // rarity as a count, not just a colour
       }
     }
     if (!Game.inventory.length) Font.drawWrapped(ctx, 'Empty. Win parts from the claw machine.', 12, 86, 100, { color: '#7a6a9a' });
@@ -8648,7 +8744,7 @@ Scenes.slab = (() => {
       const pw = clamp(c.power / 80, 0, 1);
       Draw.rect(ctx, 400, y0 + 27, 72, 4, PAL.k);
       Draw.rect(ctx, 401, y0 + 28, Math.round(70 * pw), 2, pw > 0.66 ? PAL.L : pw > 0.33 ? PAL.d : PAL.B);
-      Font.draw(ctx, 'POWER', 368, y0 + 26, { font: 'small', color: '#7a6a9a' });
+      Font.draw(ctx, 'POWER ' + c.power, 368, y0 + 26, { font: 'small', color: '#a6aec2' });
     }
 
     // party roster
@@ -8667,6 +8763,7 @@ Scenes.slab = (() => {
         const k = c.hp / c.maxHp;
         Draw.rect(ctx, x + 3, y + 35, 28, 3, PAL.k);
         Draw.rect(ctx, x + 4, y + 36, Math.round(26 * k), 1, k > 0.5 ? PAL.d : k > 0.25 ? PAL.L : PAL.R);
+        if (k <= 0.5) for (let i = 0; i < 26 * k; i += 2) Draw.rect(ctx, x + 4 + i, y + 36, 1, 1, PAL.k); // hurt: the bar is dashed
         if (selected === c) Font.draw(ctx, 'UNSTITCH?', x + 17, y + 42, { font: 'small', color: PAL.R, align: 'center' });
       }
     }
@@ -8674,6 +8771,7 @@ Scenes.slab = (() => {
     // buttons (life, nav, paging)
     for (const b of bs) if (!b.kind || b.kind === 'big') UI.drawButton(ctx, b);
 
+    drawStagePreview(ctx, 126, 22, 230, Game.stage);
     // dialogue box
     if (Game.talk.visible()) {
       Draw.panel(ctx, 124, 236, 232, 30, 'dark');
@@ -8702,12 +8800,13 @@ Scenes.battle = (() => {
   let sim = null;
   let t = 0, phase = 'ready', result = null, menuSel = 0, logLines = [], resultT = 0;
   let coinsShown = 0, bolts = [], fightStage = 1;
+  let endT = 0, ending = false; // the beat between the last blow and the result screen
   const say = (x, h) => Game.talk.say(x, h);
   const log = (s) => { logLines.push(s); if (logLines.length > 2) logLines.shift(); };
   const bodyH = (u) => (u.team === 'ally' ? -rigLayout(u.c.slots).top : { wisp: 26, shade: 32, wraith: 48 }[u.kind]);
 
   S.enter = function () {
-    t = 0; phase = 'ready'; result = null; menuSel = 0; logLines = []; resultT = 0; bolts = []; fightStage = Game.stage;
+    t = 0; phase = 'ready'; result = null; menuSel = 0; logLines = []; resultT = 0; bolts = []; fightStage = Game.stage; endT = 0; ending = false;
     fx.list = []; debris.list = [];
     sim = new BattleSim({ party: Game.party, stage: Game.stage, onEvent: onSim });
     for (const u of sim.units) { u.bob = vrand(0, 6); u.flashT = 0; }
@@ -8733,11 +8832,12 @@ Scenes.battle = (() => {
   function zap() {
     if (phase !== 'fight' || !sim.zap()) return Sfx.play('ui_deny');
     Telemetry.c.zaps++;
+    Game.tally('zaps');
     log('ZAP! Your creations surge with borrowed life.');
   }
 
   function retreat() {
-    if (phase !== 'fight' && phase !== 'ready') return;
+    if ((phase !== 'fight' && phase !== 'ready') || sim.over) return;
     Telemetry.c.retreats++;
     sim.stop();
     finish('retreat');
@@ -8820,20 +8920,40 @@ Scenes.battle = (() => {
     }
   }
 
+  const announce = (s) => { if (typeof Announce !== 'undefined') Announce.say(s); };
+
+  // The last blow lands. Give it room: music goes quiet, time slows, and only then do the results appear.
+  // A win is short and bright; the final boss is long and quiet; a defeat is quiet and a little cruel.
+  function beginEnding() {
+    ending = true; endT = 0;
+    const lose = !sim.won, final = sim.won && isFinalStage(Game.stage);
+    if (lose || final) Music.stop(); // silence is the effect
+    if (final) { Engine.slowmo(0.25, 1.4); Engine.hitPause(0.25); Engine.flash('#fff6e3', 0.5); Engine.shake(7, 0.8); }
+    if (lose) { Engine.slowmo(0.4, 0.9); setTimeout(() => Sfx.play('heartbeat'), 300); setTimeout(() => Sfx.play('heartbeat'), 950); Sfx.play('defeat'); }
+  }
+
   function finish(kind) {
     if (result) return;
     phase = 'done';
     resultT = 0;
     result = Game.applyBattle(sim, kind);
     coinsShown = 0;
-    if (kind === 'win') {
+    if (kind === 'win' && result.won) {
+      Sfx.play('victory');
+      say('Well. Somebody had to. The rent is... paid. Go on: take a bow.', 4);
+      announce('The Landlord is down. You win.');
+    } else if (kind === 'win') {
       Sfx.play('victory');
       Music.duck(0.8, 2.5);
       say(vpick(['The graveyard provides.', 'Look at them. My little war crimes.', 'Victory! Mostly intact, even.']), 3);
+      announce('Stage cleared. ' + result.reward + ' tokens.');
     } else if (kind === 'lose') {
-      Sfx.play('defeat');
       say('Back to the pile they go. Nothing\'s wasted here. Give them better parts.', 4);
-    } else say('Retreat! Live to rot another day.', 2.5);
+      announce('Defeated. ' + result.lost.length + ' creatures fell apart into the machine. ' + result.reward + ' tokens.');
+    } else {
+      say('Retreat! Live to rot another day.', 2.5);
+      announce('Retreated. ' + result.reward + ' tokens.');
+    }
     Telemetry.log('battleEnd', { kind, stage: Game.stage, reward: result.reward, lost: result.lost.length });
   }
 
@@ -8855,7 +8975,11 @@ Scenes.battle = (() => {
         if (u.burnT > 0 && vchance(bdt * 10)) fx.add({ x: u.x + vrand(-6, 6), y: u.y - vrand(4, bodyH(u)), vy: -30, life: 0.4, color: vpick([PAL.A, PAL.L, PAL.R]) });
       }
       for (const p of sim.projectiles) if (!p.done && vchance(0.6)) fx.add({ x: p.x, y: p.y + vrand(-2, 2), vx: -p.vx * 0.05, vy: vrand(-10, 10), life: 0.25, color: vpick([PAL.A, PAL.L, PAL.R]) });
-      if (sim.over && !result) finish(sim.won ? 'win' : 'lose');
+      if (sim.over && !result) {
+        if (!ending) beginEnding();
+        endT += realDt;
+        if (endT > (sim.won ? (isFinalStage(Game.stage) ? 2.4 : 0.6) : 1.6)) finish(sim.won ? 'win' : 'lose');
+      }
     }
     if (phase === 'done') {
       resultT += realDt;
@@ -8867,24 +8991,24 @@ Scenes.battle = (() => {
     if (Input.hit('down')) { menuSel = (menuSel + 1) % items.length; Sfx.play('ui_hover'); }
     menuSel = clamp(menuSel, 0, items.length - 1);
     if (Input.hit('a')) { const it = items[menuSel]; if (it && !it.disabled) it.act(); else Sfx.play('ui_deny'); }
-    if (Input.hit('b') && phase === 'done') Engine.go('shop');
+    if (Input.hit('b') && phase === 'done') Engine.go(result.won ? 'end' : 'shop');
     UI.set(items.map((it, i) => ({ id: 'bm' + i, x: 12, y: 212 + i * 16, w: 94, h: 15, label: it.label, disabled: it.disabled, kind: 'menu', idx: i, silent: false,
       onClick: () => { menuSel = i; it.act(); } })));
   };
 
   function menuItems() {
     if (phase === 'done') {
+      if (result.won) return [{ label: 'CONTINUE', act: () => Engine.go('end') }];
       const canGo = Game.canFight() && result.kind === 'win';
       return [
         { label: 'BACK TO SHOP', act: () => Engine.go('shop') },
         { label: 'FIGHT ON', disabled: !canGo, act: () => Engine.go('battle') },
       ];
     }
-    const cd = sim.zapCd;
+    const cd = sim.zapCd, over = sim.over;
     return [
-      phase === 'ready' ? { label: 'FIGHT', act: start } : { label: cd > 0 ? `ZAP  ${Math.ceil(cd)}s` : 'ZAP', disabled: cd > 0, act: zap },
-      { label: 'ABILITIES', disabled: true, act: () => { say('Abilities come from parts. Try a Demon Skull. Or a Black Heart.', 3); } },
-      { label: 'RETREAT', act: retreat },
+      phase === 'ready' ? { label: 'FIGHT', act: start } : { label: cd > 0 ? `ZAP  ${Math.ceil(cd)}s` : 'ZAP', disabled: cd > 0 || over, act: zap },
+      { label: 'RETREAT', disabled: over, act: retreat },
     ];
   }
 
@@ -8908,6 +9032,11 @@ Scenes.battle = (() => {
     Draw.rect(ctx, x, y, w, 2, '#33274a');
     Draw.rect(ctx, x, y, Math.round(w * k), 2, u.team === 'ally' ? (k > 0.35 ? '#5fd3a0' : PAL.L) : '#e8405a');
     Draw.rect(ctx, x, y, Math.round(w * k), 1, u.team === 'ally' ? '#9bf5c8' : '#ff7d8a');
+    // who is who and how hurt, without colour: a heart marks yours, a cross marks theirs, a hurt bar is dashed,
+    // and your creatures show their health as a number
+    Font.draw(ctx, u.team === 'ally' ? '♥' : '×', x - 7, y - 2, { font: 'small', color: u.team === 'ally' ? '#9bf5c8' : '#ff7d8a', shadow: PAL.k });
+    if (k < 0.35) for (let i = 0; i < w * k; i += 2) Draw.rect(ctx, x + i, y, 1, 2, PAL.k);
+    if (u.team === 'ally') Font.draw(ctx, String(Math.ceil(u.hp)), x + w + 3, y - 2, { font: 'small', color: k < 0.35 ? '#f6c64b' : '#cdb892', shadow: PAL.k });
   }
 
   S.draw = function (ctx) {
@@ -8940,7 +9069,7 @@ Scenes.battle = (() => {
     Font.draw(ctx, String(Game.tokens + (phase === 'fight' ? sim.goldKills : 0)), 20, 8, { color: PAL.L, shadow: PAL.k });
 
     // menu
-    Draw.panel(ctx, 8, 206, 102, 58, 'slate');
+    Draw.panel(ctx, 8, 206, 102, 44, 'slate');
     menuItems().forEach((it, i) => {
       const y = 212 + i * 16;
       const hot = UI.buttons[i] && UI.buttons[i].hover;
@@ -8957,7 +9086,7 @@ Scenes.battle = (() => {
 
   function drawResult(ctx) {
     const r = result;
-    const title = r.kind === 'win' ? 'STAGE CLEARED!' : r.kind === 'lose' ? 'DEFEATED' : 'RETREATED';
+    const title = r.kind === 'win' ? (r.won ? 'THE LANDLORD IS DOWN!' : 'STAGE CLEARED!') : r.kind === 'lose' ? 'DEFEATED' : 'RETREATED';
     const col = r.kind === 'win' ? '#9be38f' : r.kind === 'lose' ? '#e8405a' : '#cdb892';
     const k = clamp(resultT / 0.3, 0, 1);
     Font.draw(ctx, title, 240, 70 - Math.round((1 - easeOutBack(k)) * 20), { scale: 3, color: col, outline: PAL.k, shadow: '#0e0b16', align: 'center', alpha: k });
@@ -9065,6 +9194,7 @@ Scenes.shop = (() => {
       UI.set([]);
       return;
     }
+    if (Input.hit('b')) Overlays.pause();
     chatT -= dt;
     if (chatT < 0 && !Game.talk.visible()) { chatT = vrand(14, 22); say(vpick(IDLE_LINES), 3.2); }
     const h = hint();
@@ -9189,6 +9319,7 @@ Scenes.shop = (() => {
     Font.draw(ctx, String(Game.tokens), 224, 8 - Math.round(tokenPop * 3), { color: PAL.L });
     Font.draw(ctx, 'PARTY ' + Game.party.length, 270, 9, { font: 'small', color: '#a6aec2', align: 'right' });
     if (Game.bestStage) Font.draw(ctx, 'BEST ' + Game.bestStage, 308, 9, { font: 'small', color: '#9be38f', align: 'right' });
+    if (opened) drawStagePreview(ctx, 318, 4, 156, Game.stage);
     // speech bubble
     if (Game.talk.visible()) Game.talk.drawBubble(ctx, REAPER_X - 70, 150, 170, REAPER_X - 8, 158, { anchorBottom: true });
     fx.draw(ctx);
@@ -9499,7 +9630,7 @@ const Overlays = (() => {
 
   // ------------------------------------------------------------------- title
   function title() {
-    const cont = () => { Engine.close(); Game.fromSave(Save.data.run); Scenes.shop.open(true); };
+    const cont = () => { Engine.close(); Game.fromSave(Save.data.run); Save.runActive = true; Scenes.shop.open(true); };
     const fresh = () => { Engine.close(); Game.newGame(); Save.data.records.runs++; Save.reset(); Scenes.shop.open(false); };
     let t = 0;
     const has = Save.hasRun();
@@ -9546,6 +9677,105 @@ const Overlays = (() => {
   }
 
   return { confirm, help, controls, settings, pause, title, toast, drawToast };
+})();
+
+// ------------------------------------------------------------ stage preview
+// "Next: stage 4. 2 Shades, 1 Wisp. Armoured: big hits work." Drawn in the shop and on the slab so the claw
+// has a shopping list (pillar 4). It reads STAGES, so it can never disagree with the fight.
+const HELPS = { wisp: 'armour, health', shade: 'big hits', wraith: 'health, burst' };
+function drawStagePreview(ctx, x, y, w, stage) {
+  if (Game.won) return;
+  const P = stagePreview(Math.min(stage, FINAL_STAGE));
+  const kinds = [...new Set(P.kinds)];
+  let helps = kinds.map((k) => HELPS[k]).join(' / ');
+  while (Font.measure('Helps: ' + helps, 'small') > w - 12 && kinds.length > 1) { kinds.pop(); helps = kinds.map((k) => HELPS[k]).join(' / '); }
+  Draw.panel(ctx, x, y, w, 36, 'dark');
+  Font.draw(ctx, 'NEXT  STAGE ' + P.n + (P.final ? '  ·  THE LANDLORD' : P.boss ? '  ·  BOSS' : ''), x + 6, y + 5, { color: P.boss ? '#f6c64b' : '#ecdcbc', shadow: PAL.k });
+  Font.draw(ctx, P.text + '  (' + [...new Set(P.kinds)].map((k) => ENEMY_KINDS[k].tag).join(', ') + ')', x + 6, y + 16, { font: 'small', color: '#a6aec2', shadow: PAL.k });
+  Font.draw(ctx, 'Helps: ' + helps, x + 6, y + 26, { font: 'small', color: '#9be38f', shadow: PAL.k });
+}
+
+// ==== 37_scene_end.js ====
+// ---------------------------------------------------------------------------
+// END SCENE — the run is over: the Landlord is down. Shows what the run was (time, grabs, creatures) and
+// how it compares with your records. There is no endless mode on purpose (docs/DESIGN.md): it ends, you
+// take a bow, you start again if you want to.
+// ---------------------------------------------------------------------------
+Scenes.end = (() => {
+  const S = {};
+  const fx = new Particles();
+  let t = 0, sel = 0, records = null, newBest = false, mins = 0;
+  const FALL = ['p_skull', 'p_ribcage', 'p_bonearm', 'p_heart', 'p_boneleg', 'p_wolfskull', 'p_goldheart', 'p_crownskull', 'p_tentacle', 'p_wings', 'p_fleshArm', 'p_ogrearm'];
+  S.pausable = false; // nothing to pause: the run is over
+  S.tracksTime = false;
+
+  S.enter = function () {
+    t = 0; sel = 0; fx.list = [];
+    mins = Math.max(1, Math.round(Game.playTime / 60));
+    const r = Save.data && Save.data.records;
+    newBest = !!(r && r.wins <= 1) || !!(r && r.bestWinMinutes && mins <= r.bestWinMinutes);
+    records = r ? Object.assign({}, r) : null;
+    Music.play('shop');
+    Game.talk.say('That is the last of the rent. I may cry. Or rattle. Hard to tell.', 4);
+    Telemetry.log('runWon', { minutes: mins });
+    if (typeof Announce !== 'undefined') Announce.say(`The Landlord is down. You won in ${mins} minutes. ${Game.stats.grabs} grabs, ${Game.stats.creatures} creatures made.`);
+  };
+  S.exit = function () {};
+
+  // NEW RUN starts at once; TITLE leaves no finished run behind and shows the title with START
+  function again() { Game.newGame(); Save.data.records.runs++; Save.reset(); Engine.go('shop', {}); setTimeout(() => Game.talk.say('Again? The machine restocked itself. Funny, that.', 3), 400); }
+  function toTitle() { Save.data.run = null; Save.runActive = false; Save.flush(); Game.newGame(); Engine.go('shop', { title: true }); Overlays.title(); }
+
+  S.update = function (dt) {
+    t += dt;
+    fx.update(dt);
+    Game.talk.update(dt);
+    if (chanceTick(dt)) {
+      const spr = vpick(FALL);
+      if (SPR.has(spr)) fx.add({ kind: 'spr', spr, x: vrand(10, 470), y: -12, vx: vrand(-14, 14), vy: vrand(30, 60), ay: 10, vr: vrand(-2, 2), life: 6, fade: false, solid: undefined });
+    }
+    const items = [{ label: 'NEW RUN', act: again }, { label: 'TITLE', act: toTitle }];
+    if (Input.hit('left') || Input.hit('up')) { sel = (sel + items.length - 1) % items.length; Sfx.play('ui_hover'); }
+    if (Input.hit('right') || Input.hit('down')) { sel = (sel + 1) % items.length; Sfx.play('ui_hover'); }
+    if (Input.hit('a') && t > 0.8) { Sfx.play('ui_click'); items[sel].act(); return; }
+    UI.set(items.map((it, i) => ({ id: 'end' + i, x: 150 + i * 100, y: 238, w: 80, h: 18, label: it.label, style: i === 0 ? 'green' : 'dark', onClick: () => { sel = i; if (t > 0.8) it.act(); } })));
+    S.items = items;
+  };
+  // parts fall at about 3 a second
+  let acc = 0;
+  function chanceTick(dt) { acc += dt * 3; if (acc >= 1) { acc -= 1; return true; } return false; }
+
+  S.draw = function (ctx) {
+    BG.graveyard(ctx, t);
+    ctx.fillStyle = 'rgba(14,11,22,0.55)'; ctx.fillRect(0, 0, W, H);
+    fx.draw(ctx);
+    const k = clamp(t / 0.6, 0, 1);
+    Font.draw(ctx, 'THE LANDLORD IS DOWN', 240, 22 - Math.round((1 - easeOutBack(k)) * 24), { scale: 3, color: '#f6c64b', outline: PAL.k, shadow: '#80501c', align: 'center', alpha: k });
+    Font.draw(ctx, 'The graveyard is yours. The rent, at long last, is paid.', 240, 56, { color: '#ecdcbc', outline: PAL.k, align: 'center', alpha: k });
+    // the run in numbers
+    Draw.panel(ctx, 100, 74, 280, 128, 'slate');
+    const st = Game.stats, tries = st.grabs || 1;
+    const rows = [
+      ['TIME', mins + ' min'],
+      ['GRABS', st.grabs + '  (' + Math.round((100 * st.parts) / tries) + '% brought a part home)'],
+      ['PARTS WON', String(st.parts)],
+      ['CREATURES', st.creatures + '  (' + st.lost + ' fell apart)'],
+      ['FIGHTS', st.fightsWon + ' won, ' + st.fightsLost + ' lost, ' + st.retreats + ' retreats'],
+      ['ZAPS', String(st.zaps)],
+    ];
+    rows.forEach(([a, b], i) => { Font.draw(ctx, a, 116, 84 + i * 14, { font: 'small', color: '#a6aec2' }); Font.draw(ctx, b, 190, 83 + i * 14, { color: '#fff6e3', shadow: PAL.k }); });
+    if (records) {
+      Draw.rect(ctx, 112, 170, 256, 1, '#3b3654');
+      Font.draw(ctx, `RUNS WON ${records.wins}    FASTEST ${records.bestWinMinutes || mins} MIN` + (newBest ? '    ★ NEW BEST' : ''), 240, 178, { font: 'small', color: newBest ? '#f6c64b' : '#7a6a9a', align: 'center' });
+      Font.draw(ctx, 'Times are for you; there is no board. Nobody is watching. Well. The Reaper is.', 240, 190, { font: 'small', color: '#5b4a78', align: 'center' });
+    }
+    for (const b of UI.buttons) if (b.id && b.id.startsWith('end')) UI.drawButton(ctx, b);
+    const b = UI.buttons.find((x) => x.id === 'end' + sel);
+    if (b) Draw.frame(ctx, b.x - 2, b.y - 2, b.w + 4, b.h + 4, '#fff6e3');
+    if (Game.talk.visible()) Game.talk.drawBubble(ctx, 90, 204, 300, null, null, {});
+  };
+
+  return S;
 })();
 
 // ==== 39_crashlog.js ====
@@ -9845,6 +10075,7 @@ if (typeof BG === 'undefined') {
       if (Q.get('stage')) Game.stage = +Q.get('stage');
       first = Q.get('scene');
       Save.enabled = !Q.get('nosave') && !first; // a jump-in URL must never overwrite a real save
+      Save.runActive = Save.enabled && false; // a dev page still has to choose a run like anyone else
     }
     Engine.go(first && Scenes[first] ? first : 'shop', { skipIntro: !!first }, 'cut');
     if (!first) Overlays.title();

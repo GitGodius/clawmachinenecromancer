@@ -83,8 +83,11 @@ const Settings = {
     const out = {}, used = new Set();
     for (const a of KEY_ACTIONS) {
       const src = saved && Array.isArray(saved[a.id]) ? saved[a.id] : DEFAULT_KEYS[a.id];
-      const slots = [0, 1].map((i) => (typeof src[i] === 'string' && src[i].length < 24 && !used.has(src[i]) ? src[i] : null));
-      slots.forEach((c) => c && used.add(c));
+      const slots = [null, null];
+      for (let i = 0; i < 2; i++) { // one at a time, so the same key twice in one action is caught too
+        const c = src[i];
+        if (typeof c === 'string' && c.length < 24 && !used.has(c)) { slots[i] = c; used.add(c); }
+      }
       if (a.fixed && !slots[0] && !slots[1]) { // never leave a movement key unbound
         const fb = DEFAULT_KEYS[a.id].find((c) => c && !used.has(c)) || DEFAULT_KEYS[a.id][0];
         slots[0] = fb; used.add(fb);
@@ -145,6 +148,8 @@ const MIGRATIONS = {};
 
 const Save = {
   enabled: true,     // tools turn this off so bots never write a save
+  runActive: false,  // true once the player has started or continued a run THIS session. Until then the boot-time
+                     // blank game must never overwrite the run that is waiting in the file (it once did)
   readOnly: false,   // set when the file came from a newer build: we may read what we understand, never write
   notes: [],         // things to tell the player once ("2 parts from an older version were retired")
   problem: null,     // 'corrupt' | 'newer' | null
@@ -187,7 +192,7 @@ const Save = {
   // flush the current settings + run to storage (debounced by callers via Save.soon)
   flush() {
     if (!Save.enabled || Save.readOnly || !Save.data) return false;
-    if (typeof Game !== 'undefined') Save.data.run = Game.toSave();
+    if (typeof Game !== 'undefined' && Save.runActive) Save.data.run = Game.won ? null : Game.toSave(); // a finished run is not something to continue
     Save.data.settings = JSON.parse(JSON.stringify(Settings.v));
     Save.data.v = SAVE_VERSION;
     const prev = Store.get(SAVE_KEY);
@@ -200,8 +205,9 @@ const Save = {
   },
   reset() { // "new run" keeps settings and records, drops only the run
     if (Save.data) Save.data.run = null;
+    Save.runActive = true; // from here the game in memory IS the run
     Save.flush();
   },
-  wipe() { Save.data = Save.blank(); Settings.load(null); Store.remove(SAVE_KEY); },
+  wipe() { Save.data = Save.blank(); Save.runActive = false; Settings.load(null); Store.remove(SAVE_KEY); },
   hasRun() { return !!(Save.data && Save.data.run); },
 };

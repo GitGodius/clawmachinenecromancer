@@ -421,9 +421,41 @@ const UI = {
   buttons: [],
   tooltip: null,
   hoverId: null,
+  focusId: null, // keyboard / gamepad focus, for scenes that opt in with `uiNav` (the slab): arrows move it, confirm presses it
   set(buttons) { this.buttons = buttons; },
+  focusable() { return this.buttons.filter((b) => !b.hidden && b.kind !== 'hot' && b.w > 0); },
+  focused() { return this.focusId ? this.buttons.find((b) => b.id === this.focusId) : null; },
+  // move focus to the nearest button in a direction (centre to centre; sideways drift counts double)
+  moveFocus(dx, dy) {
+    const list = this.focusable();
+    if (!list.length) return;
+    const cur = this.focused();
+    if (!cur) { this.focusId = list[0].id; return; }
+    const cx = cur.x + cur.w / 2, cy = cur.y + cur.h / 2;
+    let best = null, bs = 1e9;
+    for (const b of list) {
+      if (b === cur) continue;
+      const ax = b.x + b.w / 2 - cx, ay = b.y + b.h / 2 - cy;
+      const along = ax * dx + ay * dy, across = Math.abs(ax * dy) + Math.abs(ay * dx);
+      if (along <= 1) continue;
+      const sc = along + across * 2;
+      if (sc < bs) { bs = sc; best = b; }
+    }
+    if (best) { this.focusId = best.id; Sfx.play('ui_hover'); } else Sfx.play('ui_deny');
+  },
   update() {
     const m = Input.mouse;
+    if (Engine.scene && Engine.scene.uiNav && !Engine.overlays.length && !Engine.trans) {
+      if (m.moved) this.focusId = null; // the mouse takes over
+      const dir = [['left', -1, 0], ['right', 1, 0], ['up', 0, -1], ['down', 0, 1]].find(([a]) => Input.hit(a));
+      if (dir) this.moveFocus(dir[1], dir[2]);
+      const f = this.focused();
+      if (f && !this.buttons.includes(f)) this.focusId = null;
+      if (f && Input.hit('a')) {
+        if (f.disabled) { Sfx.play('ui_deny'); if (f.onDeny) f.onDeny(); }
+        else if (f.onClick) { f.pressT = 1; if (!f.silent) Sfx.play(f.sound || 'ui_click'); f.onClick(); }
+      }
+    } else if (this.focusId && !(Engine.scene && Engine.scene.uiNav)) this.focusId = null;
     let hover = null;
     for (const b of this.buttons) {
       if (b.hidden) continue;
@@ -461,20 +493,27 @@ const UI = {
     }
   },
   drawOverlay(ctx) {
-    if (AudioSys.muted) Font.draw(ctx, 'MUTED (M)', W - 3, H - 9, { font: 'small', color: '#7a6a9a', align: 'right' });
-    if (this.tooltip && Input.mouse.x >= 0) {
-      const lines = Array.isArray(this.tooltip) ? this.tooltip : [this.tooltip];
-      const w = Math.max(...lines.map((l) => Font.measure(typeof l === 'string' ? l : l.t))) + 10;
-      const h = lines.length * 10 + 6;
-      let x = Math.round(Input.mouse.x + 8), y = Math.round(Input.mouse.y + 10);
-      if (x + w > W - 2) x = W - 2 - w;
-      if (y + h > H - 2) y = Math.round(Input.mouse.y - h - 4);
-      Draw.panel(ctx, x, y, w, h, 'dark');
-      lines.forEach((l, i) => {
-        const o = typeof l === 'string' ? { t: l, c: '#ecdcbc' } : l;
-        Font.draw(ctx, o.t, x + 5, y + 4 + i * 10, { color: o.c, shadow: PAL.k });
-      });
+    if (AudioSys.muted) Font.draw(ctx, 'MUTED (' + Settings.hint('mute') + ')', W - 3, H - 9, { font: 'small', color: '#7a6a9a', align: 'right' });
+    const fb = Engine.overlays.length ? null : this.focused();
+    if (fb) {
+      Draw.frame(ctx, fb.x - 2, fb.y - 2, fb.w + 4, fb.h + 4, '#000000');
+      Draw.frame(ctx, fb.x - 1, fb.y - 1, fb.w + 2, fb.h + 2, '#fff6e3');
+      if (fb.tip) this.drawTip(ctx, fb.tip, fb.x + fb.w + 4, fb.y);
     }
+    if (this.tooltip && Input.mouse.x >= 0 && !fb) this.drawTip(ctx, this.tooltip, Input.mouse.x + 8, Input.mouse.y + 10, Input.mouse.y);
+  },
+  drawTip(ctx, tip, tx, ty, flipY) {
+    const lines = Array.isArray(tip) ? tip : [tip];
+    const w = Math.max(...lines.map((l) => Font.measure(typeof l === 'string' ? l : l.t))) + 10;
+    const h = lines.length * 10 + 6;
+    let x = Math.round(tx), y = Math.round(ty);
+    if (x + w > W - 2) x = Math.max(2, Math.round(W - 2 - w));
+    if (y + h > H - 2) y = flipY != null ? Math.round(flipY - h - 4) : H - 2 - h;
+    Draw.panel(ctx, x, y, w, h, 'dark');
+    lines.forEach((l, i) => {
+      const o = typeof l === 'string' ? { t: l, c: '#ecdcbc' } : l;
+      Font.draw(ctx, o.t, x + 5, y + 4 + i * 10, { color: o.c, shadow: PAL.k });
+    });
   },
 };
 
@@ -485,6 +524,7 @@ class Talker {
     if (!force && (this.busy() || this.queue.length)) { this.queue.push([text, hold]); return; }
     this.queue = [];
     this.text = text; this.shown = 0; this.t = 0; this.hold = hold;
+    if (typeof Announce !== 'undefined') Announce.say(text);
   }
   sayRandom(lines, hold) { this.say(vpick(lines), hold); }
   busy() { return this.text && this.shown < this.text.length; }

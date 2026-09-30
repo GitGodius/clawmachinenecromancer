@@ -14,12 +14,13 @@ Scenes.battle = (() => {
   let sim = null;
   let t = 0, phase = 'ready', result = null, menuSel = 0, logLines = [], resultT = 0;
   let coinsShown = 0, bolts = [], fightStage = 1;
+  let endT = 0, ending = false; // the beat between the last blow and the result screen
   const say = (x, h) => Game.talk.say(x, h);
   const log = (s) => { logLines.push(s); if (logLines.length > 2) logLines.shift(); };
   const bodyH = (u) => (u.team === 'ally' ? -rigLayout(u.c.slots).top : { wisp: 26, shade: 32, wraith: 48 }[u.kind]);
 
   S.enter = function () {
-    t = 0; phase = 'ready'; result = null; menuSel = 0; logLines = []; resultT = 0; bolts = []; fightStage = Game.stage;
+    t = 0; phase = 'ready'; result = null; menuSel = 0; logLines = []; resultT = 0; bolts = []; fightStage = Game.stage; endT = 0; ending = false;
     fx.list = []; debris.list = [];
     sim = new BattleSim({ party: Game.party, stage: Game.stage, onEvent: onSim });
     for (const u of sim.units) { u.bob = vrand(0, 6); u.flashT = 0; }
@@ -45,11 +46,12 @@ Scenes.battle = (() => {
   function zap() {
     if (phase !== 'fight' || !sim.zap()) return Sfx.play('ui_deny');
     Telemetry.c.zaps++;
+    Game.tally('zaps');
     log('ZAP! Your creations surge with borrowed life.');
   }
 
   function retreat() {
-    if (phase !== 'fight' && phase !== 'ready') return;
+    if ((phase !== 'fight' && phase !== 'ready') || sim.over) return;
     Telemetry.c.retreats++;
     sim.stop();
     finish('retreat');
@@ -132,20 +134,40 @@ Scenes.battle = (() => {
     }
   }
 
+  const announce = (s) => { if (typeof Announce !== 'undefined') Announce.say(s); };
+
+  // The last blow lands. Give it room: music goes quiet, time slows, and only then do the results appear.
+  // A win is short and bright; the final boss is long and quiet; a defeat is quiet and a little cruel.
+  function beginEnding() {
+    ending = true; endT = 0;
+    const lose = !sim.won, final = sim.won && isFinalStage(Game.stage);
+    if (lose || final) Music.stop(); // silence is the effect
+    if (final) { Engine.slowmo(0.25, 1.4); Engine.hitPause(0.25); Engine.flash('#fff6e3', 0.5); Engine.shake(7, 0.8); }
+    if (lose) { Engine.slowmo(0.4, 0.9); setTimeout(() => Sfx.play('heartbeat'), 300); setTimeout(() => Sfx.play('heartbeat'), 950); Sfx.play('defeat'); }
+  }
+
   function finish(kind) {
     if (result) return;
     phase = 'done';
     resultT = 0;
     result = Game.applyBattle(sim, kind);
     coinsShown = 0;
-    if (kind === 'win') {
+    if (kind === 'win' && result.won) {
+      Sfx.play('victory');
+      say('Well. Somebody had to. The rent is... paid. Go on: take a bow.', 4);
+      announce('The Landlord is down. You win.');
+    } else if (kind === 'win') {
       Sfx.play('victory');
       Music.duck(0.8, 2.5);
       say(vpick(['The graveyard provides.', 'Look at them. My little war crimes.', 'Victory! Mostly intact, even.']), 3);
+      announce('Stage cleared. ' + result.reward + ' tokens.');
     } else if (kind === 'lose') {
-      Sfx.play('defeat');
       say('Back to the pile they go. Nothing\'s wasted here. Give them better parts.', 4);
-    } else say('Retreat! Live to rot another day.', 2.5);
+      announce('Defeated. ' + result.lost.length + ' creatures fell apart into the machine. ' + result.reward + ' tokens.');
+    } else {
+      say('Retreat! Live to rot another day.', 2.5);
+      announce('Retreated. ' + result.reward + ' tokens.');
+    }
     Telemetry.log('battleEnd', { kind, stage: Game.stage, reward: result.reward, lost: result.lost.length });
   }
 
@@ -167,7 +189,11 @@ Scenes.battle = (() => {
         if (u.burnT > 0 && vchance(bdt * 10)) fx.add({ x: u.x + vrand(-6, 6), y: u.y - vrand(4, bodyH(u)), vy: -30, life: 0.4, color: vpick([PAL.A, PAL.L, PAL.R]) });
       }
       for (const p of sim.projectiles) if (!p.done && vchance(0.6)) fx.add({ x: p.x, y: p.y + vrand(-2, 2), vx: -p.vx * 0.05, vy: vrand(-10, 10), life: 0.25, color: vpick([PAL.A, PAL.L, PAL.R]) });
-      if (sim.over && !result) finish(sim.won ? 'win' : 'lose');
+      if (sim.over && !result) {
+        if (!ending) beginEnding();
+        endT += realDt;
+        if (endT > (sim.won ? (isFinalStage(Game.stage) ? 2.4 : 0.6) : 1.6)) finish(sim.won ? 'win' : 'lose');
+      }
     }
     if (phase === 'done') {
       resultT += realDt;
@@ -179,24 +205,24 @@ Scenes.battle = (() => {
     if (Input.hit('down')) { menuSel = (menuSel + 1) % items.length; Sfx.play('ui_hover'); }
     menuSel = clamp(menuSel, 0, items.length - 1);
     if (Input.hit('a')) { const it = items[menuSel]; if (it && !it.disabled) it.act(); else Sfx.play('ui_deny'); }
-    if (Input.hit('b') && phase === 'done') Engine.go('shop');
+    if (Input.hit('b') && phase === 'done') Engine.go(result.won ? 'end' : 'shop');
     UI.set(items.map((it, i) => ({ id: 'bm' + i, x: 12, y: 212 + i * 16, w: 94, h: 15, label: it.label, disabled: it.disabled, kind: 'menu', idx: i, silent: false,
       onClick: () => { menuSel = i; it.act(); } })));
   };
 
   function menuItems() {
     if (phase === 'done') {
+      if (result.won) return [{ label: 'CONTINUE', act: () => Engine.go('end') }];
       const canGo = Game.canFight() && result.kind === 'win';
       return [
         { label: 'BACK TO SHOP', act: () => Engine.go('shop') },
         { label: 'FIGHT ON', disabled: !canGo, act: () => Engine.go('battle') },
       ];
     }
-    const cd = sim.zapCd;
+    const cd = sim.zapCd, over = sim.over;
     return [
-      phase === 'ready' ? { label: 'FIGHT', act: start } : { label: cd > 0 ? `ZAP  ${Math.ceil(cd)}s` : 'ZAP', disabled: cd > 0, act: zap },
-      { label: 'ABILITIES', disabled: true, act: () => { say('Abilities come from parts. Try a Demon Skull. Or a Black Heart.', 3); } },
-      { label: 'RETREAT', act: retreat },
+      phase === 'ready' ? { label: 'FIGHT', act: start } : { label: cd > 0 ? `ZAP  ${Math.ceil(cd)}s` : 'ZAP', disabled: cd > 0 || over, act: zap },
+      { label: 'RETREAT', disabled: over, act: retreat },
     ];
   }
 
@@ -220,6 +246,11 @@ Scenes.battle = (() => {
     Draw.rect(ctx, x, y, w, 2, '#33274a');
     Draw.rect(ctx, x, y, Math.round(w * k), 2, u.team === 'ally' ? (k > 0.35 ? '#5fd3a0' : PAL.L) : '#e8405a');
     Draw.rect(ctx, x, y, Math.round(w * k), 1, u.team === 'ally' ? '#9bf5c8' : '#ff7d8a');
+    // who is who and how hurt, without colour: a heart marks yours, a cross marks theirs, a hurt bar is dashed,
+    // and your creatures show their health as a number
+    Font.draw(ctx, u.team === 'ally' ? '♥' : '×', x - 7, y - 2, { font: 'small', color: u.team === 'ally' ? '#9bf5c8' : '#ff7d8a', shadow: PAL.k });
+    if (k < 0.35) for (let i = 0; i < w * k; i += 2) Draw.rect(ctx, x + i, y, 1, 2, PAL.k);
+    if (u.team === 'ally') Font.draw(ctx, String(Math.ceil(u.hp)), x + w + 3, y - 2, { font: 'small', color: k < 0.35 ? '#f6c64b' : '#cdb892', shadow: PAL.k });
   }
 
   S.draw = function (ctx) {
@@ -252,7 +283,7 @@ Scenes.battle = (() => {
     Font.draw(ctx, String(Game.tokens + (phase === 'fight' ? sim.goldKills : 0)), 20, 8, { color: PAL.L, shadow: PAL.k });
 
     // menu
-    Draw.panel(ctx, 8, 206, 102, 58, 'slate');
+    Draw.panel(ctx, 8, 206, 102, 44, 'slate');
     menuItems().forEach((it, i) => {
       const y = 212 + i * 16;
       const hot = UI.buttons[i] && UI.buttons[i].hover;
@@ -269,7 +300,7 @@ Scenes.battle = (() => {
 
   function drawResult(ctx) {
     const r = result;
-    const title = r.kind === 'win' ? 'STAGE CLEARED!' : r.kind === 'lose' ? 'DEFEATED' : 'RETREATED';
+    const title = r.kind === 'win' ? (r.won ? 'THE LANDLORD IS DOWN!' : 'STAGE CLEARED!') : r.kind === 'lose' ? 'DEFEATED' : 'RETREATED';
     const col = r.kind === 'win' ? '#9be38f' : r.kind === 'lose' ? '#e8405a' : '#cdb892';
     const k = clamp(resultT / 0.3, 0, 1);
     Font.draw(ctx, title, 240, 70 - Math.round((1 - easeOutBack(k)) * 20), { scale: 3, color: col, outline: PAL.k, shadow: '#0e0b16', align: 'center', alpha: k });

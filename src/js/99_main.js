@@ -27,6 +27,7 @@
       if (Q.get('stage')) Game.stage = +Q.get('stage');
       first = Q.get('scene');
       Save.enabled = !Q.get('nosave') && !first; // a jump-in URL must never overwrite a real save
+      Save.runActive = Save.enabled && false; // a dev page still has to choose a run like anyone else
     }
     Engine.go(first && Scenes[first] ? first : 'shop', { skipIntro: !!first }, 'cut');
     if (!first) Overlays.title();

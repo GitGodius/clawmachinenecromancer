@@ -24,6 +24,7 @@ Scenes.slab = (() => {
       say(Game.inventory.length ? 'The slab. Click a part to stitch it on. Any combination works. Some work better.' : 'Nothing to stitch. The machine is that way.', 4);
     } else if (!Game.inventory.length && !count()) say('Empty-handed? The claw awaits.', 2.5);
   };
+  S.uiNav = true; // arrows move a focus ring over the parts, slots and buttons; confirm presses it
   S.exit = function () {};
   // Parts stitched on but not yet brought to life still belong to the player: a save counts them as bag parts.
   S.buildTypes = () => (build ? Object.values(build).filter(Boolean).map((i) => i.type) : []);
@@ -64,6 +65,7 @@ Scenes.slab = (() => {
     Music.duck(0.7, 3);
     Sfx.play('zap');
     Telemetry.c.creatures++;
+    Game.tally('creatures');
     Telemetry.log('create', { name: c.name, parts: c.parts().join(',') });
   }
 
@@ -119,7 +121,7 @@ Scenes.slab = (() => {
       if (life.stage === 2 && lt > 3.2) finishLife();
     }
     if (Input.hit('b') && !life) Engine.go('shop');
-    if (Input.hit('a') && !life && canBring()) bringToLife();
+    if (Input.hit('a') && !UI.focusId && !life && canBring()) bringToLife();
     buildButtons();
   };
 
@@ -178,11 +180,11 @@ Scenes.slab = (() => {
     drawCreature(ctx, ty, FEET_X + shakeX, FEET_Y + shakeY, {
       scale: 2, t, anim: 'idle', ghost: life ? null : 'rgba(155,227,143,0.16)', noLump: !count(),
       eyes: life && life.stage >= 2 ? '#9be38f' : null,
-      flash: life && life.stage === 1 && Math.sin(life.t * 50) > 0,
+      flash: life && life.stage === 1 && !Settings.v.reduceFlash && Math.sin(life.t * 50) > 0,
     });
     if (life && life.stage >= 1 && life.t < 1.3) {
       for (const b of life.bolts) {
-        if (Math.sin(life.t * 40 + b.seed) > -0.3) {
+        if (Settings.v.reduceFlash || Math.sin(life.t * 40 + b.seed) > -0.3) {
           Draw.bolt(ctx, b.x0, 0, FEET_X + vrand(-20, 20), FEET_Y - vrand(40, 110), '#e7f7ff', 10, b.seed + Math.floor(life.t * 20));
           Draw.glow(ctx, FEET_X, FEET_Y - 70, 90, '#6fd3ff', 0.25);
         }
@@ -213,6 +215,7 @@ Scenes.slab = (() => {
         if (r.glow) Draw.frame(ctx, b.x + 1, b.y + 1, b.w - 2, b.h - 2, r.glow);
         if (b.hover) Draw.frame(ctx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, '#fff6e3');
         drawPartIcon(ctx, b.item.type, b.x + b.w / 2, b.y + b.h / 2 + (b.hover ? -1 : 0), 24);
+        if (r.order) Font.draw(ctx, '★'.repeat(r.order), b.x + 3, b.y + 3, { font: 'small', color: r.color, shadow: PAL.k }); // rarity as a count, not just a colour
       }
     }
     if (!Game.inventory.length) Font.drawWrapped(ctx, 'Empty. Win parts from the claw machine.', 12, 86, 100, { color: '#7a6a9a' });
@@ -248,7 +251,7 @@ Scenes.slab = (() => {
       const pw = clamp(c.power / 80, 0, 1);
       Draw.rect(ctx, 400, y0 + 27, 72, 4, PAL.k);
       Draw.rect(ctx, 401, y0 + 28, Math.round(70 * pw), 2, pw > 0.66 ? PAL.L : pw > 0.33 ? PAL.d : PAL.B);
-      Font.draw(ctx, 'POWER', 368, y0 + 26, { font: 'small', color: '#7a6a9a' });
+      Font.draw(ctx, 'POWER ' + c.power, 368, y0 + 26, { font: 'small', color: '#a6aec2' });
     }
 
     // party roster
@@ -267,6 +270,7 @@ Scenes.slab = (() => {
         const k = c.hp / c.maxHp;
         Draw.rect(ctx, x + 3, y + 35, 28, 3, PAL.k);
         Draw.rect(ctx, x + 4, y + 36, Math.round(26 * k), 1, k > 0.5 ? PAL.d : k > 0.25 ? PAL.L : PAL.R);
+        if (k <= 0.5) for (let i = 0; i < 26 * k; i += 2) Draw.rect(ctx, x + 4 + i, y + 36, 1, 1, PAL.k); // hurt: the bar is dashed
         if (selected === c) Font.draw(ctx, 'UNSTITCH?', x + 17, y + 42, { font: 'small', color: PAL.R, align: 'center' });
       }
     }
@@ -274,6 +278,7 @@ Scenes.slab = (() => {
     // buttons (life, nav, paging)
     for (const b of bs) if (!b.kind || b.kind === 'big') UI.drawButton(ctx, b);
 
+    drawStagePreview(ctx, 126, 22, 230, Game.stage);
     // dialogue box
     if (Game.talk.visible()) {
       Draw.panel(ctx, 124, 236, 232, 30, 'dark');
