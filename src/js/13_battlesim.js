@@ -51,7 +51,7 @@ class BattleSim {
   makeAlly(c, i) {
     return {
       team: 'ally', c, name: c.name.split(' ')[0], x: ARENA.allyStartX - i * ARENA.allyGap, y: ARENA.ground + ARENA.allyLanes[i],
-      hp: c.hp, maxHp: c.maxHp, atk: c.atk, def: c.def, atkTime: c.atkTime, speed: c.moveSpeed, range: c.range,
+      hp: c.hp, maxHp: c.maxHp, atk: c.atk, hitList: c.hits.slice(), def: c.def, atkTime: c.atkTime, speed: c.moveSpeed, range: c.range,
       dodge: c.dodge, crit: c.crit, traits: c.traits, cd: rand(0.1, 0.5), state: 'idle', animT: 0, kx: 0,
       stunT: 0, bleedT: 0, burnT: 0, hasteT: 0, hits: 0, revived: false, dead: false,
     };
@@ -63,7 +63,7 @@ class BattleSim {
     const hp = Math.round(K.hp * m * CONFIG.enemyHp);
     return {
       team: 'enemy', kind, K, name: K.name, x: ARENA.enemyStartX + i * ARENA.enemyGap + (K.boss ? 20 : 0), y: ARENA.ground + ARENA.enemyLanes[i % 5],
-      hp, maxHp: hp, atk: K.atk * m * CONFIG.enemyAtk, def: K.def || 0, atkTime: K.atkTime, speed: K.speed, range: K.range,
+      hp, maxHp: hp, atk: K.atk * m * CONFIG.enemyAtk, hitList: null, def: K.def || 0, atkTime: K.atkTime, speed: K.speed, range: K.range,
       dodge: K.dodge, crit: 0.05, traits: [], cd: rand(0.3, 0.9), state: 'idle', animT: 0, kx: 0,
       stunT: 0, bleedT: 0, burnT: 0, hasteT: 0, hits: 0, dead: false,
     };
@@ -110,7 +110,7 @@ class BattleSim {
     if (def.dead) return;
     const isAlly = att.team === 'ally';
     if (chance(def.dodge)) { this.emit('miss', { att, def }); return; }
-    let dmg = att.atk * rand(0.85, 1.15) * (opts.mult || 1);
+    let dmg = (opts.base != null ? opts.base : att.atk) * rand(0.85, 1.15) * (opts.mult || 1);
     if (isAlly) dmg *= CONFIG.allyAtk * this.royalBonus();
     const crit = chance(att.crit);
     if (crit) dmg *= 2;
@@ -186,7 +186,12 @@ class BattleSim {
             this.projectiles.push(p);
             this.emit('fireball', { u, p });
           } else if (dist <= u.range + 8) {
-            this.dealHit(u, f);
+            // one strike per arm, a beat apart; armour bites each one separately
+            const list = u.hitList && u.hitList.length ? u.hitList : [u.atk];
+            list.forEach((h, k) => {
+              if (k === 0) this.dealHit(u, f, { base: h });
+              else this.later.push({ t: 0.12 * k, fn: () => { const foe = f.dead ? this.nearestFoe(u) : f; if (foe && !u.dead) this.dealHit(u, foe, { base: h }); } });
+            });
             if (u.traits.includes('whip') && chance(0.25)) this.later.push({ t: 0.18, fn: () => { if (!f.dead && !u.dead) this.dealHit(u, f, { mult: 0.6 }); } });
           } else this.emit('whiff', { u });
         }

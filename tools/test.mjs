@@ -46,6 +46,31 @@ function invariants() {
   if (game.has('checkStageTable')) for (const msg of game.run('checkStageTable()')) fail(msg);
 }
 
+// ------------------------------------------------------------- accessibility lint
+// "Reduce flashing" promises nothing blinks faster than 1.5 times a second. This scans the source for on/off
+// blinkers (Math.sin(t * N) compared with a number) that run faster than that and are not routed through
+// blinkOn() or guarded by reduceFlash. New code that strobes fails here instead of in a player's eyes.
+function flashLint() {
+  const dir = new URL('../src/js/', import.meta.url);
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js'))) {
+    fs.readFileSync(new URL(f, dir), 'utf8').split('\n').forEach((line, i) => {
+      if (/blinkOn|reduceFlash|calm-ok/.test(line)) return;
+      for (const m of line.matchAll(/Math\.sin\(\s*[\w.]+\s*\*\s*(\d+(?:\.\d+)?)[^)]*\)\s*(?:>|<)/g)) {
+        const hz = +m[1] / (2 * Math.PI);
+        if (hz > 1.5) fail(`${f}:${i + 1} blinks at ${hz.toFixed(1)} Hz without blinkOn()/reduceFlash: ${line.trim().slice(0, 90)}`);
+      }
+      // things that blink or strobe without a sine: the white hit-flash, and bolts that re-seed or jitter every frame
+      if (/\.flashT\s*=\s*0\.\d/.test(line)) fail(`${f}:${i + 1} sets a hit-flash without a reduceFlash guard: ${line.trim().slice(0, 90)}`);
+      if (/Draw\.bolt\(/.test(line) && !/function bolt|const bolt|bolt\(ctx, x0/.test(line)) fail(`${f}:${i + 1} draws a bolt without a reduceFlash guard: ${line.trim().slice(0, 90)}`);
+      if (/col = vpick\(/.test(line) && /on\s*=/.test(line)) fail(`${f}:${i + 1} re-rolls a light's colour every frame without a reduceFlash guard: ${line.trim().slice(0, 90)}`);
+      for (const m of line.matchAll(/Math\.floor\(\s*[\w.]+\s*\*\s*(\d+(?:\.\d+)?)\s*\)\s*%\s*(\d+)/g)) {
+        const hz = +m[1] / +m[2];
+        if (+m[1] > 1.5 && hz > 1.5) fail(`${f}:${i + 1} chases at ${hz.toFixed(1)} Hz without reduceFlash: ${line.trim().slice(0, 90)}`);
+      }
+    });
+  }
+}
+
 // ---------------------------------------------------------------------- golden
 const COMBOS = {
   empty: {},
@@ -222,11 +247,25 @@ function saves() {
   for (const a of game.get('KEY_ACTIONS')) for (const c of Settings.v.keys[a.id]) if (c) { if (seen.has(c)) dup = true; seen.add(c); }
   eq(dup, false, 'no key code is bound to two actions');
   Settings.resetKeys(); eq(Settings.v.keys.pause, ['KeyP', null], 'reset restores the defaults');
+  // a bind that would strand a movement/confirm action is refused, never silently undone
+  eq(Settings.wouldStrand('pause', 'Space'), null, 'Space is safe to move: Drop has Enter too');
+  Settings.bind('pause', 0, 'Space'); Settings.bind('mute', 0, 'Enter');
+  eq(Settings.v.keys.a.some(Boolean), true, 'Drop/confirm still has a key after taking both of its defaults');
+  eq(Settings.v.keys.pause[0], 'Space', 'the earlier binding was not silently undone');
+  eq(Settings.wouldStrand('mute', 'Space'), null, 'pause is optional: taking its key is fine');
+  Settings.resetKeys();
 
   // settings reach the game
   Settings.v.autoCarry = true; Settings.v.shake = 0.5; Settings.v.carryTime = 16; Settings.apply();
   eq([CONFIG.carryManual, CONFIG.shake, CONFIG.carryTime], [0, 0.5, 16], 'settings are applied to CONFIG');
   Settings.load(null); Settings.apply();
+
+  // a foreign or hand-edited save must not throw
+  for (const bad of ['{ inventory: {} }', '{ party: [null, 3, "x"] }', '{ machine: "abc" }', '{ party: [{ slots: 5 }] }', '{ stats: 7, seen: "no" }']) {
+    let threw = null; try { game.run(`Game.fromSave(${bad})`); } catch (e) { threw = e.message; }
+    eq(threw, null, `fromSave(${bad}) does not throw`);
+  }
+  game.run('Game.newGame()');
 
   // a run round-trips: build one with the bot, save it, load it, compare
   game.seed(9); game.run('Game.newGame()');
@@ -284,6 +323,7 @@ function saves() {
 // --------------------------------------------------------------------- runner
 const sections = [
   ['invariants', invariants, false],
+  ['flashing', flashLint, false],
   ['rules', rules, false],
   ['saves', saves, false],
   ['creatures', creatures, true],

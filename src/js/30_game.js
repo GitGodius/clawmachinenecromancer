@@ -13,7 +13,6 @@ const Game = {
   talk: null,
   recent: [], // last won part types (for the bag display)
   seen: {},
-  started: false,
   won: false, // the final boss is down: the run is over
   playTime: 0, // seconds of play in this run (menus and pauses don't count)
   stats: {},   // what this run has done, for the end screen (saved with the run)
@@ -73,10 +72,12 @@ const Game = {
     this.playTime = num(run.playTime, 0, 0, 1e7);
     this.seen = run.seen && typeof run.seen === 'object' ? run.seen : {};
     for (const k of Object.keys(this.stats)) this.stats[k] = Math.round(num(run.stats && run.stats[k], 0, 0, 1e6));
-    for (const t of run.inventory || []) { const f = fix(t); if (f) this.inventory.push(makePartItem(f)); }
-    for (const c of (run.party || []).slice(0, 3)) {
+    const list = (v) => (Array.isArray(v) ? v : []); // a hand-edited or foreign save must not throw
+    for (const t of list(run.inventory)) { const f = fix(t); if (f) this.inventory.push(makePartItem(f)); }
+    for (const c of list(run.party).slice(0, 3)) {
+      if (!c || typeof c !== 'object') continue;
       const slots = {};
-      for (const [slot, t] of Object.entries(c.slots || {})) { const f = t ? fix(t) : null; if (f && RIG_SLOTS.some(([k]) => k === slot)) slots[slot] = f; }
+      for (const [slot, t] of Object.entries(c.slots && typeof c.slots === 'object' ? c.slots : {})) { const f = t ? fix(t) : null; if (f && RIG_SLOTS.some(([k]) => k === slot)) slots[slot] = f; }
       if (!Object.keys(slots).length) continue;
       const cr = new Creature(slots);
       cr.hp = num(c.hp, cr.maxHp, 1, cr.maxHp);
@@ -84,7 +85,7 @@ const Game = {
       cr.kills = Math.round(num(c.kills, 0, 0, 9999));
       this.party.push(cr);
     }
-    const machine = (run.machine || []).map(fix).filter(Boolean);
+    const machine = list(run.machine).map(fix).filter(Boolean);
     const first = machine.slice(0, 22);
     this.sim.layoutPile(first.length >= 5 ? first : [...first, ...Array.from({ length: 5 - first.length }, () => randomPartType())]);
     machine.slice(22).forEach((t, i) => this.sim.queueSpawn(t, i * 0.25));

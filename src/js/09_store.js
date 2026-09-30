@@ -99,8 +99,20 @@ const Settings = {
 
   // Put `code` on `action` slot `slot`. A key that was somewhere else moves (the old spot goes empty), and
   // a movement action can never be left with no key. Returns what it took the key away from, if anything.
+  // Which action would be left with no key at all if `code` moved to `action`? (null = none, so it is safe.)
+  // Movement, menu, drop and back must always keep a key; refusing is kinder than silently giving one back.
+  wouldStrand(action, code) {
+    const keys = Settings.v.keys;
+    for (const a of KEY_ACTIONS) {
+      if (!a.fixed || a.id === action) continue;
+      const i = keys[a.id].indexOf(code);
+      if (i >= 0 && !keys[a.id][1 - i]) return a.id;
+    }
+    return null;
+  },
   bind(action, slot, code) {
     const keys = Settings.v.keys;
+    if (Settings.wouldStrand(action, code)) return false;
     let stolen = null;
     for (const a of KEY_ACTIONS) for (let i = 0; i < 2; i++) if (keys[a.id][i] === code && !(a.id === action && i === slot)) { keys[a.id][i] = null; stolen = a.id; }
     keys[action][slot] = code;
@@ -125,6 +137,7 @@ const Settings = {
     CONFIG.carryManual = v.autoCarry ? 0 : 1;
     CONFIG.carryTime = v.carryTime;
     if (typeof Input !== 'undefined' && Input.setBindings) Input.setBindings(v.keys);
+    if (typeof window !== 'undefined' && window.refreshHint) window.refreshHint(); // the line under the game shows the player's own keys
   },
   // "M" for a key code, for on-screen hints ("KeyM" -> "M", "ArrowLeft" -> "←")
   keyName(code) {

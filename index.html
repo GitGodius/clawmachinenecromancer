@@ -143,7 +143,6 @@ const CONFIG_META = [
   ['Claw', 'clawStiffness', 90, 0, 400, 5, 'Keep-upright stiffness'],
   ['Claw', 'carryManual', 1, 0, 1, 1, 'Steer carry manually (0 = auto return)'],
   ['Claw', 'carryTime', 8, 0, 30, 1, 'Carry timer s (0 = off)'],
-  ['Claw', 'aimTime', 0, 0, 30, 1, 'Aim timer s (0 = off)'],
   ['Pile', 'partCount', 22, 5, 40, 1, 'Parts in machine (refill)'],
   ['Pile', 'gravity', 30, 5, 80, 1, 'Gravity'],
   ['Pile', 'partFriction', 0.55, 0, 1.5, 0.05, 'Part friction'],
@@ -152,13 +151,13 @@ const CONFIG_META = [
   ['Pile', 'twitchRate', 0.45, 0, 4, 0.05, 'Living-part twitches /s'],
   ['Pile', 'twitchForce', 1, 0, 4, 0.1, 'Twitch strength'],
   ['Pile', 'rareBoost', 1, 0, 5, 0.1, 'Rare odds ×'],
-  ['Economy', 'startTokens', 6, 1, 40, 1, 'Starting tokens'],
-  ['Economy', 'winTokens', 3, 0, 12, 1, 'Tokens per battle won (+stage)'],
+  ['Economy', 'startTokens', 7, 1, 40, 1, 'Starting tokens'],
+  ['Economy', 'winTokens', 4, 0, 12, 1, 'Tokens per battle won (+stage)'],
   ['Economy', 'restockParts', 3, 0, 10, 1, 'Parts restocked per battle'],
   ['Economy', 'pityTokens', 3, 0, 10, 1, 'Pity tokens when broke'],
-  ['Economy', 'partialPay', 0.8, 0, 1, 0.05, 'Share of the win pay a lost/retreated fight earns per damage dealt'],
+  ['Economy', 'partialPay', 0.7, 0, 1, 0.05, 'Share of the win pay a lost/retreated fight earns per damage dealt'],
   ['Economy', 'ladderMax', 4, 0, 12, 1, 'Most extra tokens the Reaper adds after repeated failed fights'],
-  ['Battle', 'enemyGrowth', 0.18, 0.05, 0.5, 0.01, 'Enemy HP and ATK growth per stage'],
+  ['Battle', 'enemyGrowth', 0.14, 0.05, 0.5, 0.01, 'Enemy HP and ATK growth per stage'],
   ['Battle', 'enemyHp', 1, 0.2, 3, 0.05, 'Enemy HP ×'],
   ['Battle', 'enemyAtk', 1, 0.2, 3, 0.05, 'Enemy ATK ×'],
   ['Battle', 'allyAtk', 1, 0.2, 3, 0.05, 'Creature ATK ×'],
@@ -168,7 +167,6 @@ const CONFIG_META = [
   ['Juice', 'hitPause', 1, 0, 3, 0.1, 'Hit-pause ×'],
   ['Juice', 'slowmo', 1, 0, 1, 1, 'Slow-mo on near wins'],
   ['Juice', 'dropGuide', 1, 0, 1, 1, 'Show drop guide'],
-  ['Juice', 'physDebug', 0, 0, 1, 1, 'Draw physics shapes'],
 ];
 const CONFIG = {};
 for (const m of CONFIG_META) CONFIG[m[1]] = m[2];
@@ -4270,8 +4268,20 @@ const Settings = {
 
   // Put `code` on `action` slot `slot`. A key that was somewhere else moves (the old spot goes empty), and
   // a movement action can never be left with no key. Returns what it took the key away from, if anything.
+  // Which action would be left with no key at all if `code` moved to `action`? (null = none, so it is safe.)
+  // Movement, menu, drop and back must always keep a key; refusing is kinder than silently giving one back.
+  wouldStrand(action, code) {
+    const keys = Settings.v.keys;
+    for (const a of KEY_ACTIONS) {
+      if (!a.fixed || a.id === action) continue;
+      const i = keys[a.id].indexOf(code);
+      if (i >= 0 && !keys[a.id][1 - i]) return a.id;
+    }
+    return null;
+  },
   bind(action, slot, code) {
     const keys = Settings.v.keys;
+    if (Settings.wouldStrand(action, code)) return false;
     let stolen = null;
     for (const a of KEY_ACTIONS) for (let i = 0; i < 2; i++) if (keys[a.id][i] === code && !(a.id === action && i === slot)) { keys[a.id][i] = null; stolen = a.id; }
     keys[action][slot] = code;
@@ -4296,6 +4306,7 @@ const Settings = {
     CONFIG.carryManual = v.autoCarry ? 0 : 1;
     CONFIG.carryTime = v.carryTime;
     if (typeof Input !== 'undefined' && Input.setBindings) Input.setBindings(v.keys);
+    if (typeof window !== 'undefined' && window.refreshHint) window.refreshHint(); // the line under the game shows the player's own keys
   },
   // "M" for a key code, for on-screen hints ("KeyM" -> "M", "ArrowLeft" -> "←")
   keyName(code) {
@@ -4401,7 +4412,7 @@ const PART_DEFS = {
   ribcage:    { name: 'Ribcage',        slot: 'torso', rarity: 'common',   sprite: 'p_ribcage',  mat: 'bone',  density: 0.8, hp: 20 },
   stitched:   { name: 'Stitched Torso', slot: 'torso', rarity: 'common',   sprite: 'p_stitched', mat: 'flesh', density: 1.0, hp: 26 },
   armor:      { name: 'Rusty Cuirass',  slot: 'torso', rarity: 'uncommon', sprite: 'p_armor',    mat: 'metal', density: 1.5, hp: 24, def: 2, trait: 'plated' },
-  ogregut:    { name: 'Ogre Gut',       slot: 'torso', rarity: 'rare',     sprite: 'p_ogregut',  mat: 'flesh', density: 1.1, hp: 50, trait: 'hefty', grip: 0.8 },
+  ogregut:    { name: 'Ogre Gut',       slot: 'torso', rarity: 'rare',     sprite: 'p_ogregut',  mat: 'flesh', density: 1.1, hp: 42, trait: 'hefty', grip: 0.8 },
   // arms
   bonearm:    { name: 'Bony Arm',   slot: 'arm', rarity: 'common',   sprite: 'p_bonearm',  mat: 'bone',   density: 1.0, atk: 3, alive: true },
   fleshArm:   { name: 'Fleshy Arm', slot: 'arm', rarity: 'common',   sprite: 'p_fleshArm', mat: 'flesh',  density: 1.0, atk: 4, hp: 2, alive: true },
@@ -4772,7 +4783,6 @@ class ClawSim {
         this.prongs('relax');
         this.driveCarriage(move * CONFIG.clawMoveSpeed, h);
         this.ropeLen = approach(this.ropeLen, M.topLen, CONFIG.liftSpeed * h);
-        if (CONFIG.aimTime > 0 && this.aimActive && this.stateT > CONFIG.aimTime) this.emit('aimTimeout');
         break;
       case 'drop': {
         this.prongs('open');
@@ -5122,11 +5132,11 @@ class ClawSim {
 //   Wraith  is a boss. Big, slow, a lot of health, so sustain and burst answer it.
 // ---------------------------------------------------------------------------
 const ENEMY_KINDS = {
-  wisp:   { name: 'Wisp',   hp: 10, atk: 2, def: 0, atkTime: 1.1, speed: 34, range: 24, dodge: 0.1, spr: 'wisp', hover: 10, w: 14, tag: 'swarm',
+  wisp:   { name: 'Wisp',   hp: 10, atk: 3, def: 0, atkTime: 0.8, speed: 34, range: 24, dodge: 0.1, spr: 'wisp', hover: 10, w: 14, tag: 'swarm',
             ask: 'Swarms in. Many small hits: armour and health answer it.' },
-  shade:  { name: 'Shade',  hp: 24, atk: 4, def: 2, atkTime: 1.25, speed: 22, range: 28, dodge: 0.05, spr: 'shade', hover: 3, w: 22, tag: 'armoured',
+  shade:  { name: 'Shade',  hp: 24, atk: 4, def: 3, atkTime: 1.25, speed: 22, range: 28, dodge: 0.05, spr: 'shade', hover: 3, w: 22, tag: 'armoured',
             ask: 'Armoured. Small hits barely scratch it: big hits answer it.' },
-  wraith: { name: 'Wraith', hp: 70, atk: 8, def: 0, atkTime: 1.6, speed: 15, range: 38, dodge: 0, spr: 'wraith', hover: 4, w: 36, boss: true, tag: 'boss',
+  wraith: { name: 'Wraith', hp: 50, atk: 8, def: 3, atkTime: 1.6, speed: 15, range: 38, dodge: 0, spr: 'wraith', hover: 4, w: 36, boss: true, tag: 'boss',
             ask: 'A boss. Huge and slow: staying power and burst answer it.' },
 };
 
@@ -5249,7 +5259,7 @@ class BattleSim {
   makeAlly(c, i) {
     return {
       team: 'ally', c, name: c.name.split(' ')[0], x: ARENA.allyStartX - i * ARENA.allyGap, y: ARENA.ground + ARENA.allyLanes[i],
-      hp: c.hp, maxHp: c.maxHp, atk: c.atk, def: c.def, atkTime: c.atkTime, speed: c.moveSpeed, range: c.range,
+      hp: c.hp, maxHp: c.maxHp, atk: c.atk, hitList: c.hits.slice(), def: c.def, atkTime: c.atkTime, speed: c.moveSpeed, range: c.range,
       dodge: c.dodge, crit: c.crit, traits: c.traits, cd: rand(0.1, 0.5), state: 'idle', animT: 0, kx: 0,
       stunT: 0, bleedT: 0, burnT: 0, hasteT: 0, hits: 0, revived: false, dead: false,
     };
@@ -5261,7 +5271,7 @@ class BattleSim {
     const hp = Math.round(K.hp * m * CONFIG.enemyHp);
     return {
       team: 'enemy', kind, K, name: K.name, x: ARENA.enemyStartX + i * ARENA.enemyGap + (K.boss ? 20 : 0), y: ARENA.ground + ARENA.enemyLanes[i % 5],
-      hp, maxHp: hp, atk: K.atk * m * CONFIG.enemyAtk, def: K.def || 0, atkTime: K.atkTime, speed: K.speed, range: K.range,
+      hp, maxHp: hp, atk: K.atk * m * CONFIG.enemyAtk, hitList: null, def: K.def || 0, atkTime: K.atkTime, speed: K.speed, range: K.range,
       dodge: K.dodge, crit: 0.05, traits: [], cd: rand(0.3, 0.9), state: 'idle', animT: 0, kx: 0,
       stunT: 0, bleedT: 0, burnT: 0, hasteT: 0, hits: 0, dead: false,
     };
@@ -5308,7 +5318,7 @@ class BattleSim {
     if (def.dead) return;
     const isAlly = att.team === 'ally';
     if (chance(def.dodge)) { this.emit('miss', { att, def }); return; }
-    let dmg = att.atk * rand(0.85, 1.15) * (opts.mult || 1);
+    let dmg = (opts.base != null ? opts.base : att.atk) * rand(0.85, 1.15) * (opts.mult || 1);
     if (isAlly) dmg *= CONFIG.allyAtk * this.royalBonus();
     const crit = chance(att.crit);
     if (crit) dmg *= 2;
@@ -5384,7 +5394,12 @@ class BattleSim {
             this.projectiles.push(p);
             this.emit('fireball', { u, p });
           } else if (dist <= u.range + 8) {
-            this.dealHit(u, f);
+            // one strike per arm, a beat apart; armour bites each one separately
+            const list = u.hitList && u.hitList.length ? u.hitList : [u.atk];
+            list.forEach((h, k) => {
+              if (k === 0) this.dealHit(u, f, { base: h });
+              else this.later.push({ t: 0.12 * k, fn: () => { const foe = f.dead ? this.nearestFoe(u) : f; if (foe && !u.dead) this.dealHit(u, foe, { base: h }); } });
+            });
             if (u.traits.includes('whip') && chance(0.25)) this.later.push({ t: 0.18, fn: () => { if (!f.dead && !u.dead) this.dealHit(u, f, { mult: 0.6 }); } });
           } else this.emit('whiff', { u });
         }
@@ -5574,7 +5589,7 @@ const Engine = {
   fault(e, where) {
     this.errorRun++;
     if (typeof CrashLog !== 'undefined') CrashLog.report(e, where + ' in ' + (this.sceneName || '?')); else console.error(e);
-    if (this.errorRun >= 30 && this.sceneName !== 'shop' && this.scenes.shop) { this.errorRun = 0; this.overlays.length = 0; this.trans = null; this._switch(this.scenes.shop, { skipIntro: true }); }
+    if (this.errorRun >= 30 && this.sceneName !== 'shop' && this.scenes.shop) { this.errorRun = 0; this.closeAll(); this.trans = null; this._switch(this.scenes.shop, { skipIntro: true }); }
   },
 
   // style: 'dither' (pixel fade through black) | 'cut'
@@ -5621,6 +5636,14 @@ const Engine = {
     if (!this.overlays.some((x) => !x.live)) Music.dim(false);
     if (this.overlays.length) { const t = this.overlays[this.overlays.length - 1]; if (t.resume) t.resume(); }
   },
+  // Close everything properly (exit hooks, key capture, dimmed music). Never write `overlays.length = 0`: it
+  // skips all of that and leaves the music dim and the next key press swallowed by a rebind.
+  closeAll() {
+    while (this.overlays.length) { const o = this.overlays.pop(); if (o.exit) { try { o.exit(); } catch (e) { /* closing must not fail */ } } }
+    Input.capture = null; Input.mouse.down = false; Input.pressed = {};
+    UI.set([]);
+    Music.dim(false);
+  },
   get top() { return this.overlays.length ? this.overlays[this.overlays.length - 1] : null; },
   // true while something is frozen the world: the pause menu says "no game actions" and means it
   get frozen() { return this.overlays.some((o) => !o.live); },
@@ -5656,7 +5679,7 @@ const Engine = {
       try { this.scene.update(dt, realDt); this.errorRun = 0; } catch (e) { this.fault(e, 'update'); }
     }
     const ov = this.top;
-    if (ov) { try { ov.update(realDt); } catch (e) { this.fault(e, 'overlay'); this.overlays.length = 0; } }
+    if (ov) { try { ov.update(realDt); } catch (e) { this.fault(e, 'overlay'); this.closeAll(); } }
     UI.update(realDt);
     if (typeof Debug !== 'undefined' && Debug.update) Debug.update(realDt);
 
@@ -5684,7 +5707,7 @@ const Engine = {
       ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
     }
-    for (const o of this.overlays) { try { o.draw(ctx); } catch (e) { this.fault(e, 'overlay draw'); this.overlays.length = 0; } }
+    for (const o of this.overlays.slice()) { try { o.draw(ctx); } catch (e) { this.fault(e, 'overlay draw'); this.closeAll(); break; } }
     if (typeof Overlays !== 'undefined') Overlays.drawToast(ctx, realDt);
     UI.drawOverlay(ctx);
     if (this.trans) {
@@ -5849,6 +5872,7 @@ const UI = {
   buttons: [],
   tooltip: null,
   hoverId: null,
+  focusAt: [0, 0],
   focusId: null, // keyboard / gamepad focus, for scenes that opt in with `uiNav` (the slab): arrows move it, confirm presses it
   set(buttons) { this.buttons = buttons; },
   focusable() { return this.buttons.filter((b) => !b.hidden && b.kind !== 'hot' && b.w > 0); },
@@ -5877,8 +5901,12 @@ const UI = {
       if (m.moved) this.focusId = null; // the mouse takes over
       const dir = [['left', -1, 0], ['right', 1, 0], ['up', 0, -1], ['down', 0, 1]].find(([a]) => Input.hit(a));
       if (dir) this.moveFocus(dir[1], dir[2]);
-      const f = this.focused();
-      if (f && !this.buttons.includes(f)) this.focusId = null;
+      let f = this.focused();
+      if (f) this.focusAt = [f.x + f.w / 2, f.y + f.h / 2];
+      else if (this.focusId) { // the focused button is gone (a part was stitched): carry on from the nearest one
+        const near = this.focusable().map((b) => [Math.hypot(b.x + b.w / 2 - this.focusAt[0], b.y + b.h / 2 - this.focusAt[1]), b]).sort((a, b) => a[0] - b[0])[0];
+        this.focusId = near ? near[1].id : null; f = this.focused();
+      }
       if (f && Input.hit('a')) {
         if (f.disabled) { Sfx.play('ui_deny'); if (f.onDeny) f.onDeny(); }
         else if (f.onClick) { f.pressT = 1; if (!f.silent) Sfx.play(f.sound || 'ui_click'); f.onClick(); }
@@ -5954,7 +5982,6 @@ class Talker {
     this.text = text; this.shown = 0; this.t = 0; this.hold = hold;
     if (typeof Announce !== 'undefined') Announce.say(text);
   }
-  sayRandom(lines, hold) { this.say(vpick(lines), hold); }
   busy() { return this.text && this.shown < this.text.length; }
   update(dt) {
     if (!this.text) { if (this.queue.length) this.say(...this.queue.shift()); return; }
@@ -7363,7 +7390,7 @@ const BG = (() => {
       ctx.fillRect(LANTERN.x - 1, 27, 3, 4);
       ctx.fillStyle = S.cols.f1; ctx.fillRect(LANTERN.x, 25, 1, 5);
       ctx.fillStyle = S.cols.f0; ctx.fillRect(LANTERN.x, 28, 1, 2);
-      ctx.fillStyle = S.cols.f1; ctx.fillRect(LANTERN.x + ((Math.floor(t * 8) % 3) - 1), 24, 1, 1);
+      ctx.fillStyle = S.cols.f1; ctx.fillRect(LANTERN.x + ((Math.floor(t * (Settings.v.reduceFlash ? 1.4 : 8)) % 3) - 1), 24, 1, 1);
       for (let i = 0; i < S.flames.length; i++) drawFlame(ctx, S, S.flames[i][0], S.flames[i][1], t, i, false);
       // dust drifting through the lantern light
       ctx.fillStyle = S.cols.mote;
@@ -7476,7 +7503,6 @@ const Game = {
   talk: null,
   recent: [], // last won part types (for the bag display)
   seen: {},
-  started: false,
   won: false, // the final boss is down: the run is over
   playTime: 0, // seconds of play in this run (menus and pauses don't count)
   stats: {},   // what this run has done, for the end screen (saved with the run)
@@ -7536,10 +7562,12 @@ const Game = {
     this.playTime = num(run.playTime, 0, 0, 1e7);
     this.seen = run.seen && typeof run.seen === 'object' ? run.seen : {};
     for (const k of Object.keys(this.stats)) this.stats[k] = Math.round(num(run.stats && run.stats[k], 0, 0, 1e6));
-    for (const t of run.inventory || []) { const f = fix(t); if (f) this.inventory.push(makePartItem(f)); }
-    for (const c of (run.party || []).slice(0, 3)) {
+    const list = (v) => (Array.isArray(v) ? v : []); // a hand-edited or foreign save must not throw
+    for (const t of list(run.inventory)) { const f = fix(t); if (f) this.inventory.push(makePartItem(f)); }
+    for (const c of list(run.party).slice(0, 3)) {
+      if (!c || typeof c !== 'object') continue;
       const slots = {};
-      for (const [slot, t] of Object.entries(c.slots || {})) { const f = t ? fix(t) : null; if (f && RIG_SLOTS.some(([k]) => k === slot)) slots[slot] = f; }
+      for (const [slot, t] of Object.entries(c.slots && typeof c.slots === 'object' ? c.slots : {})) { const f = t ? fix(t) : null; if (f && RIG_SLOTS.some(([k]) => k === slot)) slots[slot] = f; }
       if (!Object.keys(slots).length) continue;
       const cr = new Creature(slots);
       cr.hp = num(c.hp, cr.maxHp, 1, cr.maxHp);
@@ -7547,7 +7575,7 @@ const Game = {
       cr.kills = Math.round(num(c.kills, 0, 0, 9999));
       this.party.push(cr);
     }
-    const machine = (run.machine || []).map(fix).filter(Boolean);
+    const machine = list(run.machine).map(fix).filter(Boolean);
     const first = machine.slice(0, 22);
     this.sim.layoutPile(first.length >= 5 ? first : [...first, ...Array.from({ length: 5 - first.length }, () => randomPartType())]);
     machine.slice(22).forEach((t, i) => this.sim.queueSpawn(t, i * 0.25));
@@ -7666,6 +7694,7 @@ Scenes.claw = (() => {
   let neonOff = 0;
   let turnWins = 0;
   let toggleDir = 0; // steering mode 'toggle': tap a direction to start, tap again to stop
+  let toggleTarget = null; // ...and with a pointer: tap the glass and the claw goes there and stops
   const btn = {};
   const toScreen = (x, y) => [(x + GX) * 2, (y + GY) * 2];
   const say = (text, hold) => Game.talk.say(text, hold);
@@ -7742,7 +7771,7 @@ Scenes.claw = (() => {
   // ---------------------------------------------------------------- scene api
   const S = {
     enter() {
-      toggleDir = 0;
+      toggleDir = 0; toggleTarget = null;
       if (!buf) { [buf, g] = mk(BW, BH); buildGlass(); buildFrame(); }
       Music.play('claw');
       idleT = 0;
@@ -7760,7 +7789,7 @@ Scenes.claw = (() => {
       let move = 0;
       const tog = Settings.v.steering === 'toggle';
       if (tog) {
-        if (sim.state !== 'idle' && sim.state !== 'carry') toggleDir = 0;
+        if (sim.state !== 'idle' && sim.state !== 'carry') { toggleDir = 0; toggleTarget = null; }
         else {
           if (Input.hit('left')) toggleDir = toggleDir === -1 ? 0 : -1;
           if (Input.hit('right')) toggleDir = toggleDir === 1 ? 0 : 1;
@@ -7768,13 +7797,25 @@ Scenes.claw = (() => {
         }
         move = toggleDir;
       } else toggleDir = 0;
-      if ((!tog && Input.held('left')) || btn.left.held) move -= 1;
-      if ((!tog && Input.held('right')) || btn.right.held) move += 1;
+      if (!tog && (Input.held('left') || btn.left.held)) move -= 1;
+      if (!tog && (Input.held('right') || btn.right.held)) move += 1;
       // hold the mouse / a finger on the glass to steer the claw toward the pointer
       const mp = Input.mouse;
-      if (!move && mp.down && mp.x >= 14 && mp.x < 374 && mp.y >= 14 && mp.y < 258 && (sim.state === 'idle' || sim.state === 'carry')) {
-        const d = mp.x / 2 - GX - sim.carX;
-        if (Math.abs(d) > 2) move = clamp(d / 10, -1, 1);
+      const onGlass = mp.x >= 14 && mp.x < 374 && mp.y >= 14 && mp.y < 258 && (sim.state === 'idle' || sim.state === 'carry');
+      if (tog) {
+        // tap-to-toggle with a pointer: tap the glass and the claw goes there and stops; tap the arrows to toggle
+        if (mp.pressed && onGlass) toggleTarget = mp.x / 2 - GX;
+        if (toggleTarget != null && !move) {
+          const d = toggleTarget - sim.carX;
+          if (Math.abs(d) < 2 || (sim.state !== 'idle' && sim.state !== 'carry')) toggleTarget = null; else move = clamp(d / 10, -1, 1);
+        }
+        if (toggleDir) toggleTarget = null;
+      } else {
+        toggleTarget = null;
+        if (!move && mp.down && onGlass) {
+          const d = mp.x / 2 - GX - sim.carX;
+          if (Math.abs(d) > 2) move = clamp(d / 10, -1, 1);
+        }
       }
       if (move) { movedOnce = true; idleT = 0; } else idleT += dt;
       sim.input.move = move;
@@ -7973,8 +8014,9 @@ Scenes.claw = (() => {
   }
 
   function buildButtons() {
-    btn.left = { id: 'cl', x: 398, y: 212, w: 18, h: 16, label: '', hidden: false, silent: true, onClick() {} };
-    btn.right = { id: 'cr', x: 418, y: 212, w: 18, h: 16, label: '', silent: true, onClick() {} };
+    const tap = (d) => () => { if (Settings.v.steering === 'toggle' && (Game.sim.state === 'idle' || Game.sim.state === 'carry')) { toggleDir = toggleDir === d ? 0 : d; toggleTarget = null; } };
+    btn.left = { id: 'cl', x: 398, y: 212, w: 18, h: 16, label: '', hidden: false, silent: true, onClick: tap(-1) };
+    btn.right = { id: 'cr', x: 418, y: 212, w: 18, h: 16, label: '', silent: true, onClick: tap(1) };
     btn.drop = { id: 'ca', x: 398, y: 230, w: 76, h: 14, label: 'DROP', silent: true, onClick: () => S.pressA() };
     btn.back = { id: 'cb', x: 398, y: 247, w: 76, h: 14, label: 'BACK', silent: true, onClick: () => S.back() };
   }
@@ -8090,8 +8132,8 @@ Scenes.claw = (() => {
     for (let i = 0; i < n; i++) {
       const [x, y] = spots[i];
       let on, col;
-      if (winFx > 0) { on = Settings.v.reduceFlash ? (i + Math.floor(t * 1.5)) % 2 === 0 : Math.sin(t * 20 + i * 1.3) > 0; col = vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
-      else { on = (i + Math.floor(t * 7)) % 4 === 0 || (i + Math.floor(t * 7)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
+      if (winFx > 0) { on = Settings.v.reduceFlash ? (i + Math.floor(t * 1.5)) % 2 === 0 : Math.sin(t * 20 + i * 1.3) > 0; col = Settings.v.reduceFlash ? [PAL.l, PAL.r, PAL.C, PAL.p][i % 4] : vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
+      else { const sp = Settings.v.reduceFlash ? 1.2 : 7; on = (i + Math.floor(t * sp)) % 4 === 0 || (i + Math.floor(t * sp)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
       g.fillStyle = on ? col : '#6b3a1c';
       g.fillRect(x, y, 1, 1);
       if (on) { g.fillStyle = on ? 'rgba(255,241,166,0.35)' : ''; g.fillRect(x - 1, y, 3, 1); g.fillRect(x, y - 1, 1, 3); }
@@ -8111,7 +8153,7 @@ Scenes.claw = (() => {
         Font.draw(g, w, 218, 32 + i * 12, { color: col, align: 'center', shadow: dim ? null : '#6b1f48' });
       });
     } else {
-      SPR.has('reaper_face') && SPR.draw(g, Game.talk.talking() && Math.sin(t * 22) > 0 ? (SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face') : 'reaper_face', 205, 36);
+      SPR.has('reaper_face') && SPR.draw(g, Game.talk.talking() && blinkOn(t, 3.5) ? (SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face') : 'reaper_face', 205, 36);
     }
     Draw.panel(g, 197, 73 + Math.round(bagBump), 42, 27, 'dark');
     Draw.panel(g, 197, 102, 42, 31, 'dark');
@@ -8196,7 +8238,7 @@ Scenes.claw = (() => {
     // first-time controls hint, inside the glass, until the player does anything
     if (!movedOnce && sim.state === 'idle' && Game.tokens === CONFIG.startTokens) {
       const a = 0.55 + 0.25 * Math.sin(t * 3);
-      Font.draw(ctx, `${Settings.hint('left')} ${Settings.hint('right')}  or  HOLD MOUSE ON THE GLASS TO STEER`, 190, 96, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
+      Font.draw(ctx, Settings.v.steering === 'toggle' ? `${Settings.hint('left')} ${Settings.hint('right')} TO START AND STOP  or  TAP THE GLASS` : `${Settings.hint('left')} ${Settings.hint('right')}  or  HOLD MOUSE ON THE GLASS TO STEER`, 190, 96, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
       Font.draw(ctx, `THEN  DROP (${Settings.hint('a')})`, 190, 108, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
     }
     // first-time nudge: flash the controls if the player hasn't moved yet
@@ -8281,10 +8323,14 @@ class Creature {
     const legs = [S.legL, S.legR].filter(Boolean).map(D);
     const head = D(S.head);
     let hp = 8 + all.reduce((a, d) => a + (d.hp || 0), 0);
-    let atk = arms.reduce((a, d) => a + (d.atk || 0), 0);
-    if (head) atk += arms.length ? (head.atk || 0) * 0.4 : head.atk || 0; // no arms? it bites
-    if (S.back && D(S.back).atk) atk += D(S.back).atk;
-    if (atk <= 0) atk = 1; // it flops at them, aggressively
+    // Each arm is its own strike, so armour is applied to every arm on its own: two small arms are worth much
+    // less against a Shade than one big one (docs/DESIGN.md, pillar 4). The head's bite and a back part's
+    // attack are shared out across the arms. No arms? It bites: one strike.
+    const extra = (head ? (arms.length ? (head.atk || 0) * 0.4 : head.atk || 0) : 0) + (S.back && D(S.back).atk ? D(S.back).atk : 0);
+    const hits = arms.length ? arms.map((d) => (d.atk || 0) + extra / arms.length) : [extra];
+    let atk = hits.reduce((a, b) => a + b, 0);
+    if (atk <= 0) { atk = 1; hits.length = 0; hits.push(1); } // it flops at them, aggressively
+    this.hits = hits.map((h) => Math.round(h * 100) / 100);
     const spd = legs.reduce((a, d) => a + (d.spd || 0), 0);
     this.traits = [...new Set(all.map((d) => d.trait).filter(Boolean))];
     this.maxHp = Math.round(hp);
@@ -8654,7 +8700,7 @@ Scenes.slab = (() => {
           } else { selected = c; Sfx.play('ui_click'); }
         } });
     });
-    bs.push({ id: 'back', x: 124, y: 4, w: 50, h: 14, label: '◀ SHOP', onClick: () => Engine.go('shop') });
+    bs.push({ id: 'back', x: 124, y: 4, w: 50, h: 14, label: '◀ SHOP', disabled: !!life, onClick: () => Engine.go('shop') });
     bs.push({ id: 'fight', x: 306, y: 4, w: 50, h: 14, label: 'FIGHT ▶', disabled: !Game.canFight() || !!life, style: 'red',
       tip: Game.canFight() ? null : 'Bring someone to life first.', onClick: () => Engine.go('battle') });
     S.buttons = bs;
@@ -8678,7 +8724,9 @@ Scenes.slab = (() => {
     if (life && life.stage >= 1 && life.t < 1.3) {
       for (const b of life.bolts) {
         if (Settings.v.reduceFlash || Math.sin(life.t * 40 + b.seed) > -0.3) {
-          Draw.bolt(ctx, b.x0, 0, FEET_X + vrand(-20, 20), FEET_Y - vrand(40, 110), '#e7f7ff', 10, b.seed + Math.floor(life.t * 20));
+          const calm = Settings.v.reduceFlash; // reduceFlash: steady bolts instead of a flicker
+          Draw.bolt(ctx, b.x0, 0, FEET_X + (calm ? 0 : vrand(-20, 20)), // calm-ok: steady when reduceFlash is on
+             FEET_Y - (calm ? 75 : vrand(40, 110)), '#e7f7ff', 10, calm ? b.seed : b.seed + Math.floor(life.t * 20));
           Draw.glow(ctx, FEET_X, FEET_Y - 70, 90, '#6fd3ff', 0.25);
         }
       }
@@ -8775,7 +8823,7 @@ Scenes.slab = (() => {
     // dialogue box
     if (Game.talk.visible()) {
       Draw.panel(ctx, 124, 236, 232, 30, 'dark');
-      if (SPR.has('reaper_face')) SPR.draw(ctx, Game.talk.talking() && Math.sin(t * 22) > 0 && SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face', 138, 251);
+      if (SPR.has('reaper_face')) SPR.draw(ctx, Game.talk.talking() && blinkOn(t, 3.5) && SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face', 138, 251);
       Font.drawWrapped(ctx, Game.talk.text, 152, 241, 198, { color: '#ecdcbc', maxChars: Math.floor(Game.talk.shown) });
     }
   };
@@ -8854,7 +8902,7 @@ Scenes.battle = (() => {
         break;
       case 'hit': {
         const { att, def, dmg, crit } = d;
-        def.flashT = 0.12;
+        def.flashT = Settings.v.reduceFlash ? 0 : 0.12; // the white hit-flash is a blink: off when flashing is reduced
         const col = crit ? PAL.L : att.team === 'ally' ? '#fff6e3' : PAL.r;
         fx.text(def.x + vrand(-4, 4), def.y - bodyH(def) - 4, crit ? dmg + '!' : String(dmg), col, { font: crit ? 'main' : 'small', scale: crit ? 2 : 1 });
         if (def.team === 'enemy') fx.burst(def.x, def.y - bodyH(def) / 2, crit ? 12 : 6, { speed: 60, ay: -20, drag: 2, life: 0.5, color: ['#1b1526', '#33274a', '#5b4a78'], sizes: [1, 2] });
@@ -8903,6 +8951,7 @@ Scenes.battle = (() => {
       if (by) log(`${by.name} dispatched a ${u.name}.`);
     } else {
       Sfx.play('creature_die');
+      Music.duck(0.6, 1.2); // a small silence: the music leaves the room for a moment when one of yours falls
       Engine.shake(4, 0.35);
       Engine.hitPause(0.1);
       // dismember: every part flies off with a bit of physics
@@ -8936,6 +8985,7 @@ Scenes.battle = (() => {
     if (result) return;
     phase = 'done';
     resultT = 0;
+    for (const u of sim.units) u.flashT = 0; // a unit hit in the last instant would otherwise stay a white silhouette on the result screen
     result = Game.applyBattle(sim, kind);
     coinsShown = 0;
     if (kind === 'win' && result.won) {
@@ -8958,6 +9008,7 @@ Scenes.battle = (() => {
   }
 
   S.cheatWin = function () { sim && sim.killEnemies(); };
+  S.sim = () => sim; // read-only handle for tests and tools
 
   S.update = function (dt, realDt) {
     t += dt;
@@ -8985,8 +9036,10 @@ Scenes.battle = (() => {
       resultT += realDt;
       if (coinsShown < result.reward && resultT > 0.8 + coinsShown * 0.18) { coinsShown++; Sfx.play('coins_count'); }
     }
-    // input
+    // input. The result screen ignores it for a moment so a mashed key or click at the last blow cannot skip
+    // the rewards ("+4 tokens", "3 parts dropped into the machine") before they are read.
     const items = menuItems();
+    if (phase === 'done' && resultT < 0.6) { UI.set([]); return; }
     if (Input.hit('up')) { menuSel = (menuSel + items.length - 1) % items.length; Sfx.play('ui_hover'); }
     if (Input.hit('down')) { menuSel = (menuSel + 1) % items.length; Sfx.play('ui_hover'); }
     menuSel = clamp(menuSel, 0, items.length - 1);
@@ -9057,7 +9110,7 @@ Scenes.battle = (() => {
       } else drawEnemy(ctx, u);
     }
     for (const u of order) if (phase !== 'done' || u.team === 'ally') drawBar(ctx, u);
-    for (const b of bolts) Draw.bolt(ctx, b.x + vrand(-20, 20), 0, b.x, b.y - 30, '#e7f7ff', 9, b.seed + Math.floor(b.t * 30));
+    for (const b of bolts) Draw.bolt(ctx, b.x + (Settings.v.reduceFlash ? 0 : vrand(-20, 20)), 0, b.x, b.y - 30, '#e7f7ff', 9, Settings.v.reduceFlash ? b.seed : b.seed + Math.floor(b.t * 30)); // reduceFlash: a steady bolt, not a flicker
     fx.draw(ctx);
     // projectiles
     for (const p of sim.projectiles) { Draw.glow(ctx, p.x, p.y, 10, '#ffb070', 0.5); Draw.rect(ctx, p.x - 2, p.y - 2, 4, 4, PAL.L); Draw.rect(ctx, p.x - 1, p.y - 1, 2, 2, '#fff'); }
@@ -9194,7 +9247,7 @@ Scenes.shop = (() => {
       UI.set([]);
       return;
     }
-    if (Input.hit('b')) Overlays.pause();
+    if (Input.hit('b') && opened && !Engine.overlays.length) Overlays.pause();
     chatT -= dt;
     if (chatT < 0 && !Game.talk.visible()) { chatT = vrand(14, 22); say(vpick(IDLE_LINES), 3.2); }
     const h = hint();
@@ -9238,7 +9291,7 @@ Scenes.shop = (() => {
     // marquee bulbs
     for (let i = 0; i < 22; i++) {
       const x = MX + 4 + i * 9;
-      const on = (i + Math.floor(t * 5)) % 3 === 0 || !opened && Math.sin(t * 6 + i) > 0.3;
+      const on = (i + Math.floor(t * (Settings.v.reduceFlash ? 1.4 : 5))) % 3 === 0 || !opened && Math.sin(t * 6 + i) > 0.3;
       Draw.rect(ctx, x, MY + 1, 2, 2, on ? PAL.l : '#6b3a1c');
       Draw.rect(ctx, x, MY + 41, 2, 2, !on ? PAL.l : '#6b3a1c');
     }
@@ -9283,7 +9336,7 @@ Scenes.shop = (() => {
     }
     BG.shop(ctx, t, { layer: 'back' });
     // the reaper behind the counter
-    const talking = Game.talk.talking() && Math.sin(t * 24) > 0;
+    const talking = Game.talk.talking() && blinkOn(t, 3.8);
     let rs = 'reaper_idle';
     if (talking && SPR.has('reaper_talk')) rs = 'reaper_talk';
     else if (blinkT < 0 && SPR.has('reaper_blink')) rs = 'reaper_blink';
@@ -9297,7 +9350,7 @@ Scenes.shop = (() => {
       const cx = 436, cy = COUNTER_Y + 1;
       const tail = 'cat_tail' + [0, 1, 2, 1][Math.floor(t * (catMood > 0 ? 8 : 2.5)) % 4];
       if (SPR.has(tail)) SPR.draw(ctx, tail, cx + 6, cy - 3);
-      SPR.draw(ctx, Math.sin(t * 0.9) > 0.97 || catMood > 0 && Math.sin(t * 10) > 0 ? 'cat_blink' : 'cat_sit', cx, cy - (catMood > 1.2 ? 2 : 0));
+      SPR.draw(ctx, Math.sin(t * 0.9) > 0.97 || catMood > 0 && blinkOn(t, 1.6) ? 'cat_blink' : 'cat_sit', cx, cy - (catMood > 1.2 ? 2 : 0));
     }
     // poster text
     const ink = '#4c2270';
@@ -9478,9 +9531,8 @@ const Overlays = (() => {
   }
 
   function help() {
-    const menu = new ListMenu({ title: '', x: 0, y: 0, w: 0, rows: 0, onBack: () => Engine.close(), items: [] });
     Engine.open({
-      update() { menu.update(); if (Input.mouse.pressed || Input.hit('a')) Engine.close(); },
+      update() { UI.set([]); if (Input.anyPressed) { Sfx.play('ui_back'); Engine.close(); } }, // any key or tap closes it
       draw(ctx) {
         dimBackdrop(ctx, 0.82);
         Draw.panel(ctx, 40, 14, 400, 242, 'slate');
@@ -9520,6 +9572,8 @@ const Overlays = (() => {
         if (code === 'Escape') { Sfx.play('ui_back'); return; }
         if (code === 'Backspace' || code === 'Delete') { msg = Settings.unbind(a.id, s) ? a.label + ' cleared.' : 'Every action needs at least one key.'; Sfx.play(msg.endsWith('.') && msg !== 'Every action needs at least one key.' ? 'ui_click' : 'ui_deny'); persist(); return; }
         if (/^F\d+$|^Tab$|^ContextMenu$|^Meta|^Control|^Alt|^Shift/.test(code)) { msg = 'That key is not available.'; Sfx.play('ui_deny'); return; }
+        const strands = Settings.wouldStrand(a.id, code);
+        if (strands) { msg = Settings.keyName(code) + ' is the only key for "' + KEY_ACTIONS.find((x) => x.id === strands).label + '". Give that another key first.'; Sfx.play('ui_deny'); return; }
         const stolen = Settings.bind(a.id, s, code);
         const from = stolen && stolen !== a.id ? KEY_ACTIONS.find((x) => x.id === stolen).label : null;
         msg = Settings.keyName(code) + ' → ' + a.label + (from ? ' (was ' + from + ')' : '');
@@ -9530,7 +9584,10 @@ const Overlays = (() => {
     Engine.open({
       update() {
         UI.set([]);
-        if (capturing) return;
+        if (capturing) { // a tap cancels too: a phone has no Escape
+          if (Input.mouse.pressed) { capturing = null; Input.capture = null; Sfx.play('ui_back'); }
+          return;
+        }
         if (Input.hit('up')) { row = (row + rows - 1) % rows; Sfx.play('ui_hover'); }
         if (Input.hit('down')) { row = (row + 1) % rows; Sfx.play('ui_hover'); }
         if (Input.hit('left')) { slot = 0; Sfx.play('ui_hover'); }
@@ -9596,7 +9653,7 @@ const Overlays = (() => {
       { label: 'Saving', kind: 'info', text: () => (Store.persistent ? 'on' : 'off in this window') },
       { label: 'Copy debug info', kind: 'button', onClick: () => { Platform.copy(CrashLog.text('Debug info'), (ok) => Overlays.toast(ok ? 'Copied. Paste it into a bug report.' : 'Could not copy: it is shown in the report window.')); }, hint: 'Version, browser and the last few errors, ready to paste into a bug report.' },
       { label: 'Report a problem…', kind: 'button', onClick: () => Platform.open(BUILD.issues), hint: BUILD.issues.replace('https://', '') },
-      { label: 'Delete saved run and records…', kind: 'button', onClick: () => confirm('Delete your saved run, records and settings? This cannot be undone.', () => { Save.wipe(); Settings.apply(); Engine.overlays.length = 0; Game.newGame(); Engine.go('shop', { title: true }); Overlays.title(); }, { yesLabel: 'DELETE EVERYTHING', noLabel: 'KEEP', danger: true }) },
+      { label: 'Delete saved run and records…', kind: 'button', onClick: () => confirm('Delete your saved run, records and settings? This cannot be undone.', () => { Save.wipe(); Settings.apply(); Engine.closeAll(); Game.newGame(); Engine.go('shop', { title: true }, 'cut'); Overlays.title(); }, { yesLabel: 'DELETE EVERYTHING', noLabel: 'KEEP', danger: true }) },
       { label: 'About', kind: 'info', text: () => BUILD.name + ' ' + BUILD.version },
     ] });
     Engine.open({ update() { menu.update(); }, draw(ctx) { dimBackdrop(ctx, 0.85); menu.draw(ctx); } });
@@ -9610,7 +9667,7 @@ const Overlays = (() => {
       { label: 'RESUME', kind: 'button', onClick: back },
       { label: 'SETTINGS', kind: 'button', onClick: settings },
       { label: 'HOW TO PLAY', kind: 'button', onClick: help },
-      { label: 'QUIT TO TITLE', kind: 'button', onClick: () => confirm('Back to the title screen? Your run is saved.', () => { Save.flush(); Engine.overlays.length = 0; Engine.go('shop', { title: true }); Overlays.title(); }, { yesLabel: 'QUIT', noLabel: 'STAY' }) },
+      { label: 'QUIT TO TITLE', kind: 'button', onClick: () => confirm('Back to the title screen? Your run is saved.', () => { Save.flush(); Engine.closeAll(); Engine.go('shop', { title: true }, 'cut'); Overlays.title(); }, { yesLabel: 'QUIT', noLabel: 'STAY' }) },
     ] });
     Engine.open({
       pausePanel: true,
@@ -9630,7 +9687,17 @@ const Overlays = (() => {
 
   // ------------------------------------------------------------------- title
   function title() {
-    const cont = () => { Engine.close(); Game.fromSave(Save.data.run); Save.runActive = true; Scenes.shop.open(true); };
+    const cont = () => {
+      try { Game.fromSave(Save.data.run); }
+      catch (e) { // a save we cannot read must not brick the title: report it, keep the file, and leave the title up
+        CrashLog.report(e, 'continue');
+        Game.newGame();
+        Overlays.toast('That saved run could not be loaded. Nothing was changed. Start a new run to play.');
+        return;
+      }
+      Engine.close(); Save.runActive = true; Scenes.shop.open(true);
+      if (Save.notes.length) { Overlays.toast(Save.notes.join(' ')); Save.notes = []; }
+    };
     const fresh = () => { Engine.close(); Game.newGame(); Save.data.records.runs++; Save.reset(); Scenes.shop.open(false); };
     let t = 0;
     const has = Save.hasRun();
@@ -9724,7 +9791,7 @@ Scenes.end = (() => {
 
   // NEW RUN starts at once; TITLE leaves no finished run behind and shows the title with START
   function again() { Game.newGame(); Save.data.records.runs++; Save.reset(); Engine.go('shop', {}); setTimeout(() => Game.talk.say('Again? The machine restocked itself. Funny, that.', 3), 400); }
-  function toTitle() { Save.data.run = null; Save.runActive = false; Save.flush(); Game.newGame(); Engine.go('shop', { title: true }); Overlays.title(); }
+  function toTitle() { Save.data.run = null; Save.runActive = false; Save.flush(); Game.newGame(); Engine.go('shop', { title: true }, 'cut'); Overlays.title(); }
 
   S.update = function (dt) {
     t += dt;
@@ -10013,10 +10080,14 @@ const Announce = {
   // ---- the on-page Menu button: the only way to pause on a phone
   const btn = document.getElementById('menuBtn');
   if (btn) btn.addEventListener('click', () => {
-    if (typeof Engine === 'undefined' || !Engine.scene) return;
-    if (Engine.overlays.length) { const t = Engine.top; if (t && t.pausePanel) Engine.close(); return; }
-    if (Engine.scene.pausable !== false && !Engine.trans) Overlays.pause();
-    const c = document.getElementById('game'); if (c) c.focus({ preventScroll: true });
+    try {
+      if (typeof Engine === 'undefined' || !Engine.scene) return;
+      if (Engine.overlays.length) { const t = Engine.top; if (t && t.pausePanel) Engine.close(); else if (Input.capture) { Input.capture = null; } return; }
+      if (Engine.scene.pausable !== false && !Engine.trans) Overlays.pause();
+    } finally {
+      btn.blur(); // a focused button would eat the Space key that drops the claw
+      const c = document.getElementById('game'); if (c) c.focus({ preventScroll: true });
+    }
   });
 
   // ---- the hint line under the canvas follows the player's own keys
@@ -10027,23 +10098,6 @@ const Announce = {
     el.innerHTML = `Click the game once so it gets your keys. ${k('left')} ${k('right')} steer · ${k('a')} drop · ${k('pause')} pause · ${k('mute')} mute · ${k('fullscreen')} fullscreen. Mouse and touch work too: hold on the glass to steer.`;
   };
 })();
-
-// ==== 98_fallbacks.js ====
-// ---------------------------------------------------------------------------
-// FALLBACKS — keep the game running if an optional module is missing/broken.
-// ---------------------------------------------------------------------------
-if (typeof AudioSys === 'undefined') window.AudioSys = { init() {}, toggleMute() {}, setMuted() {}, setVolumes() {}, muted: false, ctx: null };
-if (typeof Sfx === 'undefined') window.Sfx = { play() {}, motor() {}, voice() {} };
-if (typeof Music === 'undefined') window.Music = { play() {}, stop() {}, duck() {}, dim() {} };
-if (typeof BG === 'undefined') {
-  window.BG = {
-    fill(ctx, c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); },
-    shop(ctx) { this.fill(ctx, '#1f1628'); },
-    lab(ctx) { this.fill(ctx, '#12201a'); },
-    graveyard(ctx) { this.fill(ctx, '#141430'); ctx.fillStyle = '#1d2a22'; ctx.fillRect(0, 214, W, 56); },
-    dither(ctx, level, color) { if (level <= 0) return; ctx.globalAlpha = level / 16; ctx.fillStyle = color || '#0e0b16'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; },
-  };
-}
 
 // ==== 99_main.js ====
 // ---------------------------------------------------------------------------

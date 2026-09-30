@@ -8,13 +8,14 @@
 import { loadGame } from './lib/headless.mjs';
 import { pct } from './lib/stats.mjs';
 
+// Every build spends the same budget of rarity: one rare, two uncommons, everything else common. Without that
+// the table only shows that better parts are better. Each is a full 8-slot creature, so the differences are
+// about WHAT it is good at, not how much of it there is.
 export const ARCHETYPES = {
-  // name: [slot map]
-  'tank':      { head: 'skull', torso: 'ogregut', armL: 'fleshArm', armR: 'fleshArm', legL: 'pegleg', legR: 'pegleg', heart: 'heart' },
-  'bruiser':   { head: 'wolfskull', torso: 'stitched', armL: 'ogrearm', armR: 'swordarm', legL: 'fleshLeg', legR: 'fleshLeg' },
-  'swarm':     { head: 'skull', torso: 'ribcage', armL: 'bonearm', armR: 'bonearm', legL: 'boneleg', legR: 'boneleg', heart: 'heart', back: 'tail' },
-  'runner':    { head: 'eyeball', torso: 'ribcage', armL: 'clawarm', armR: 'clawarm', legL: 'goatleg', legR: 'goatleg', back: 'wings' },
-  'balanced':  { head: 'wolfskull', torso: 'armor', armL: 'swordarm', armR: 'clawarm', legL: 'goatleg', legR: 'fleshLeg', heart: 'heart' },
+  'tank':     { head: 'wolfskull', torso: 'ogregut', armL: 'fleshArm', armR: 'fleshArm', legL: 'pegleg', legR: 'pegleg', heart: 'heart', back: 'tail' },       // rare: ogre gut. Health pool.
+  'plated':   { head: 'wolfskull', torso: 'armor', armL: 'fleshArm', armR: 'fleshArm', legL: 'pegleg', legR: 'fleshLeg', heart: 'blackheart', back: null },   // rare: black heart. Armour, and one revive.
+  'bruiser':  { head: 'skull', torso: 'stitched', armL: 'ogrearm', armR: 'swordarm', legL: 'fleshLeg', legR: 'fleshLeg', heart: 'heart', back: 'tail' },       // rare: ogre arm. Big hits.
+  'skirmish': { head: 'wolfskull', torso: 'ribcage', armL: 'bonearm', armR: 'bonearm', legL: 'goatleg', legR: 'boneleg', heart: 'heart', back: 'wings' },     // rare: wings. Quick, small hits, dodgy.
 };
 
 export const ENEMY_GROUPS = {

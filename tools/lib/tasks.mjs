@@ -8,15 +8,20 @@ import { SETUPS, randomCreature } from './scenarios.mjs';
 import { pct, mean } from './stats.mjs';
 import { matchupTable } from '../matchups.mjs';
 
+// Overrides for experiments (tools/balance.mjs --dry --set=k=v --patch='js'): they reach every task through
+// the environment, which worker threads inherit.
+const ENV_CONFIG = JSON.parse(process.env.BAL_CONFIG || '{}'), ENV_PATCH = JSON.parse(process.env.BAL_PATCH || '[]');
+const apply = (g) => { g.resetConfig(ENV_CONFIG); for (const code of ENV_PATCH) g.run(code); };
+
 // One game per worker, reused (loading and compiling the game is the slow part of a small task).
 let cached = null;
-const game = () => cached || (cached = loadGame());
+const game = () => { if (!cached) { cached = loadGame(); apply(cached); } return cached; };
 
 // --- the claw: real physics, one bot profile, `trials` fresh piles
 export function claw({ profile, trials }) {
   const g = game(), P = PROFILES[profile];
   const M = g.get('MACHINE'), CONFIG = g.get('CONFIG');
-  g.resetConfig(P.carry === 'auto' ? { carryManual: 0 } : {});
+  g.resetConfig({ ...ENV_CONFIG, ...(P.carry === 'auto' ? { carryManual: 0 } : {}) });
   const rs = [];
   for (let i = 0; i < trials; i++) {
     g.seed(1000 + i);
@@ -37,7 +42,7 @@ export function claw({ profile, trials }) {
 export function battles({ runs, stages }) {
   const g = game();
   g.run('Game.newGame()');
-  g.resetConfig();
+  g.resetConfig(ENV_CONFIG);
   return battleTable(g, { runs, stages });
 }
 
@@ -45,7 +50,7 @@ export function battles({ runs, stages }) {
 export function battlesBestOf({ runs, stages, pick }) {
   const g = game();
   g.run('Game.newGame()');
-  g.resetConfig();
+  g.resetConfig(ENV_CONFIG);
   const G = g.get('Game'), CONFIG = g.get('CONFIG');
   const rows = {};
   for (const [name, shape] of [['3 creatures, 8 parts, best of ' + pick, [8, 8, 8]], ['2 creatures, 8 parts, best of ' + pick, [8, 8]]]) {
@@ -86,14 +91,14 @@ function bestCreature(g, n, pick) {
 export function matchups({ runs, stage }) {
   const g = game();
   g.run('Game.newGame()');
-  g.resetConfig();
+  g.resetConfig(ENV_CONFIG);
   return matchupTable(g, { runs, stage });
 }
 
 // --- whole runs. fast = no physics (the economy model), otherwise the real claw.
 export function runs({ profile, seeds, fast, config, patch }) {
   const out = [];
-  for (const seed of seeds) out.push(playRun({ seed, profile, fast, config, patch }));
+  for (const seed of seeds) out.push(playRun({ seed, profile, fast, config: { ...ENV_CONFIG, ...(config || {}) }, patch: [...ENV_PATCH, ...(patch || [])] }));
   return out;
 }
 
@@ -101,7 +106,7 @@ export function runs({ profile, seeds, fast, config, patch }) {
 export function fingerprint() {
   const g = game();
   const CONFIG = g.get('CONFIG'), META = g.get('CONFIG_META');
-  const settingsBacked = new Set(['shake', 'hitPause', 'slowmo', 'dropGuide', 'physDebug', 'carryManual', 'carryTime']); // player settings, not balance
+  const settingsBacked = new Set(['shake', 'hitPause', 'slowmo', 'dropGuide', 'carryManual', 'carryTime']); // player settings, not balance
   const balance = {};
   for (const m of META) if (!settingsBacked.has(m[1])) balance[m[1]] = CONFIG[m[1]];
   const data = {

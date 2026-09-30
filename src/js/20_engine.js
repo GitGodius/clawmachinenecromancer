@@ -146,7 +146,7 @@ const Engine = {
   fault(e, where) {
     this.errorRun++;
     if (typeof CrashLog !== 'undefined') CrashLog.report(e, where + ' in ' + (this.sceneName || '?')); else console.error(e);
-    if (this.errorRun >= 30 && this.sceneName !== 'shop' && this.scenes.shop) { this.errorRun = 0; this.overlays.length = 0; this.trans = null; this._switch(this.scenes.shop, { skipIntro: true }); }
+    if (this.errorRun >= 30 && this.sceneName !== 'shop' && this.scenes.shop) { this.errorRun = 0; this.closeAll(); this.trans = null; this._switch(this.scenes.shop, { skipIntro: true }); }
   },
 
   // style: 'dither' (pixel fade through black) | 'cut'
@@ -193,6 +193,14 @@ const Engine = {
     if (!this.overlays.some((x) => !x.live)) Music.dim(false);
     if (this.overlays.length) { const t = this.overlays[this.overlays.length - 1]; if (t.resume) t.resume(); }
   },
+  // Close everything properly (exit hooks, key capture, dimmed music). Never write `overlays.length = 0`: it
+  // skips all of that and leaves the music dim and the next key press swallowed by a rebind.
+  closeAll() {
+    while (this.overlays.length) { const o = this.overlays.pop(); if (o.exit) { try { o.exit(); } catch (e) { /* closing must not fail */ } } }
+    Input.capture = null; Input.mouse.down = false; Input.pressed = {};
+    UI.set([]);
+    Music.dim(false);
+  },
   get top() { return this.overlays.length ? this.overlays[this.overlays.length - 1] : null; },
   // true while something is frozen the world: the pause menu says "no game actions" and means it
   get frozen() { return this.overlays.some((o) => !o.live); },
@@ -228,7 +236,7 @@ const Engine = {
       try { this.scene.update(dt, realDt); this.errorRun = 0; } catch (e) { this.fault(e, 'update'); }
     }
     const ov = this.top;
-    if (ov) { try { ov.update(realDt); } catch (e) { this.fault(e, 'overlay'); this.overlays.length = 0; } }
+    if (ov) { try { ov.update(realDt); } catch (e) { this.fault(e, 'overlay'); this.closeAll(); } }
     UI.update(realDt);
     if (typeof Debug !== 'undefined' && Debug.update) Debug.update(realDt);
 
@@ -256,7 +264,7 @@ const Engine = {
       ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
     }
-    for (const o of this.overlays) { try { o.draw(ctx); } catch (e) { this.fault(e, 'overlay draw'); this.overlays.length = 0; } }
+    for (const o of this.overlays.slice()) { try { o.draw(ctx); } catch (e) { this.fault(e, 'overlay draw'); this.closeAll(); break; } }
     if (typeof Overlays !== 'undefined') Overlays.drawToast(ctx, realDt);
     UI.drawOverlay(ctx);
     if (this.trans) {
@@ -421,6 +429,7 @@ const UI = {
   buttons: [],
   tooltip: null,
   hoverId: null,
+  focusAt: [0, 0],
   focusId: null, // keyboard / gamepad focus, for scenes that opt in with `uiNav` (the slab): arrows move it, confirm presses it
   set(buttons) { this.buttons = buttons; },
   focusable() { return this.buttons.filter((b) => !b.hidden && b.kind !== 'hot' && b.w > 0); },
@@ -449,8 +458,12 @@ const UI = {
       if (m.moved) this.focusId = null; // the mouse takes over
       const dir = [['left', -1, 0], ['right', 1, 0], ['up', 0, -1], ['down', 0, 1]].find(([a]) => Input.hit(a));
       if (dir) this.moveFocus(dir[1], dir[2]);
-      const f = this.focused();
-      if (f && !this.buttons.includes(f)) this.focusId = null;
+      let f = this.focused();
+      if (f) this.focusAt = [f.x + f.w / 2, f.y + f.h / 2];
+      else if (this.focusId) { // the focused button is gone (a part was stitched): carry on from the nearest one
+        const near = this.focusable().map((b) => [Math.hypot(b.x + b.w / 2 - this.focusAt[0], b.y + b.h / 2 - this.focusAt[1]), b]).sort((a, b) => a[0] - b[0])[0];
+        this.focusId = near ? near[1].id : null; f = this.focused();
+      }
       if (f && Input.hit('a')) {
         if (f.disabled) { Sfx.play('ui_deny'); if (f.onDeny) f.onDeny(); }
         else if (f.onClick) { f.pressT = 1; if (!f.silent) Sfx.play(f.sound || 'ui_click'); f.onClick(); }
@@ -526,7 +539,6 @@ class Talker {
     this.text = text; this.shown = 0; this.t = 0; this.hold = hold;
     if (typeof Announce !== 'undefined') Announce.say(text);
   }
-  sayRandom(lines, hold) { this.say(vpick(lines), hold); }
   busy() { return this.text && this.shown < this.text.length; }
   update(dt) {
     if (!this.text) { if (this.queue.length) this.say(...this.queue.shift()); return; }

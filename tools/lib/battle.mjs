@@ -16,13 +16,17 @@ export function fightScene(game, party, stage, seed) {
   Input.pressed.a = true; S.update(0.016, 0.016); Input.pressed = {}; // FIGHT is the first menu item
   let t = 0, zapT = 0;
   const over = () => G.stage !== stage || !G.party.some((c) => c.hp > 0);
+  const fightOver = () => S.sim().over;
   while (t < 120) {
     S.update(DT, DT);
     t += DT; zapT += DT;
-    if (over()) break;
+    if (fightOver()) break;
     if (zapT > CONFIG.zapCooldown + 0.1) { Input.pressed.a = true; S.update(0.001, 0.001); Input.pressed = {}; zapT = 0; }
-    if (over()) break;
+    if (fightOver()) break;
   }
+  // the scene lets the last blow breathe before it shows results (silence, slow motion). That beat is
+  // presentation, so it is not counted in `frames`; it is played out so the result lands like it would for a player.
+  for (let i = 0; i < 300 && !over() && fightOver(); i++) S.update(DT, DT);
   return {
     won: G.stage > stage,
     frames: Math.round(t / DT),

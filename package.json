@@ -2,11 +2,17 @@
   "name": "the-good-parts",
   "version": "0.9.0",
   "private": true,
-  "description": "Claw machine necromancer prototype - grab body parts, stitch monsters, fight.",
+  "description": "A claw machine necromancer game: win body parts, stitch monsters, fight, and get the parts back.",
+  "type": "commonjs",
   "scripts": {
     "build": "node tools/build.mjs",
+    "test": "node tools/test.mjs",
+    "e2e": "node tools/e2e.mjs",
+    "balance": "node tools/balance.mjs",
+    "balance:check": "node tools/balance.mjs --check",
     "tune": "node tools/tune.mjs",
-    "shots": "node tools/shots.mjs"
+    "runs": "node tools/run_sim.mjs",
+    "verify": "node tools/build.mjs && node tools/test.mjs && node tools/balance.mjs --check && node tools/e2e.mjs"
   },
   "devDependencies": {
     "planck": "1.5.0",

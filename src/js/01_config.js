@@ -32,7 +32,6 @@ const CONFIG_META = [
   ['Claw', 'clawStiffness', 90, 0, 400, 5, 'Keep-upright stiffness'],
   ['Claw', 'carryManual', 1, 0, 1, 1, 'Steer carry manually (0 = auto return)'],
   ['Claw', 'carryTime', 8, 0, 30, 1, 'Carry timer s (0 = off)'],
-  ['Claw', 'aimTime', 0, 0, 30, 1, 'Aim timer s (0 = off)'],
   ['Pile', 'partCount', 22, 5, 40, 1, 'Parts in machine (refill)'],
   ['Pile', 'gravity', 30, 5, 80, 1, 'Gravity'],
   ['Pile', 'partFriction', 0.55, 0, 1.5, 0.05, 'Part friction'],
@@ -41,13 +40,13 @@ const CONFIG_META = [
   ['Pile', 'twitchRate', 0.45, 0, 4, 0.05, 'Living-part twitches /s'],
   ['Pile', 'twitchForce', 1, 0, 4, 0.1, 'Twitch strength'],
   ['Pile', 'rareBoost', 1, 0, 5, 0.1, 'Rare odds ×'],
-  ['Economy', 'startTokens', 6, 1, 40, 1, 'Starting tokens'],
-  ['Economy', 'winTokens', 3, 0, 12, 1, 'Tokens per battle won (+stage)'],
+  ['Economy', 'startTokens', 7, 1, 40, 1, 'Starting tokens'],
+  ['Economy', 'winTokens', 4, 0, 12, 1, 'Tokens per battle won (+stage)'],
   ['Economy', 'restockParts', 3, 0, 10, 1, 'Parts restocked per battle'],
   ['Economy', 'pityTokens', 3, 0, 10, 1, 'Pity tokens when broke'],
-  ['Economy', 'partialPay', 0.8, 0, 1, 0.05, 'Share of the win pay a lost/retreated fight earns per damage dealt'],
+  ['Economy', 'partialPay', 0.7, 0, 1, 0.05, 'Share of the win pay a lost/retreated fight earns per damage dealt'],
   ['Economy', 'ladderMax', 4, 0, 12, 1, 'Most extra tokens the Reaper adds after repeated failed fights'],
-  ['Battle', 'enemyGrowth', 0.18, 0.05, 0.5, 0.01, 'Enemy HP and ATK growth per stage'],
+  ['Battle', 'enemyGrowth', 0.14, 0.05, 0.5, 0.01, 'Enemy HP and ATK growth per stage'],
   ['Battle', 'enemyHp', 1, 0.2, 3, 0.05, 'Enemy HP ×'],
   ['Battle', 'enemyAtk', 1, 0.2, 3, 0.05, 'Enemy ATK ×'],
   ['Battle', 'allyAtk', 1, 0.2, 3, 0.05, 'Creature ATK ×'],
@@ -57,7 +56,6 @@ const CONFIG_META = [
   ['Juice', 'hitPause', 1, 0, 3, 0.1, 'Hit-pause ×'],
   ['Juice', 'slowmo', 1, 0, 1, 1, 'Slow-mo on near wins'],
   ['Juice', 'dropGuide', 1, 0, 1, 1, 'Show drop guide'],
-  ['Juice', 'physDebug', 0, 0, 1, 1, 'Draw physics shapes'],
 ];
 const CONFIG = {};
 for (const m of CONFIG_META) CONFIG[m[1]] = m[2];

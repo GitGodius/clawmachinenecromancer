@@ -2,6 +2,8 @@
 //
 //   node tools/balance.mjs            measure everything (about 10 min, all cores), rewrite docs/BALANCE.md + docs/balance.json
 //   node tools/balance.mjs --quick    re-measure everything except the slow physics parts (about 1.5 min)
+//   node tools/balance.mjs --dry --set=enemyGrowth=0.13 --patch='ENEMY_KINDS.wraith.def = 2'
+//                                     try numbers: quick sections, prints the targets, writes nothing
 //   node tools/balance.mjs --check    CI mode: no writes. Fails if a balance number changed without the tables
 //                                     being regenerated, if the quick tables drifted, or if a target is missed.
 //
@@ -18,7 +20,12 @@ import { median } from './lib/stats.mjs';
 const ROOT = new URL('../', import.meta.url);
 const JSON_PATH = new URL('docs/balance.json', ROOT), MD_PATH = new URL('docs/BALANCE.md', ROOT);
 const args = process.argv.slice(2);
-const CHECK = args.includes('--check'), QUICK = args.includes('--quick') || CHECK, FULL_CHECK = args.includes('--full');
+const CHECK = args.includes('--check'), DRY = args.includes('--dry'), QUICK = args.includes('--quick') || CHECK || DRY, FULL_CHECK = args.includes('--full');
+// --dry: try numbers without touching the repo. --set=enemyGrowth=0.13 (repeatable) and --patch='ENEMY_KINDS.wraith.def = 2'
+if (DRY) {
+  const cfg = {}; for (const a of args.filter((x) => x.startsWith('--set='))) { const [k, v] = a.slice(6).split('='); cfg[k] = +v; }
+  process.env.BAL_CONFIG = JSON.stringify(cfg); process.env.BAL_PATCH = JSON.stringify(args.filter((x) => x.startsWith('--patch=')).map((x) => x.slice(8)));
+}
 const pkg = JSON.parse(fs.readFileSync(new URL('package.json', ROOT), 'utf8'));
 const old = fs.existsSync(JSON_PATH) ? JSON.parse(fs.readFileSync(JSON_PATH, 'utf8')) : null;
 const log = (...a) => console.error(...a);
@@ -43,7 +50,7 @@ async function measure() {
   const jobs = [
     { fn: 'battles', args: { runs: 60, stages: BATTLE_STAGES } },
     { fn: 'battlesBestOf', args: { runs: 60, stages: BATTLE_STAGES, pick: 3 } },
-    { fn: 'matchups', args: { runs: 60, stage: 6 } },
+    { fn: 'matchups', args: { runs: 60, stage: 15 } },
   ];
   const [battles, bestOf, matchups] = await pool(jobs, 3);
   out.battles = battles; out.battlesBestOf = bestOf; out.matchups = matchups;
@@ -104,7 +111,9 @@ function targets(d) {
   add('Nothing is wasted: no part physically leaves the machine in a real-physics run', !d.econPhysics || Object.values(d.econPhysics).every((x) => x.lostParts <= 0.5), d.econPhysics ? Object.entries(d.econPhysics).map(([k, x]) => `${k} ${x.lostParts}`).join(', ') : 'not measured');
   const cols = Object.keys(d.matchups[Object.keys(d.matchups)[0]]);
   const best = cols.map((c) => Object.entries(d.matchups).sort((a, b) => b[1][c].win - a[1][c].win || b[1][c].hpLeft - a[1][c].hpLeft)[0][0]);
-  add('Build for the graveyard: no single build is best against every enemy', new Set(best).size > 1, cols.map((c, i) => `${c.trim()}: ${best[i]}`).join('; '));
+  add('Build for the graveyard (1): at final-stage strength the best build is not the same against every enemy', new Set(best).size > 1, cols.map((c, i) => `${c.trim()}: ${best[i]}`).join('; '));
+  const fails = Object.entries(d.matchups).flatMap(([b, r]) => cols.filter((c) => r[c].win < 25).map((c) => `${b} vs ${c.trim()} ${r[c].win}%`));
+  add('Build for the graveyard (2): a specialised build can be unable to beat an enemy at all (under 25%)', fails.length > 0, fails.join('; ') || 'none');
   const bo = d.battlesBestOf.rows['3 creatures, 8 parts, best of 3'];
   add('A full party built from good picks beats stage 5 reliably and the final stage more often than not', bo[5] >= 95 && bo[15] >= 50, `stage 5: ${bo[5]}%, stage 15: ${bo[15]}%`);
   return T;
@@ -116,7 +125,7 @@ const md = {
   targets: (d) => tab(['', 'Target', 'Measured'], targets(d).map((t) => [t.ok ? '✅' : '❌', t.name, t.detail])),
   claw: (d) => (d.claw ? tab(['Player', 'Aim error', 'Carry', 'Grabs won', 'Kept once lifted'], Object.entries(d.claw).map(([k, c]) => [k, PROFILES[k].aimNoise + ' px', PROFILES[k].carry, c.win + '%', c.kept + '%'])) + `\n\n${CLAW_TRIALS} grabs each on fresh piles, real physics.` : '_not measured_'),
   battles: (d) => tab(['Party (random parts)', ...d.battles.stages.map((s) => 'S' + s)], Object.entries(d.battles.rows).map(([n, r]) => [n, ...d.battles.stages.map((s) => r[s] + '%')])) + '\n\n' + tab(['Party (best of 3 picks per slot)', ...d.battlesBestOf.stages.map((s) => 'S' + s)], Object.entries(d.battlesBestOf.rows).map(([n, r]) => [n, ...d.battlesBestOf.stages.map((s) => r[s] + '%')])),
-  matchups: (d) => { const cols = Object.keys(d.matchups[Object.keys(d.matchups)[0]]); return tab(['Build (x3)', ...cols], Object.entries(d.matchups).map(([n, r]) => [n, ...cols.map((c) => `${r[c].win}% (${r[c].hpLeft}% HP left)`)])); },
+  matchups: (d) => { /* three copies of one build against one enemy type at stage 15 strength */ const cols = Object.keys(d.matchups[Object.keys(d.matchups)[0]]); return tab(['Build (x3)', ...cols], Object.entries(d.matchups).map(([n, r]) => [n, ...cols.map((c) => `${r[c].win}% (${r[c].hpLeft}% HP left)`)])); },
   econ: (d) => tab(['Player', 'Finish', '≤30 min', '≤60 min', '≤90 min', 'Median (min)', 'Past boss 1', 'Grabs', 'Fights lost', 'Retreats', 'Tokens/min'], Object.entries(d.econ).map(([k, e]) => [k, e.finished + '%', e.in30 + '%', e.in60 + '%', e.in90 + '%', e.medianMin || '-', e.reachedBoss1 + '%', e.grabs, e.fightsLost, e.retreats, e.tokensPerMin])) + `\n\n${FAST_RUNS} runs each with the no-physics grab model (grab odds from the claw table).`,
   econPhysics: (d) => (d.econPhysics ? tab(['Player', 'Finish', 'Median (min)', 'Past boss 1', 'Grabs', 'Fights lost', 'Parts lost from machine'], Object.entries(d.econPhysics).map(([k, e]) => [k, e.finished + '%', e.medianMin || '-', e.reachedBoss1 + '%', e.grabs, e.fightsLost, e.lostParts])) + `\n\n${PHYS_RUNS} runs each with the real claw. Small samples: read these as "the model is not lying", not as precise rates.` : '_not measured_'),
   numbers: (d) => { const c = d.numbers.config, e = d.numbers.enemies; return tab(['Number', 'Value'], [
@@ -148,6 +157,11 @@ const fresh = await measure();
 fresh.version = pkg.version;
 const T = targets(fresh);
 let bad = T.filter((t) => !t.ok);
+if (DRY) {
+  console.log(T.map((t) => `${t.ok ? 'ok  ' : 'MISS'} ${t.name}\n       ${t.detail}`).join('\n'));
+  console.log(md.econ(fresh).split('\n').slice(0, 8).join('\n'));
+  process.exit(0);
+}
 
 if (CHECK) {
   const problems = [];

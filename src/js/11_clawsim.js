@@ -299,7 +299,6 @@ class ClawSim {
         this.prongs('relax');
         this.driveCarriage(move * CONFIG.clawMoveSpeed, h);
         this.ropeLen = approach(this.ropeLen, M.topLen, CONFIG.liftSpeed * h);
-        if (CONFIG.aimTime > 0 && this.aimActive && this.stateT > CONFIG.aimTime) this.emit('aimTimeout');
         break;
       case 'drop': {
         this.prongs('open');

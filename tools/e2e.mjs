@@ -58,10 +58,10 @@ const tests = {
     await wait(page, 900);
     const r = await page.evaluate(() => ({
       dev: BUILD.dev, game: typeof window.__game, debug: typeof Debug, panel: !!document.getElementById('debug'), toggle: !!document.getElementById('dbgToggle'),
-      tokens: Game.tokens, stage: Game.stage, party: Game.party.length, bag: Game.inventory.length, scene: Engine.sceneName, title: Engine.overlays.length, version: BUILD.version,
+      tokens: Game.tokens, start: CONFIG.startTokens, stage: Game.stage, party: Game.party.length, bag: Game.inventory.length, scene: Engine.sceneName, title: Engine.overlays.length, version: BUILD.version,
     }));
     assert(r.dev === false && r.game === 'undefined' && r.debug === 'undefined' && !r.panel && !r.toggle, 'dev tools present: ' + JSON.stringify(r));
-    assert(r.tokens === 6 && r.stage === 1 && r.party === 0 && r.bag === 0 && r.scene === 'shop' && r.title === 1, 'URL flags were honoured: ' + JSON.stringify(r));
+    assert(r.tokens === r.start && r.stage === 1 && r.party === 0 && r.bag === 0 && r.scene === 'shop' && r.title === 1, 'URL flags were honoured: ' + JSON.stringify(r));
     assert(/^\d+\.\d+\.\d+/.test(r.version) && r.version !== '0.0.0-dev', 'version not stamped: ' + r.version);
     await press(page, 'Backquote'); assert(!(await page.evaluate(() => document.getElementById('debug'))), 'backquote opened something');
     assert(page.errors.length === 0, page.errors.join('\n'));
@@ -72,6 +72,8 @@ const tests = {
     const page = await newPage();
     await page.goto(`http://127.0.0.1:${A}/index.html`); await wait(page, 900);
     assert((await lit(page)) > 200, 'title screen is blank');
+    await press(page, 'Escape', 250);
+    assert(await page.evaluate(() => Engine.overlays.length === 1), 'Esc on the title screen opened something on top of it');
     await press(page, 'Enter', 300); await wait(page, 2200);
     assert(await page.evaluate(() => Engine.overlays.length === 0 && Engine.sceneName === 'shop'), 'START did not reach the shop');
     await press(page, 'ArrowDown'); await press(page, 'Enter', 200); await wait(page, 1600); // the sign under the cursor: COMBINE (slab) or COLLECT depending on hint
@@ -206,6 +208,135 @@ const tests = {
     await page.close();
   },
 
+  async 'the last boss ends the run: victory, end screen, records, nothing left to continue'() {
+    const page = await newPage();
+    await startGame(page, `http://127.0.0.1:${A}/index.html`);
+    await giveParty(page);
+    await page.evaluate(() => { Game.stage = FINAL_STAGE; Engine.go('battle', {}, 'cut'); }); await wait(page, 900);
+    await clickGame(page, 60, 219); await wait(page, 800);            // FIGHT
+    await page.evaluate(() => Scenes.battle.cheatWin());              // the Landlord goes down (a test hook: the fight itself is covered by tools/test.mjs)
+    await wait(page, 900);
+    assert(await page.evaluate(() => Game.won === false), 'the run ended before the ending beat: results should wait a moment');
+    await wait(page, 3200);
+    const r = await page.evaluate(() => ({ won: Game.won, scene: Engine.sceneName, wins: Save.data.records.wins, best: Save.data.records.bestStage }));
+    assert(r.won && r.scene === 'battle' && r.wins === 1 && r.best === 15, 'final win not recorded: ' + JSON.stringify(r));
+    await press(page, 'Enter', 400); await wait(page, 900);           // CONTINUE
+    assert(await page.evaluate(() => Engine.sceneName === 'end'), 'CONTINUE did not reach the end screen');
+    assert((await lit(page)) > 300, 'the end screen is blank');
+    assert(await page.evaluate(() => JSON.parse(localStorage.getItem('thegoodparts.save')).run === null), 'a finished run is still saved as continuable');
+    await page.reload(); await wait(page, 900);
+    assert(await page.evaluate(() => !Save.hasRun() && Save.data.records.wins === 1), 'after a reload the finished run should be gone and the record kept');
+    // NEW RUN from the end screen
+    await startGame(page, `http://127.0.0.1:${A}/index.html`);
+    await page.evaluate(() => { Game.won = true; Engine.go('end', {}, 'cut'); }); await wait(page, 1500);
+    await press(page, 'Enter', 400); await wait(page, 1200);
+    const n = await page.evaluate(() => ({ scene: Engine.sceneName, won: Game.won, stage: Game.stage, tokens: Game.tokens, start: CONFIG.startTokens, runs: Save.data.records.runs }));
+    assert(n.scene === 'shop' && !n.won && n.stage === 1 && n.tokens === n.start, 'NEW RUN did not start a fresh run: ' + JSON.stringify(n));
+    assert(page.errors.length === 0, page.errors.join('\n'));
+    await page.close();
+  },
+
+  async 'tap-to-toggle steering: one tap goes, the next stops'() {
+    const page = await newPage();
+    await startGame(page, `http://127.0.0.1:${A}/index.html`);
+    await page.evaluate(() => { Settings.v.steering = 'toggle'; Settings.apply(); Engine.go('claw', {}, 'cut'); }); await wait(page, 700);
+    const x0 = await page.evaluate(() => Game.sim.carX);
+    await press(page, 'ArrowLeft', 500);                               // ONE tap, no key held
+    const moving = await page.evaluate(() => ({ x: Game.sim.carX, v: Game.sim.carV }));
+    assert(moving.x < x0 - 10 && moving.v < -5, 'a single tap did not keep the claw moving: ' + JSON.stringify({ x0, ...moving }));
+    await press(page, 'ArrowLeft', 900);                               // tap again
+    const s1 = await page.evaluate(() => Game.sim.carX); await wait(page, 500); const s2 = await page.evaluate(() => Game.sim.carX);
+    assert(Math.abs(s1 - s2) < 1 && Math.abs(await page.evaluate(() => Game.sim.carV)) < 1, 'the second tap did not stop it');
+    await page.evaluate(() => { Settings.v.steering = 'hold'; Settings.apply(); });
+    assert(page.errors.length === 0, page.errors.join('\n'));
+    await page.close();
+  },
+
+  async 'menus: How to play, key capture, the hint line and the Menu button behave'() {
+    const page = await newPage();
+    await startGame(page, `http://127.0.0.1:${A}/index.html`);
+    // How to play used to crash on Up/Down and wipe the whole overlay stack
+    await page.evaluate(() => Overlays.help()); await wait(page, 200);
+    await press(page, 'ArrowDown');                    // any key closes it; it used to crash and wipe the overlay stack instead
+    assert(await page.evaluate(() => Engine.overlays.length === 0 && CrashLog.list.length === 0), 'How to play broke on Down: ' + JSON.stringify(await page.evaluate(() => CrashLog.list.map((e) => e.msg))));
+    await page.evaluate(() => Overlays.pause()); await wait(page, 150); await page.evaluate(() => Overlays.help()); await wait(page, 150);
+    await press(page, 'ArrowUp');                      // closes help only; the pause menu underneath is still up and the music is not left dim
+    assert(await page.evaluate(() => Engine.overlays.length === 1 && Engine.top.pausePanel === true), 'closing How to play took the pause menu with it');
+    await press(page, 'KeyP', 200); assert(await page.evaluate(() => Engine.overlays.length === 0), 'P did not resume');
+    // the line under the game follows the player's keys
+    await page.evaluate(() => { Settings.bind('pause', 0, 'KeyO'); Settings.apply(); });
+    assert(/\bO\b/.test(await page.evaluate(() => document.getElementById('hint').textContent)), 'the hint line did not pick up the rebound pause key');
+    // taking both Drop keys is refused, not silently undone
+    const strand = await page.evaluate(() => { Settings.resetKeys(); Settings.bind('pause', 0, 'Space'); return { refused: Settings.wouldStrand('mute', 'Enter'), a: Settings.v.keys.a.slice() }; });
+    assert(strand.a.some(Boolean), 'Drop lost every key: ' + JSON.stringify(strand));
+    await page.evaluate(() => { Settings.resetKeys(); Settings.apply(); });
+    // key capture can be cancelled by a tap (a phone has no Escape)
+    await page.evaluate(() => { Overlays.controls(); }); await wait(page, 200);
+    await press(page, 'Enter', 200);
+    assert(await page.evaluate(() => !!Input.capture), 'capture did not start');
+    await clickGame(page, 240, 20);
+    assert(await page.evaluate(() => !Input.capture), 'a tap did not cancel key capture');
+    await page.evaluate(() => Engine.closeAll());
+    // the Menu button does not keep DOM focus (it would eat Space)
+    await page.click('#menuBtn'); await wait(page, 150); await page.click('#menuBtn'); await wait(page, 150);
+    assert(await page.evaluate(() => document.activeElement && document.activeElement.id !== 'menuBtn'), 'the Menu button kept focus');
+    // pause -> quit to title -> Enter at once must still start a game (a transition used to reset the shop after START)
+    await press(page, 'KeyP', 250); await press(page, 'ArrowDown', 90); await press(page, 'ArrowDown', 90); await press(page, 'ArrowDown', 90); await press(page, 'Enter', 250);
+    await press(page, 'ArrowDown', 90); await press(page, 'Enter', 40); await press(page, 'Enter', 700);
+    const st = await page.evaluate(() => ({ overlays: Engine.overlays.length, scene: Engine.sceneName, talking: Game.talk.visible() }));
+    assert(st.scene === 'shop' && st.overlays === 0 && st.talking, 'quit-to-title then an instant Enter left a dead shop: ' + JSON.stringify(st));
+    assert(page.errors.length === 0, page.errors.join('\n'));
+    await page.close();
+  },
+
+  async 'the slab keeps keyboard focus after stitching, and battle results cannot be skipped by mashing'() {
+    const page = await newPage();
+    await startGame(page, `http://127.0.0.1:${A}/index.html`);
+    await page.evaluate(() => { for (const t of ['skull', 'ribcage', 'bonearm', 'boneleg']) Game.addPart(t); Engine.go('slab', {}, 'cut'); }); await wait(page, 700);
+    await press(page, 'ArrowDown'); await press(page, 'Enter', 200); await press(page, 'Enter', 200); await press(page, 'Enter', 200);
+    const s = await page.evaluate(() => ({ bag: Game.inventory.length, focus: UI.focusId }));
+    assert(s.bag === 1 && s.focus, 'focus went dead after stitching: ' + JSON.stringify(s));
+    // battle: win, then mash the confirm key at the moment the result appears
+    await giveParty(page);
+    await page.evaluate(() => { Engine.go('battle', {}, 'cut'); }); await wait(page, 900);
+    await clickGame(page, 60, 219); await wait(page, 600);
+    await page.evaluate(() => Scenes.battle.cheatWin());
+    for (let i = 0; i < 60 && (await page.evaluate(() => Game.stage)) === 1; i++) await wait(page, 100);
+    await page.keyboard.press('Enter'); await page.keyboard.press('Space'); await wait(page, 300);
+    assert(await page.evaluate(() => Engine.sceneName === 'battle'), 'a mashed key skipped the battle result screen');
+    await wait(page, 900); await press(page, 'Enter', 700);
+    assert(await page.evaluate(() => Engine.sceneName !== 'battle'), 'the result screen never accepted input');
+    assert(page.errors.length === 0, page.errors.join('\n'));
+    await page.close();
+  },
+
+  async 'a save that cannot be read leaves the title usable; toggle steering works by pointer'() {
+    const page = await newPage();
+    const url = `http://127.0.0.1:${A}/index.html`;
+    // seed a hostile save BEFORE the page's scripts run (the page also saves on close, which would overwrite one injected later)
+    await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('thegoodparts.save', JSON.stringify({ v: 1, run: { tokens: 9, inventory: {}, party: [null, 3], machine: 'abc' } })); } });
+    await page.goto(url); await wait(page, 900);
+    await press(page, 'Enter', 400); await wait(page, 900);   // CONTINUE
+    const t = await page.evaluate(() => ({ overlays: Engine.overlays.length, tokens: Game.tokens, scene: Engine.sceneName, pile: Game.sim.parts.length }));
+    assert(t.overlays === 0 && t.tokens === 9 && t.scene === 'shop' && t.pile >= 5, 'a hostile save did not load as a sanitised run: ' + JSON.stringify(t));
+    // and if loading throws anyway, the title stays up and usable
+    await page.evaluate(() => { Engine.closeAll(); Engine.go('shop', { title: true }, 'cut'); Overlays.title(); Game.fromSave = () => { throw new Error('unreadable'); }; });
+    await wait(page, 300); await press(page, 'Enter', 400);
+    const t2 = await page.evaluate(() => ({ overlays: Engine.overlays.length, tokens: Game.tokens, start: CONFIG.startTokens }));
+    assert(t2.overlays === 1 && t2.tokens === t2.start, 'a load that throws left a broken title: ' + JSON.stringify(t2));
+    await page.evaluate(() => { CrashLog.list.length = 0; document.getElementById('crash') && document.getElementById('crash').classList.remove('open'); });
+    await page.evaluate(() => { localStorage.clear(); }); await page.reload(); await wait(page, 700);
+    await startGame(page, url);
+    await page.evaluate(() => { Settings.v.steering = 'toggle'; Settings.apply(); Engine.go('claw', {}, 'cut'); }); await wait(page, 700);
+    const x0 = await page.evaluate(() => Game.sim.carX);
+    await clickGame(page, 100, 100);                              // tap the glass, left of the claw's start
+    await wait(page, 2200);
+    const r = await page.evaluate(() => ({ x: Game.sim.carX, v: Game.sim.carV }));
+    assert(Math.abs(r.x - (100 / 2 - 7)) < 6 && Math.abs(r.v) < 3, 'a tap on the glass did not take the claw there and stop: ' + JSON.stringify({ x0, ...r }));
+    assert(page.errors.filter((e) => !/unreadable/.test(e)).length === 0, page.errors.join('\n'));
+    await page.close();
+  },
+
   async 'accessibility: narration, reduced flashing, focus ring'() {
     const page = await newPage();
     await startGame(page, `http://127.0.0.1:${A}/index.html`);
@@ -252,7 +383,8 @@ const tests = {
       if (r < 0.55) await page.keyboard.down(keys[Math.floor(rnd() * keys.length)]).catch(() => {});
       else if (r < 0.7) await page.keyboard.press(keys[Math.floor(rnd() * keys.length)]);
       else if (r < 0.95) await page.mouse.click(box.x + rnd() * box.width, box.y + rnd() * box.height);
-      else await page.evaluate(() => { Game.tokens = Math.max(Game.tokens, 3); if (Game.inventory.length < 3) Game.addPart('skull'); });
+      else if (r < 0.97) await page.evaluate(() => { Game.tokens = Math.max(Game.tokens, 3); if (Game.inventory.length < 3) Game.addPart('skull'); });
+      else await page.evaluate((n) => { if (!Engine.overlays.length && !Engine.trans) Engine.go(['shop', 'claw', 'slab', 'battle', 'end'][n]); }, Math.floor(rnd() * 5)); // hop scenes so the slab and the end screen get their share
       for (const k of keys) if (rnd() < 0.3) await page.keyboard.up(k).catch(() => {});
       scenes.add(await page.evaluate(() => Engine.sceneName + (Engine.overlays.length ? '+menu' : '')));
       await wait(page, 30 + Math.floor(rnd() * 120));

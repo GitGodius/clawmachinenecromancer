@@ -88,10 +88,14 @@ const Announce = {
   // ---- the on-page Menu button: the only way to pause on a phone
   const btn = document.getElementById('menuBtn');
   if (btn) btn.addEventListener('click', () => {
-    if (typeof Engine === 'undefined' || !Engine.scene) return;
-    if (Engine.overlays.length) { const t = Engine.top; if (t && t.pausePanel) Engine.close(); return; }
-    if (Engine.scene.pausable !== false && !Engine.trans) Overlays.pause();
-    const c = document.getElementById('game'); if (c) c.focus({ preventScroll: true });
+    try {
+      if (typeof Engine === 'undefined' || !Engine.scene) return;
+      if (Engine.overlays.length) { const t = Engine.top; if (t && t.pausePanel) Engine.close(); else if (Input.capture) { Input.capture = null; } return; }
+      if (Engine.scene.pausable !== false && !Engine.trans) Overlays.pause();
+    } finally {
+      btn.blur(); // a focused button would eat the Space key that drops the claw
+      const c = document.getElementById('game'); if (c) c.focus({ preventScroll: true });
+    }
   });
 
   // ---- the hint line under the canvas follows the player's own keys

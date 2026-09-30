@@ -9,7 +9,8 @@ Not yet 1.0: everything below was checked with bots and a headless browser with 
 ### A whole run now has a shape
 - **A run is 15 stages in three acts. The last boss, the Landlord, ends it.** There is a victory screen with your numbers. (Before, the run never ended, and the bots that got far spent their last hour losing to stage 25.)
 - **The Reaper tells you what is coming**: the next stage's enemies and what they are good at, in the shop and on the slab, so the claw has a shopping list.
-- Enemies now ask different questions. **Wisps** swarm, **Shades** are armoured, **Wraiths** are bosses. No one build beats all three.
+- Enemies now ask different questions. **Wisps** swarm (faster and harder than before), **Shades** are armoured, **Wraiths** are bosses.
+- **Every arm is its own strike**, and armour is taken off each one. Two small arms are worth much less against a Shade than one big one. Small-hit builds simply cannot get through late Shades; the boss rewards big hits over bulk. (The Ogre Gut lost 8 health.) It is not yet true that every build has a home: stacking health is still the best answer to Wisps and Shades. See [docs/DESIGN.md](docs/DESIGN.md).
 
 ### Losing is a bad day, not a dead end
 - A fight you lose or retreat from now pays for the damage you did. Retreat keeps everyone who is still standing, and everyone standing is healed after any fight.

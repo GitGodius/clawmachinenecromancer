@@ -161,7 +161,7 @@ Scenes.slab = (() => {
           } else { selected = c; Sfx.play('ui_click'); }
         } });
     });
-    bs.push({ id: 'back', x: 124, y: 4, w: 50, h: 14, label: '◀ SHOP', onClick: () => Engine.go('shop') });
+    bs.push({ id: 'back', x: 124, y: 4, w: 50, h: 14, label: '◀ SHOP', disabled: !!life, onClick: () => Engine.go('shop') });
     bs.push({ id: 'fight', x: 306, y: 4, w: 50, h: 14, label: 'FIGHT ▶', disabled: !Game.canFight() || !!life, style: 'red',
       tip: Game.canFight() ? null : 'Bring someone to life first.', onClick: () => Engine.go('battle') });
     S.buttons = bs;
@@ -185,7 +185,9 @@ Scenes.slab = (() => {
     if (life && life.stage >= 1 && life.t < 1.3) {
       for (const b of life.bolts) {
         if (Settings.v.reduceFlash || Math.sin(life.t * 40 + b.seed) > -0.3) {
-          Draw.bolt(ctx, b.x0, 0, FEET_X + vrand(-20, 20), FEET_Y - vrand(40, 110), '#e7f7ff', 10, b.seed + Math.floor(life.t * 20));
+          const calm = Settings.v.reduceFlash; // reduceFlash: steady bolts instead of a flicker
+          Draw.bolt(ctx, b.x0, 0, FEET_X + (calm ? 0 : vrand(-20, 20)), // calm-ok: steady when reduceFlash is on
+             FEET_Y - (calm ? 75 : vrand(40, 110)), '#e7f7ff', 10, calm ? b.seed : b.seed + Math.floor(life.t * 20));
           Draw.glow(ctx, FEET_X, FEET_Y - 70, 90, '#6fd3ff', 0.25);
         }
       }
@@ -282,7 +284,7 @@ Scenes.slab = (() => {
     // dialogue box
     if (Game.talk.visible()) {
       Draw.panel(ctx, 124, 236, 232, 30, 'dark');
-      if (SPR.has('reaper_face')) SPR.draw(ctx, Game.talk.talking() && Math.sin(t * 22) > 0 && SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face', 138, 251);
+      if (SPR.has('reaper_face')) SPR.draw(ctx, Game.talk.talking() && blinkOn(t, 3.5) && SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face', 138, 251);
       Font.drawWrapped(ctx, Game.talk.text, 152, 241, 198, { color: '#ecdcbc', maxChars: Math.floor(Game.talk.shown) });
     }
   };

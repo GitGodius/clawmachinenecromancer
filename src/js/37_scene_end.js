@@ -26,7 +26,7 @@ Scenes.end = (() => {
 
   // NEW RUN starts at once; TITLE leaves no finished run behind and shows the title with START
   function again() { Game.newGame(); Save.data.records.runs++; Save.reset(); Engine.go('shop', {}); setTimeout(() => Game.talk.say('Again? The machine restocked itself. Funny, that.', 3), 400); }
-  function toTitle() { Save.data.run = null; Save.runActive = false; Save.flush(); Game.newGame(); Engine.go('shop', { title: true }); Overlays.title(); }
+  function toTitle() { Save.data.run = null; Save.runActive = false; Save.flush(); Game.newGame(); Engine.go('shop', { title: true }, 'cut'); Overlays.title(); }
 
   S.update = function (dt) {
     t += dt;

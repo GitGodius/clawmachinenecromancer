@@ -16,6 +16,7 @@ Scenes.claw = (() => {
   let neonOff = 0;
   let turnWins = 0;
   let toggleDir = 0; // steering mode 'toggle': tap a direction to start, tap again to stop
+  let toggleTarget = null; // ...and with a pointer: tap the glass and the claw goes there and stops
   const btn = {};
   const toScreen = (x, y) => [(x + GX) * 2, (y + GY) * 2];
   const say = (text, hold) => Game.talk.say(text, hold);
@@ -92,7 +93,7 @@ Scenes.claw = (() => {
   // ---------------------------------------------------------------- scene api
   const S = {
     enter() {
-      toggleDir = 0;
+      toggleDir = 0; toggleTarget = null;
       if (!buf) { [buf, g] = mk(BW, BH); buildGlass(); buildFrame(); }
       Music.play('claw');
       idleT = 0;
@@ -110,7 +111,7 @@ Scenes.claw = (() => {
       let move = 0;
       const tog = Settings.v.steering === 'toggle';
       if (tog) {
-        if (sim.state !== 'idle' && sim.state !== 'carry') toggleDir = 0;
+        if (sim.state !== 'idle' && sim.state !== 'carry') { toggleDir = 0; toggleTarget = null; }
         else {
           if (Input.hit('left')) toggleDir = toggleDir === -1 ? 0 : -1;
           if (Input.hit('right')) toggleDir = toggleDir === 1 ? 0 : 1;
@@ -118,13 +119,25 @@ Scenes.claw = (() => {
         }
         move = toggleDir;
       } else toggleDir = 0;
-      if ((!tog && Input.held('left')) || btn.left.held) move -= 1;
-      if ((!tog && Input.held('right')) || btn.right.held) move += 1;
+      if (!tog && (Input.held('left') || btn.left.held)) move -= 1;
+      if (!tog && (Input.held('right') || btn.right.held)) move += 1;
       // hold the mouse / a finger on the glass to steer the claw toward the pointer
       const mp = Input.mouse;
-      if (!move && mp.down && mp.x >= 14 && mp.x < 374 && mp.y >= 14 && mp.y < 258 && (sim.state === 'idle' || sim.state === 'carry')) {
-        const d = mp.x / 2 - GX - sim.carX;
-        if (Math.abs(d) > 2) move = clamp(d / 10, -1, 1);
+      const onGlass = mp.x >= 14 && mp.x < 374 && mp.y >= 14 && mp.y < 258 && (sim.state === 'idle' || sim.state === 'carry');
+      if (tog) {
+        // tap-to-toggle with a pointer: tap the glass and the claw goes there and stops; tap the arrows to toggle
+        if (mp.pressed && onGlass) toggleTarget = mp.x / 2 - GX;
+        if (toggleTarget != null && !move) {
+          const d = toggleTarget - sim.carX;
+          if (Math.abs(d) < 2 || (sim.state !== 'idle' && sim.state !== 'carry')) toggleTarget = null; else move = clamp(d / 10, -1, 1);
+        }
+        if (toggleDir) toggleTarget = null;
+      } else {
+        toggleTarget = null;
+        if (!move && mp.down && onGlass) {
+          const d = mp.x / 2 - GX - sim.carX;
+          if (Math.abs(d) > 2) move = clamp(d / 10, -1, 1);
+        }
       }
       if (move) { movedOnce = true; idleT = 0; } else idleT += dt;
       sim.input.move = move;
@@ -323,8 +336,9 @@ Scenes.claw = (() => {
   }
 
   function buildButtons() {
-    btn.left = { id: 'cl', x: 398, y: 212, w: 18, h: 16, label: '', hidden: false, silent: true, onClick() {} };
-    btn.right = { id: 'cr', x: 418, y: 212, w: 18, h: 16, label: '', silent: true, onClick() {} };
+    const tap = (d) => () => { if (Settings.v.steering === 'toggle' && (Game.sim.state === 'idle' || Game.sim.state === 'carry')) { toggleDir = toggleDir === d ? 0 : d; toggleTarget = null; } };
+    btn.left = { id: 'cl', x: 398, y: 212, w: 18, h: 16, label: '', hidden: false, silent: true, onClick: tap(-1) };
+    btn.right = { id: 'cr', x: 418, y: 212, w: 18, h: 16, label: '', silent: true, onClick: tap(1) };
     btn.drop = { id: 'ca', x: 398, y: 230, w: 76, h: 14, label: 'DROP', silent: true, onClick: () => S.pressA() };
     btn.back = { id: 'cb', x: 398, y: 247, w: 76, h: 14, label: 'BACK', silent: true, onClick: () => S.back() };
   }
@@ -440,8 +454,8 @@ Scenes.claw = (() => {
     for (let i = 0; i < n; i++) {
       const [x, y] = spots[i];
       let on, col;
-      if (winFx > 0) { on = Settings.v.reduceFlash ? (i + Math.floor(t * 1.5)) % 2 === 0 : Math.sin(t * 20 + i * 1.3) > 0; col = vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
-      else { on = (i + Math.floor(t * 7)) % 4 === 0 || (i + Math.floor(t * 7)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
+      if (winFx > 0) { on = Settings.v.reduceFlash ? (i + Math.floor(t * 1.5)) % 2 === 0 : Math.sin(t * 20 + i * 1.3) > 0; col = Settings.v.reduceFlash ? [PAL.l, PAL.r, PAL.C, PAL.p][i % 4] : vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
+      else { const sp = Settings.v.reduceFlash ? 1.2 : 7; on = (i + Math.floor(t * sp)) % 4 === 0 || (i + Math.floor(t * sp)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
       g.fillStyle = on ? col : '#6b3a1c';
       g.fillRect(x, y, 1, 1);
       if (on) { g.fillStyle = on ? 'rgba(255,241,166,0.35)' : ''; g.fillRect(x - 1, y, 3, 1); g.fillRect(x, y - 1, 1, 3); }
@@ -461,7 +475,7 @@ Scenes.claw = (() => {
         Font.draw(g, w, 218, 32 + i * 12, { color: col, align: 'center', shadow: dim ? null : '#6b1f48' });
       });
     } else {
-      SPR.has('reaper_face') && SPR.draw(g, Game.talk.talking() && Math.sin(t * 22) > 0 ? (SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face') : 'reaper_face', 205, 36);
+      SPR.has('reaper_face') && SPR.draw(g, Game.talk.talking() && blinkOn(t, 3.5) ? (SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face') : 'reaper_face', 205, 36);
     }
     Draw.panel(g, 197, 73 + Math.round(bagBump), 42, 27, 'dark');
     Draw.panel(g, 197, 102, 42, 31, 'dark');
@@ -546,7 +560,7 @@ Scenes.claw = (() => {
     // first-time controls hint, inside the glass, until the player does anything
     if (!movedOnce && sim.state === 'idle' && Game.tokens === CONFIG.startTokens) {
       const a = 0.55 + 0.25 * Math.sin(t * 3);
-      Font.draw(ctx, `${Settings.hint('left')} ${Settings.hint('right')}  or  HOLD MOUSE ON THE GLASS TO STEER`, 190, 96, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
+      Font.draw(ctx, Settings.v.steering === 'toggle' ? `${Settings.hint('left')} ${Settings.hint('right')} TO START AND STOP  or  TAP THE GLASS` : `${Settings.hint('left')} ${Settings.hint('right')}  or  HOLD MOUSE ON THE GLASS TO STEER`, 190, 96, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
       Font.draw(ctx, `THEN  DROP (${Settings.hint('a')})`, 190, 108, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
     }
     // first-time nudge: flash the controls if the player hasn't moved yet

@@ -86,7 +86,7 @@ Scenes.shop = (() => {
       UI.set([]);
       return;
     }
-    if (Input.hit('b')) Overlays.pause();
+    if (Input.hit('b') && opened && !Engine.overlays.length) Overlays.pause();
     chatT -= dt;
     if (chatT < 0 && !Game.talk.visible()) { chatT = vrand(14, 22); say(vpick(IDLE_LINES), 3.2); }
     const h = hint();
@@ -130,7 +130,7 @@ Scenes.shop = (() => {
     // marquee bulbs
     for (let i = 0; i < 22; i++) {
       const x = MX + 4 + i * 9;
-      const on = (i + Math.floor(t * 5)) % 3 === 0 || !opened && Math.sin(t * 6 + i) > 0.3;
+      const on = (i + Math.floor(t * (Settings.v.reduceFlash ? 1.4 : 5))) % 3 === 0 || !opened && Math.sin(t * 6 + i) > 0.3;
       Draw.rect(ctx, x, MY + 1, 2, 2, on ? PAL.l : '#6b3a1c');
       Draw.rect(ctx, x, MY + 41, 2, 2, !on ? PAL.l : '#6b3a1c');
     }
@@ -175,7 +175,7 @@ Scenes.shop = (() => {
     }
     BG.shop(ctx, t, { layer: 'back' });
     // the reaper behind the counter
-    const talking = Game.talk.talking() && Math.sin(t * 24) > 0;
+    const talking = Game.talk.talking() && blinkOn(t, 3.8);
     let rs = 'reaper_idle';
     if (talking && SPR.has('reaper_talk')) rs = 'reaper_talk';
     else if (blinkT < 0 && SPR.has('reaper_blink')) rs = 'reaper_blink';
@@ -189,7 +189,7 @@ Scenes.shop = (() => {
       const cx = 436, cy = COUNTER_Y + 1;
       const tail = 'cat_tail' + [0, 1, 2, 1][Math.floor(t * (catMood > 0 ? 8 : 2.5)) % 4];
       if (SPR.has(tail)) SPR.draw(ctx, tail, cx + 6, cy - 3);
-      SPR.draw(ctx, Math.sin(t * 0.9) > 0.97 || catMood > 0 && Math.sin(t * 10) > 0 ? 'cat_blink' : 'cat_sit', cx, cy - (catMood > 1.2 ? 2 : 0));
+      SPR.draw(ctx, Math.sin(t * 0.9) > 0.97 || catMood > 0 && blinkOn(t, 1.6) ? 'cat_blink' : 'cat_sit', cx, cy - (catMood > 1.2 ? 2 : 0));
     }
     // poster text
     const ink = '#4c2270';

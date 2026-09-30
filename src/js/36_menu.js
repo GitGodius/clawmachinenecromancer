@@ -146,9 +146,8 @@ const Overlays = (() => {
   }
 
   function help() {
-    const menu = new ListMenu({ title: '', x: 0, y: 0, w: 0, rows: 0, onBack: () => Engine.close(), items: [] });
     Engine.open({
-      update() { menu.update(); if (Input.mouse.pressed || Input.hit('a')) Engine.close(); },
+      update() { UI.set([]); if (Input.anyPressed) { Sfx.play('ui_back'); Engine.close(); } }, // any key or tap closes it
       draw(ctx) {
         dimBackdrop(ctx, 0.82);
         Draw.panel(ctx, 40, 14, 400, 242, 'slate');
@@ -188,6 +187,8 @@ const Overlays = (() => {
         if (code === 'Escape') { Sfx.play('ui_back'); return; }
         if (code === 'Backspace' || code === 'Delete') { msg = Settings.unbind(a.id, s) ? a.label + ' cleared.' : 'Every action needs at least one key.'; Sfx.play(msg.endsWith('.') && msg !== 'Every action needs at least one key.' ? 'ui_click' : 'ui_deny'); persist(); return; }
         if (/^F\d+$|^Tab$|^ContextMenu$|^Meta|^Control|^Alt|^Shift/.test(code)) { msg = 'That key is not available.'; Sfx.play('ui_deny'); return; }
+        const strands = Settings.wouldStrand(a.id, code);
+        if (strands) { msg = Settings.keyName(code) + ' is the only key for "' + KEY_ACTIONS.find((x) => x.id === strands).label + '". Give that another key first.'; Sfx.play('ui_deny'); return; }
         const stolen = Settings.bind(a.id, s, code);
         const from = stolen && stolen !== a.id ? KEY_ACTIONS.find((x) => x.id === stolen).label : null;
         msg = Settings.keyName(code) + ' → ' + a.label + (from ? ' (was ' + from + ')' : '');
@@ -198,7 +199,10 @@ const Overlays = (() => {
     Engine.open({
       update() {
         UI.set([]);
-        if (capturing) return;
+        if (capturing) { // a tap cancels too: a phone has no Escape
+          if (Input.mouse.pressed) { capturing = null; Input.capture = null; Sfx.play('ui_back'); }
+          return;
+        }
         if (Input.hit('up')) { row = (row + rows - 1) % rows; Sfx.play('ui_hover'); }
         if (Input.hit('down')) { row = (row + 1) % rows; Sfx.play('ui_hover'); }
         if (Input.hit('left')) { slot = 0; Sfx.play('ui_hover'); }
@@ -264,7 +268,7 @@ const Overlays = (() => {
       { label: 'Saving', kind: 'info', text: () => (Store.persistent ? 'on' : 'off in this window') },
       { label: 'Copy debug info', kind: 'button', onClick: () => { Platform.copy(CrashLog.text('Debug info'), (ok) => Overlays.toast(ok ? 'Copied. Paste it into a bug report.' : 'Could not copy: it is shown in the report window.')); }, hint: 'Version, browser and the last few errors, ready to paste into a bug report.' },
       { label: 'Report a problem…', kind: 'button', onClick: () => Platform.open(BUILD.issues), hint: BUILD.issues.replace('https://', '') },
-      { label: 'Delete saved run and records…', kind: 'button', onClick: () => confirm('Delete your saved run, records and settings? This cannot be undone.', () => { Save.wipe(); Settings.apply(); Engine.overlays.length = 0; Game.newGame(); Engine.go('shop', { title: true }); Overlays.title(); }, { yesLabel: 'DELETE EVERYTHING', noLabel: 'KEEP', danger: true }) },
+      { label: 'Delete saved run and records…', kind: 'button', onClick: () => confirm('Delete your saved run, records and settings? This cannot be undone.', () => { Save.wipe(); Settings.apply(); Engine.closeAll(); Game.newGame(); Engine.go('shop', { title: true }, 'cut'); Overlays.title(); }, { yesLabel: 'DELETE EVERYTHING', noLabel: 'KEEP', danger: true }) },
       { label: 'About', kind: 'info', text: () => BUILD.name + ' ' + BUILD.version },
     ] });
     Engine.open({ update() { menu.update(); }, draw(ctx) { dimBackdrop(ctx, 0.85); menu.draw(ctx); } });
@@ -278,7 +282,7 @@ const Overlays = (() => {
       { label: 'RESUME', kind: 'button', onClick: back },
       { label: 'SETTINGS', kind: 'button', onClick: settings },
       { label: 'HOW TO PLAY', kind: 'button', onClick: help },
-      { label: 'QUIT TO TITLE', kind: 'button', onClick: () => confirm('Back to the title screen? Your run is saved.', () => { Save.flush(); Engine.overlays.length = 0; Engine.go('shop', { title: true }); Overlays.title(); }, { yesLabel: 'QUIT', noLabel: 'STAY' }) },
+      { label: 'QUIT TO TITLE', kind: 'button', onClick: () => confirm('Back to the title screen? Your run is saved.', () => { Save.flush(); Engine.closeAll(); Engine.go('shop', { title: true }, 'cut'); Overlays.title(); }, { yesLabel: 'QUIT', noLabel: 'STAY' }) },
     ] });
     Engine.open({
       pausePanel: true,
@@ -298,7 +302,17 @@ const Overlays = (() => {
 
   // ------------------------------------------------------------------- title
   function title() {
-    const cont = () => { Engine.close(); Game.fromSave(Save.data.run); Save.runActive = true; Scenes.shop.open(true); };
+    const cont = () => {
+      try { Game.fromSave(Save.data.run); }
+      catch (e) { // a save we cannot read must not brick the title: report it, keep the file, and leave the title up
+        CrashLog.report(e, 'continue');
+        Game.newGame();
+        Overlays.toast('That saved run could not be loaded. Nothing was changed. Start a new run to play.');
+        return;
+      }
+      Engine.close(); Save.runActive = true; Scenes.shop.open(true);
+      if (Save.notes.length) { Overlays.toast(Save.notes.join(' ')); Save.notes = []; }
+    };
     const fresh = () => { Engine.close(); Game.newGame(); Save.data.records.runs++; Save.reset(); Scenes.shop.open(false); };
     let t = 0;
     const has = Save.hasRun();

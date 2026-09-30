@@ -68,7 +68,7 @@ Scenes.battle = (() => {
         break;
       case 'hit': {
         const { att, def, dmg, crit } = d;
-        def.flashT = 0.12;
+        def.flashT = Settings.v.reduceFlash ? 0 : 0.12; // the white hit-flash is a blink: off when flashing is reduced
         const col = crit ? PAL.L : att.team === 'ally' ? '#fff6e3' : PAL.r;
         fx.text(def.x + vrand(-4, 4), def.y - bodyH(def) - 4, crit ? dmg + '!' : String(dmg), col, { font: crit ? 'main' : 'small', scale: crit ? 2 : 1 });
         if (def.team === 'enemy') fx.burst(def.x, def.y - bodyH(def) / 2, crit ? 12 : 6, { speed: 60, ay: -20, drag: 2, life: 0.5, color: ['#1b1526', '#33274a', '#5b4a78'], sizes: [1, 2] });
@@ -117,6 +117,7 @@ Scenes.battle = (() => {
       if (by) log(`${by.name} dispatched a ${u.name}.`);
     } else {
       Sfx.play('creature_die');
+      Music.duck(0.6, 1.2); // a small silence: the music leaves the room for a moment when one of yours falls
       Engine.shake(4, 0.35);
       Engine.hitPause(0.1);
       // dismember: every part flies off with a bit of physics
@@ -150,6 +151,7 @@ Scenes.battle = (() => {
     if (result) return;
     phase = 'done';
     resultT = 0;
+    for (const u of sim.units) u.flashT = 0; // a unit hit in the last instant would otherwise stay a white silhouette on the result screen
     result = Game.applyBattle(sim, kind);
     coinsShown = 0;
     if (kind === 'win' && result.won) {
@@ -172,6 +174,7 @@ Scenes.battle = (() => {
   }
 
   S.cheatWin = function () { sim && sim.killEnemies(); };
+  S.sim = () => sim; // read-only handle for tests and tools
 
   S.update = function (dt, realDt) {
     t += dt;
@@ -199,8 +202,10 @@ Scenes.battle = (() => {
       resultT += realDt;
       if (coinsShown < result.reward && resultT > 0.8 + coinsShown * 0.18) { coinsShown++; Sfx.play('coins_count'); }
     }
-    // input
+    // input. The result screen ignores it for a moment so a mashed key or click at the last blow cannot skip
+    // the rewards ("+4 tokens", "3 parts dropped into the machine") before they are read.
     const items = menuItems();
+    if (phase === 'done' && resultT < 0.6) { UI.set([]); return; }
     if (Input.hit('up')) { menuSel = (menuSel + items.length - 1) % items.length; Sfx.play('ui_hover'); }
     if (Input.hit('down')) { menuSel = (menuSel + 1) % items.length; Sfx.play('ui_hover'); }
     menuSel = clamp(menuSel, 0, items.length - 1);
@@ -271,7 +276,7 @@ Scenes.battle = (() => {
       } else drawEnemy(ctx, u);
     }
     for (const u of order) if (phase !== 'done' || u.team === 'ally') drawBar(ctx, u);
-    for (const b of bolts) Draw.bolt(ctx, b.x + vrand(-20, 20), 0, b.x, b.y - 30, '#e7f7ff', 9, b.seed + Math.floor(b.t * 30));
+    for (const b of bolts) Draw.bolt(ctx, b.x + (Settings.v.reduceFlash ? 0 : vrand(-20, 20)), 0, b.x, b.y - 30, '#e7f7ff', 9, Settings.v.reduceFlash ? b.seed : b.seed + Math.floor(b.t * 30)); // reduceFlash: a steady bolt, not a flicker
     fx.draw(ctx);
     // projectiles
     for (const p of sim.projectiles) { Draw.glow(ctx, p.x, p.y, 10, '#ffb070', 0.5); Draw.rect(ctx, p.x - 2, p.y - 2, 4, 4, PAL.L); Draw.rect(ctx, p.x - 1, p.y - 1, 2, 2, '#fff'); }
