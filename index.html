@@ -2626,9 +2626,9 @@ SPR.def('ico_nudgeR', { anchor: [6, 6], rows: NUDGE_ROWS.map((r) => r.split('').
 SPR.def('ico_grip', { // 12x12
   anchor: [6, 6],
   rows: [
-    '.w.......w..',
+    '............',
     '....kkkk....',
-    '...kllLLk...',
+    '.w.kllLLk.w.',
     '.k.klLLLmk.k',
     '.kEklLLLmkEk',
     '.kEkLLLmmkEk',
@@ -2645,7 +2645,7 @@ SPR.def('ico_grip', { // 12x12
 SPR.def('ico_order', { // 12x12
   anchor: [6, 6],
   rows: [
-    '.......w....',
+    '............',
     '.....LL..w..',
     '....kLLk....',
     '...keeEik...',
@@ -5431,6 +5431,7 @@ const Input = {
   init(canvas) {
     window.addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return; // browser shortcuts (Ctrl+1 switches tab, Ctrl+E, Cmd+Q...) are not game keys
       const act = this.KEYMAP[e.code];
       if (act || e.code === 'Space') e.preventDefault();
       if (!e.repeat) {
@@ -7456,6 +7457,7 @@ const Rig = {
         if (sim.state !== 'idle') return { ok: false, why: 'busy', cost };
         break;
       case 'redo':
+        if (sim.state !== 'idle') return { ok: false, why: 'busy', cost }; // mid-rewind (or mid-drop)
         if (!sim.canRedo()) return { ok: false, why: 'none', cost };
         break;
     }
@@ -7529,6 +7531,7 @@ const Rig = {
   },
 
   update(dt) { this.heat = Math.max(0, this.heat - CONFIG.heatDecay * dt); },
+  cool(secs) { this.heat = Math.max(0, this.heat - CONFIG.heatDecay * Math.max(0, secs)); }, // time spent away from the claw scene
 
   // ---------------------------------------------------------------- Order helpers
   // How many of each slot you own (bag + everyone stitched up).
@@ -7539,7 +7542,8 @@ const Rig = {
     for (const c of Game.party) for (const t of c.parts()) n[PART_DEFS[t].slot]++;
     return n;
   },
-  // The slot you are shortest of, for the creature count you have (1 head, 1 torso, 2 arms, 2 legs, 1 heart, 1 back each).
+  // The slot you are shortest of, for the creature count you have (1 head, 1 torso, 2 arms, 2 legs, 1 heart, 1 back each),
+  // or null when you are not short of anything.
   suggestSlot() {
     const per = { head: 1, torso: 1, arm: 2, leg: 2, heart: 1, back: 1 };
     const crew = Math.max(1, Game.party.length), have = this.slotCounts();
@@ -7548,7 +7552,7 @@ const Rig = {
       const def = per[s] * crew - have[s];
       if (def > bestDef) { bestDef = def; best = s; }
     }
-    return best;
+    return bestDef > 0 ? best : null;
   },
 };
 
@@ -7640,7 +7644,7 @@ Scenes.claw = (() => {
   const PK = { x: 84, y: 66, w: 220, h: 134 }; // the Order menu
   let picker = null; // Order menu: { sel } while open
   let lens = null; // what a drop right here would hold: { part, chance, y, lx }
-  let noLuckT = 0, luckHint = 0, ironFlash = 0;
+  let noLuckT = 0, luckHint = 0, ironFlash = 0, leftAt = null;
   let pipPop = []; // per Luck pip: seconds left of its "just earned" pop
   const cellPulse = {}; // lever id -> seconds left of a pulsing hint frame (first-time nudges)
   let pickerBtns = [];
@@ -7722,6 +7726,7 @@ Scenes.claw = (() => {
       idleT = 0;
       topUp();
       picker = null;
+      if (leftAt != null) Rig.cool(Engine.realT - leftAt); // TILT heat keeps cooling while you are in the shop
       if (!Game.seen.claw) {
         Game.seen.claw = true;
         say('Pick a part. Any part. They are ALL good parts.', 3.2);
@@ -7732,7 +7737,7 @@ Scenes.claw = (() => {
       } else if (Game.sim.pending.length) say('Fresh stock! Straight from the graveyard.', 2.4);
       buildButtons();
     },
-    exit() { Sfx.motor(0, 0); Game.sim.input.move = 0; picker = null; },
+    exit() { Sfx.motor(0, 0); Game.sim.input.move = 0; picker = null; leftAt = Engine.realT; },
     update(dt) {
       t += dt;
       const sim = Game.sim;
@@ -7815,6 +7820,7 @@ Scenes.claw = (() => {
         sim.state === 'idle' ? (Game.tokens > 0 ? 'DROP' : 'NO TOKENS') : sim.state === 'carry' ? 'RELEASE' : sim.state === 'drop' ? 'STOP' : '...';
       for (const [id] of CELLS) btn['r_' + id].tip = Rig.on && Input.lastDevice !== 'touch' ? tipFor(id) : null; // a tap would leave the tooltip stuck on screen
       UI.set(picker ? pickerBtns : Object.values(btn));
+      if (picker) for (const b of Object.values(btn)) b.hover = b.held = false;
     },
 
     pressA() {
@@ -8020,7 +8026,7 @@ Scenes.claw = (() => {
     if (id === 'order') { // a menu first: which slot?
       const c = Rig.can('order');
       if (!c.ok) { Rig.emit('deny', { name: id, why: c.why, cost: c.cost }); return; }
-      picker = { sel: Math.max(0, ORDER_SLOTS.indexOf(Rig.suggestSlot())) };
+      picker = { sel: Math.max(0, ORDER_SLOTS.indexOf(Rig.suggestSlot())), t0: Engine.realT };
       buildPickerButtons();
       Sfx.play('ui_click');
       return;
@@ -8111,6 +8117,7 @@ Scenes.claw = (() => {
     if (!picker) return;
     const slot = ORDER_SLOTS[picker.sel];
     picker = null;
+    Input.mouse.down = false; // the button may still be held: don't let that steer the claw across the glass
     Rig.use('order', slot);
   }
   function updatePicker() {
@@ -8119,11 +8126,14 @@ Scenes.claw = (() => {
     if (Input.hit('left')) n = row * 3 + (col + 2) % 3;
     if (Input.hit('right')) n = row * 3 + (col + 1) % 3;
     if (Input.hit('up') || Input.hit('down')) n = (1 - row) * 3 + col;
-    for (let i = 0; i < 6; i++) if (Input.hit('Digit' + (i + 1)) || Input.hit('Numpad' + (i + 1))) { picker.sel = i; confirmPicker(); return; }
+    if (Engine.realT - picker.t0 > 0.2) { // (a double-tap of 3 must not order slot 3, an Arm)
+      for (let i = 0; i < 6; i++) if (Input.hit('Digit' + (i + 1)) || Input.hit('Numpad' + (i + 1))) { picker.sel = i; confirmPicker(); return; }
+    }
     if (n !== sel) { picker.sel = n; Sfx.play('ui_hover'); }
     for (const b of pickerBtns) if (b.hover && Input.mouse.moved && picker.sel !== b.cell.i) { picker.sel = b.cell.i; Sfx.play('ui_hover'); }
-    // a click outside the menu closes it
-    if (Input.mouse.pressed && !Input.over(PK.x, PK.y, PK.w, PK.h)) { picker = null; Sfx.play('ui_back'); }
+    // a click outside the menu closes it. Consume the press: UI.update runs after this and would otherwise
+    // hand the same click to whatever button is now under the pointer (QUAKE, DROP, BACK...)
+    if (Input.mouse.pressed && !Input.over(PK.x, PK.y, PK.w, PK.h)) { picker = null; Input.mouse.pressed = false; Input.mouse.down = false; Sfx.play('ui_back'); }
   }
 
   function buildButtons() {
@@ -8350,11 +8360,11 @@ Scenes.claw = (() => {
     if (id === 'redo' && c.ok && Math.sin(t * 5) > 0) Draw.frame(ctx, x - 1, y - 1, b.w + 2, b.h + 2, '#e7a6f0'); // a redo is on offer
     Font.draw(ctx, T.key, x + 3, y + 3, { font: 'small', color: ok ? '#8a7aa8' : '#4b4466' });
     if (cost > 0) {
-      Font.draw(ctx, String(cost), x + b.w - 10, y + 3, { font: 'small', color: Rig.luck >= cost ? '#f6c64b' : '#e8405a' });
+      Font.draw(ctx, String(cost), x + b.w - 11, y + 3, { font: 'small', color: Rig.luck >= cost ? '#f6c64b' : '#e8405a' });
       SPR.draw(ctx, 'ico_luck_s', x + b.w - 5, y + 5);
     }
-    SPR.draw(ctx, CELL_ICON[id], x + 12, y + 13, { alpha: ok ? 1 : 0.4 });
-    Font.draw(ctx, armed ? 'ARMED' : T.label, x + 12, y + 19, { font: 'small', color: armed ? '#f6c64b' : ok ? '#ecdcbc' : '#5b4a78', align: 'center' });
+    SPR.draw(ctx, CELL_ICON[id], x + 12, y + 14, { alpha: ok ? 1 : 0.4 });
+    Font.draw(ctx, armed ? 'ARMED' : T.label, x + 12, y + 20, { font: 'small', color: armed ? '#f6c64b' : ok ? '#ecdcbc' : '#5b4a78', align: 'center' });
   }
 
   // ---- the Lens: the odds of a drop right here, on the drop guide
@@ -8364,7 +8374,7 @@ Scenes.claw = (() => {
     // what sits under the claw. Green/yellow/red are cut on the calibrated number.
     const sim = Game.sim, P = sim.clawPose(), pct = Math.round(lens.chance * 100);
     const col = lens.chance >= 0.52 ? '#9be38f' : lens.chance >= 0.33 ? '#f6c64b' : '#e8405a';
-    const a = 'HOLD ~' + pct + '%', b = lens.part.def.name.toUpperCase();
+    const a = 'HOLD ' + pct + '%', b = lens.part.def.name.toUpperCase(); // (the small font has no '~')
     const wa = Font.measure(a, 'small'), w = wa + Font.measure(b, 'small') + 14;
     const [sx, sy] = toScreen(P.carX, (P.hubY + 30 + lens.y) / 2);
     let x = Math.round(sx + 6);
@@ -8406,7 +8416,7 @@ Scenes.claw = (() => {
       Font.draw(ctx, String(c.i + 1), c.x + 4, c.y + 4, { font: 'small', color: '#8a7aa8' });
       Font.draw(ctx, SLOT_NAMES[c.slot].toUpperCase(), c.x + 36, c.y + 9, { font: 'small', color: '#ecdcbc' });
       Font.draw(ctx, 'OWN ' + counts[c.slot], c.x + 36, c.y + 18, { font: 'small', color: '#a6aec2' });
-      if (c.slot === need) Font.draw(ctx, 'NEEDED', c.x + 36, c.y + 27, { font: 'small', color: '#9be38f' });
+      if (need && c.slot === need) Font.draw(ctx, 'NEEDED', c.x + 36, c.y + 27, { font: 'small', color: '#9be38f' });
     }
     Font.draw(ctx, '1-6 OR CLICK TO ORDER  ·  ESC TO CANCEL', PK.x + PK.w / 2, PK.y + PK.h - 12, { font: 'small', color: '#7a6a9a', align: 'center' });
   }
@@ -9502,9 +9512,13 @@ Scenes.shop = (() => {
     'The cat is not for sale. I asked.',
     'Every part in there was someone\'s favourite part once.',
     'Give them better parts. They\'ll give you better days.',
+  ];
+  // only while the Rig is on (?rig=0 is the original game)
+  const RIG_LINES = [
     'There\'s a panel on the side of the machine. I didn\'t put it there. Flip the switches.',
     'Bad luck isn\'t wasted here. I bank it. Ask me how I know.',
   ];
+  const idleLine = () => pick(Rig.on ? IDLE_LINES.concat(RIG_LINES) : IDLE_LINES);
 
   function hint() {
     if (Game.tokens > 0 && !Game.inventory.length && !Game.party.length) return 'collect';
@@ -9566,7 +9580,7 @@ Scenes.shop = (() => {
       return;
     }
     chatT -= dt;
-    if (chatT < 0 && !Game.talk.visible()) { chatT = rand(14, 22); say(pick(IDLE_LINES), 3.2); }
+    if (chatT < 0 && !Game.talk.visible()) { chatT = rand(14, 22); say(idleLine(), 3.2); }
     const h = hint();
     const signs = [
       { id: 'collect', label: 'COLLECT', y: 205, onClick: goClaw, tip: [{ t: 'The claw machine', c: '#ff8ac6' }, { t: `1 token per grab · you have ${Game.tokens}`, c: '#ecdcbc' }] },
@@ -9577,7 +9591,7 @@ Scenes.shop = (() => {
     ].map((b) => Object.assign({ x: 398, w: 76, h: 16, style: 'wood', kind: 'sign', pulse: h === b.id }, b));
     signs.push({ id: 'machine', x: MX, y: MY, w: MW, h: 214, label: '', kind: 'hot', silent: true, onClick: goClaw, tip: 'Play the claw machine' });
     signs.push({ id: 'cat', x: 424, y: 176, w: 24, h: 20, label: '', kind: 'hot', silent: true, onClick: () => { catMood = 1.5; Sfx.play('meow'); say(pick(['The cat is not for sale.', 'He bites. Affectionately.', 'That\'s Mr. Whiskers. He\'s been dead for years. Don\'t tell him.']), 2.4); } });
-    signs.push({ id: 'reaper', x: REAPER_X - 22, y: 150, w: 44, h: 46, label: '', kind: 'hot', silent: true, onClick: () => { say(pick(IDLE_LINES), 3); chatT = 18; } });
+    signs.push({ id: 'reaper', x: REAPER_X - 22, y: 150, w: 44, h: 46, label: '', kind: 'hot', silent: true, onClick: () => { say(idleLine(), 3); chatT = 18; } });
     S.signs = signs;
     UI.set(signs);
     const sg = signs.filter((b) => b.kind === 'sign');
@@ -9705,7 +9719,7 @@ Scenes.shop = (() => {
       Font.draw(ctx, 'THE GOOD PARTS', 240, 92 - Math.round((1 - easeOutBack(k)) * 30), { scale: 4, color: '#fff1d6', outline: '#3a0c20', shadow: '#b0224a', align: 'center', alpha: k });
       Font.draw(ctx, 'a claw machine necromancer prototype', 240, 132, { color: '#cdb892', align: 'center', alpha: k, outline: PAL.k });
       if (Math.sin(t * 4) > -0.2) Font.draw(ctx, Input.lastDevice === 'touch' ? 'TAP TO OPEN THE SHOP' : 'CLICK OR PRESS ANY KEY', 240, 176, { color: '#ff8ac6', align: 'center', outline: PAL.k });
-      Font.draw(ctx, '← →  MOVE    SPACE  DROP    Q E  NUDGE    1-4  RIG    ESC  BACK    M  MUTE    F  FULLSCREEN', 240, 252, { font: 'small', color: '#7a6a9a', align: 'center' });
+      Font.draw(ctx, '← →  MOVE    SPACE  DROP    ' + (Rig.on ? 'Q E  NUDGE    1-4  RIG    ' : '') + 'ESC  BACK    M  MUTE    F  FULLSCREEN', 240, 252, { font: 'small', color: '#7a6a9a', align: 'center' });
     }
   };
 
@@ -9851,6 +9865,7 @@ const Debug = {
     const tog = document.getElementById('dbgToggle');
     if (tog) tog.addEventListener('click', () => this.toggle());
     window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return; // Ctrl+F (find), Ctrl+P (print), Cmd+M (minimize) are not ours
       if (e.code === 'Backquote') { this.toggle(); e.preventDefault(); }
       if (e.code === 'KeyP' && !(e.target && e.target.tagName === 'INPUT')) this.showReport();
       if (e.code === 'KeyM') AudioSys.toggleMute();
@@ -9946,7 +9961,7 @@ if (typeof BG === 'undefined') {
   const start = () => {
     const Q = new URLSearchParams(location.search);
     if (Q.get('seed')) RNG = mulberry32(+Q.get('seed'));
-    if (Q.get('rig') === '0') CONFIG.rigOn = 0; // the original claw, for A/B playtests
+    if (Q.get('rig') === '0') CONFIG.rigOn = CONFIG_DEFAULTS.rigOn = 0; // the original claw, for A/B playtests (also survives the tuning panel's Reset)
     Engine.init();
     Debug.build();
     if (BG.prebuild) BG.prebuild();

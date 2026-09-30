@@ -7,7 +7,7 @@
   const start = () => {
     const Q = new URLSearchParams(location.search);
     if (Q.get('seed')) RNG = mulberry32(+Q.get('seed'));
-    if (Q.get('rig') === '0') CONFIG.rigOn = 0; // the original claw, for A/B playtests
+    if (Q.get('rig') === '0') CONFIG.rigOn = CONFIG_DEFAULTS.rigOn = 0; // the original claw, for A/B playtests (also survives the tuning panel's Reset)
     Engine.init();
     Debug.build();
     if (BG.prebuild) BG.prebuild();

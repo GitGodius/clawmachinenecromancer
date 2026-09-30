@@ -361,6 +361,8 @@ section('rules (Luck, costs, TILT, Order)');
   const tokens0 = Game.tokens, had = sim.canRedo();
   r = Rig.use('redo');
   check('redo costs 3, refunds the token and rewinds', had && r.ok && Rig.luck === 8 - CONFIG.costRedo && Game.tokens === tokens0 + 1 && sim.state === 'rewind', `tokens ${tokens0} -> ${Game.tokens}`);
+  const again = Rig.use('redo');
+  check('a second redo press mid-rewind is "busy", not "nothing to undo", and is free', !again.ok && again.why === 'busy' && Rig.luck === 8 - CONFIG.costRedo && Game.tokens === tokens0 + 1);
 
   // TILT
   sim = boot(); Rig.luck = 5; Rig.heat = 0;
@@ -372,6 +374,13 @@ section('rules (Luck, costs, TILT, Order)');
   check('TILT ends', sim.lockT === 0 && Rig.can('nudgeL').ok);
   Rig.heat = 0; let slow = 0; for (let i = 0; i < 8; i++) { if (Rig.use('nudgeR').tilt) slow++; Rig.update(2.5); sim.step(1 / 60); stepFor(sim, 0.1); }
   check('slow nudging never TILTs', slow === 0);
+
+  Rig.heat = 2; Rig.cool(2);
+  check('TILT heat cools by elapsed time (used when you return from the shop)', Math.abs(Rig.heat - (2 - 2 * CONFIG.heatDecay)) < 1e-9 && (Rig.cool(99), Rig.heat === 0), `heat ${Rig.heat}`);
+  sim = boot();
+  const need0 = Rig.suggestSlot();
+  for (const t of ['skull', 'ribcage', 'bonearm', 'bonearm', 'boneleg', 'boneleg', 'heart', 'wings']) Game.addPart(t);
+  check('"needed" names a slot when you are short, and nothing when a full set is in the bag', ORDER_SLOTS.includes(need0) && Rig.suggestSlot() === null, `short: ${need0}, with a full set: ${Rig.suggestSlot()}`);
 
   // switches
   sim = boot(); Rig.luck = 8; CONFIG.rigOn = 0;

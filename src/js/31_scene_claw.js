@@ -31,7 +31,7 @@ Scenes.claw = (() => {
   const PK = { x: 84, y: 66, w: 220, h: 134 }; // the Order menu
   let picker = null; // Order menu: { sel } while open
   let lens = null; // what a drop right here would hold: { part, chance, y, lx }
-  let noLuckT = 0, luckHint = 0, ironFlash = 0;
+  let noLuckT = 0, luckHint = 0, ironFlash = 0, leftAt = null;
   let pipPop = []; // per Luck pip: seconds left of its "just earned" pop
   const cellPulse = {}; // lever id -> seconds left of a pulsing hint frame (first-time nudges)
   let pickerBtns = [];
@@ -113,6 +113,7 @@ Scenes.claw = (() => {
       idleT = 0;
       topUp();
       picker = null;
+      if (leftAt != null) Rig.cool(Engine.realT - leftAt); // TILT heat keeps cooling while you are in the shop
       if (!Game.seen.claw) {
         Game.seen.claw = true;
         say('Pick a part. Any part. They are ALL good parts.', 3.2);
@@ -123,7 +124,7 @@ Scenes.claw = (() => {
       } else if (Game.sim.pending.length) say('Fresh stock! Straight from the graveyard.', 2.4);
       buildButtons();
     },
-    exit() { Sfx.motor(0, 0); Game.sim.input.move = 0; picker = null; },
+    exit() { Sfx.motor(0, 0); Game.sim.input.move = 0; picker = null; leftAt = Engine.realT; },
     update(dt) {
       t += dt;
       const sim = Game.sim;
@@ -206,6 +207,7 @@ Scenes.claw = (() => {
         sim.state === 'idle' ? (Game.tokens > 0 ? 'DROP' : 'NO TOKENS') : sim.state === 'carry' ? 'RELEASE' : sim.state === 'drop' ? 'STOP' : '...';
       for (const [id] of CELLS) btn['r_' + id].tip = Rig.on && Input.lastDevice !== 'touch' ? tipFor(id) : null; // a tap would leave the tooltip stuck on screen
       UI.set(picker ? pickerBtns : Object.values(btn));
+      if (picker) for (const b of Object.values(btn)) b.hover = b.held = false;
     },
 
     pressA() {
@@ -411,7 +413,7 @@ Scenes.claw = (() => {
     if (id === 'order') { // a menu first: which slot?
       const c = Rig.can('order');
       if (!c.ok) { Rig.emit('deny', { name: id, why: c.why, cost: c.cost }); return; }
-      picker = { sel: Math.max(0, ORDER_SLOTS.indexOf(Rig.suggestSlot())) };
+      picker = { sel: Math.max(0, ORDER_SLOTS.indexOf(Rig.suggestSlot())), t0: Engine.realT };
       buildPickerButtons();
       Sfx.play('ui_click');
       return;
@@ -502,6 +504,7 @@ Scenes.claw = (() => {
     if (!picker) return;
     const slot = ORDER_SLOTS[picker.sel];
     picker = null;
+    Input.mouse.down = false; // the button may still be held: don't let that steer the claw across the glass
     Rig.use('order', slot);
   }
   function updatePicker() {
@@ -510,11 +513,14 @@ Scenes.claw = (() => {
     if (Input.hit('left')) n = row * 3 + (col + 2) % 3;
     if (Input.hit('right')) n = row * 3 + (col + 1) % 3;
     if (Input.hit('up') || Input.hit('down')) n = (1 - row) * 3 + col;
-    for (let i = 0; i < 6; i++) if (Input.hit('Digit' + (i + 1)) || Input.hit('Numpad' + (i + 1))) { picker.sel = i; confirmPicker(); return; }
+    if (Engine.realT - picker.t0 > 0.2) { // (a double-tap of 3 must not order slot 3, an Arm)
+      for (let i = 0; i < 6; i++) if (Input.hit('Digit' + (i + 1)) || Input.hit('Numpad' + (i + 1))) { picker.sel = i; confirmPicker(); return; }
+    }
     if (n !== sel) { picker.sel = n; Sfx.play('ui_hover'); }
     for (const b of pickerBtns) if (b.hover && Input.mouse.moved && picker.sel !== b.cell.i) { picker.sel = b.cell.i; Sfx.play('ui_hover'); }
-    // a click outside the menu closes it
-    if (Input.mouse.pressed && !Input.over(PK.x, PK.y, PK.w, PK.h)) { picker = null; Sfx.play('ui_back'); }
+    // a click outside the menu closes it. Consume the press: UI.update runs after this and would otherwise
+    // hand the same click to whatever button is now under the pointer (QUAKE, DROP, BACK...)
+    if (Input.mouse.pressed && !Input.over(PK.x, PK.y, PK.w, PK.h)) { picker = null; Input.mouse.pressed = false; Input.mouse.down = false; Sfx.play('ui_back'); }
   }
 
   function buildButtons() {
@@ -741,11 +747,11 @@ Scenes.claw = (() => {
     if (id === 'redo' && c.ok && Math.sin(t * 5) > 0) Draw.frame(ctx, x - 1, y - 1, b.w + 2, b.h + 2, '#e7a6f0'); // a redo is on offer
     Font.draw(ctx, T.key, x + 3, y + 3, { font: 'small', color: ok ? '#8a7aa8' : '#4b4466' });
     if (cost > 0) {
-      Font.draw(ctx, String(cost), x + b.w - 10, y + 3, { font: 'small', color: Rig.luck >= cost ? '#f6c64b' : '#e8405a' });
+      Font.draw(ctx, String(cost), x + b.w - 11, y + 3, { font: 'small', color: Rig.luck >= cost ? '#f6c64b' : '#e8405a' });
       SPR.draw(ctx, 'ico_luck_s', x + b.w - 5, y + 5);
     }
-    SPR.draw(ctx, CELL_ICON[id], x + 12, y + 13, { alpha: ok ? 1 : 0.4 });
-    Font.draw(ctx, armed ? 'ARMED' : T.label, x + 12, y + 19, { font: 'small', color: armed ? '#f6c64b' : ok ? '#ecdcbc' : '#5b4a78', align: 'center' });
+    SPR.draw(ctx, CELL_ICON[id], x + 12, y + 14, { alpha: ok ? 1 : 0.4 });
+    Font.draw(ctx, armed ? 'ARMED' : T.label, x + 12, y + 20, { font: 'small', color: armed ? '#f6c64b' : ok ? '#ecdcbc' : '#5b4a78', align: 'center' });
   }
 
   // ---- the Lens: the odds of a drop right here, on the drop guide
@@ -755,7 +761,7 @@ Scenes.claw = (() => {
     // what sits under the claw. Green/yellow/red are cut on the calibrated number.
     const sim = Game.sim, P = sim.clawPose(), pct = Math.round(lens.chance * 100);
     const col = lens.chance >= 0.52 ? '#9be38f' : lens.chance >= 0.33 ? '#f6c64b' : '#e8405a';
-    const a = 'HOLD ~' + pct + '%', b = lens.part.def.name.toUpperCase();
+    const a = 'HOLD ' + pct + '%', b = lens.part.def.name.toUpperCase(); // (the small font has no '~')
     const wa = Font.measure(a, 'small'), w = wa + Font.measure(b, 'small') + 14;
     const [sx, sy] = toScreen(P.carX, (P.hubY + 30 + lens.y) / 2);
     let x = Math.round(sx + 6);
@@ -797,7 +803,7 @@ Scenes.claw = (() => {
       Font.draw(ctx, String(c.i + 1), c.x + 4, c.y + 4, { font: 'small', color: '#8a7aa8' });
       Font.draw(ctx, SLOT_NAMES[c.slot].toUpperCase(), c.x + 36, c.y + 9, { font: 'small', color: '#ecdcbc' });
       Font.draw(ctx, 'OWN ' + counts[c.slot], c.x + 36, c.y + 18, { font: 'small', color: '#a6aec2' });
-      if (c.slot === need) Font.draw(ctx, 'NEEDED', c.x + 36, c.y + 27, { font: 'small', color: '#9be38f' });
+      if (need && c.slot === need) Font.draw(ctx, 'NEEDED', c.x + 36, c.y + 27, { font: 'small', color: '#9be38f' });
     }
     Font.draw(ctx, '1-6 OR CLICK TO ORDER  ·  ESC TO CANCEL', PK.x + PK.w / 2, PK.y + PK.h - 12, { font: 'small', color: '#7a6a9a', align: 'center' });
   }

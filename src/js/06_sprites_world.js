@@ -1444,9 +1444,9 @@ SPR.def('ico_nudgeR', { anchor: [6, 6], rows: NUDGE_ROWS.map((r) => r.split('').
 SPR.def('ico_grip', { // 12x12
   anchor: [6, 6],
   rows: [
-    '.w.......w..',
+    '............',
     '....kkkk....',
-    '...kllLLk...',
+    '.w.kllLLk.w.',
     '.k.klLLLmk.k',
     '.kEklLLLmkEk',
     '.kEkLLLmmkEk',
@@ -1463,7 +1463,7 @@ SPR.def('ico_grip', { // 12x12
 SPR.def('ico_order', { // 12x12
   anchor: [6, 6],
   rows: [
-    '.......w....',
+    '............',
     '.....LL..w..',
     '....kLLk....',
     '...keeEik...',

@@ -117,10 +117,10 @@ After a **missed or slipped** grab, rewinds the world to the moment before the d
 
 Not a lever: the information layer.
 
-- **Before you drop:** a badge at the end of the drop guide names the part under the claw and its estimated hold chance, coloured green / yellow / red. It reads `~` because the claw shifts the pile as it lands. Armed Iron Grip shows in the number.
-- **After the claw closes:** the actual roll is shown (`HELD 78%` or `NO GRIP 78%`), so a failure is a visible dice roll, not a mystery.
+- **Before you drop:** a badge on the drop guide reads `HOLD 54%  SKULL`: the chance this drop holds *something*, and the part under the claw. Green from 52%, yellow from 33%, red below. Armed Iron Grip shows in the number.
+- **After the claw closes:** the actual roll for the part that really is in the claw is shown (`WOLF SKULL 76%  HELD!` or `NO GRIP`), so a failure is a visible dice roll, not a mystery.
 
-The chance comes from the **same function** the sim uses to roll the grab, so the badge can never disagree with the rules.
+The number comes from the **same function** the sim uses to roll the grab, times a measured calibration of 0.75. The calibration matters: the claw shoves the pile as it lands, so what ends up in its cavity is often not what sat under it (the part under the claw is the one held only about 44% of the time). Uncalibrated, a green "79%" badge held 59% of the time, and a badge that over-promises feels rigged, which is the opposite of the point. Measured over 700 drops each, the real hold rate is 0.73x the raw number without Iron Grip and 0.79x with it, steady across every odds bin. `tools/rig_check.mjs` guards it (badge 54% vs 56% held over 240 drops). If the grab model in `tryGrab()` is retuned, re-measure `RIGSIM.lensShift`.
 
 ## 6. Keeping it honest
 
@@ -201,7 +201,7 @@ Every number is in the **Rig** group of the tuning panel (`` ` ``): costs, Luck 
 - **Nudge:** shoves the right way (about 14 px), hardest near the claw, no spills, no NaN.
 - **Redo:** after a failed grab, every part and the claw are restored to the recorded pre-drop state, exactly (angles compared modulo 2π, since planck reports them in (-π, π]).
 - **Iron Grip:** win rate 59% → 68%, and the share of grabs that lose their grip 31% → 8%.
-- **Lens:** the predicted chance equals the chance the sim rolls with, and the revealed roll matches the grab info.
+- **Lens:** the badge equals the sim's own chance function times the measured shift, the revealed roll matches the grab info, and the badge is calibrated (54% shown vs 56% actually held; green and yellow badges hold about equally often, so read it as "how good is this drop overall", not as a sharp discriminator).
 - **Economy and rules:** Luck gains, cap, spending, refunds, costs, TILT (the fourth quick nudge), Order delivery by slot, `rigOn=0`, `rigFree=1`.
 - **Hooks are invisible:** the same seeded grabs with the recording hooks stubbed out give identical results. And `VERBOSE=1 node tools/tune.mjs 80` before and after the layer was added produced bit-identical results for all 80 seeds.
 - **Fuzz:** hundreds of random lever pulls, drops, releases and steps keep every invariant.

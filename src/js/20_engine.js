@@ -25,6 +25,7 @@ const Input = {
   init(canvas) {
     window.addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return; // browser shortcuts (Ctrl+1 switches tab, Ctrl+E, Cmd+Q...) are not game keys
       const act = this.KEYMAP[e.code];
       if (act || e.code === 'Space') e.preventDefault();
       if (!e.repeat) {

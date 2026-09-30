@@ -43,6 +43,7 @@ const Debug = {
     const tog = document.getElementById('dbgToggle');
     if (tog) tog.addEventListener('click', () => this.toggle());
     window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return; // Ctrl+F (find), Ctrl+P (print), Cmd+M (minimize) are not ours
       if (e.code === 'Backquote') { this.toggle(); e.preventDefault(); }
       if (e.code === 'KeyP' && !(e.target && e.target.tagName === 'INPUT')) this.showReport();
       if (e.code === 'KeyM') AudioSys.toggleMute();

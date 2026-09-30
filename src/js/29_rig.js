@@ -96,6 +96,7 @@ const Rig = {
         if (sim.state !== 'idle') return { ok: false, why: 'busy', cost };
         break;
       case 'redo':
+        if (sim.state !== 'idle') return { ok: false, why: 'busy', cost }; // mid-rewind (or mid-drop)
         if (!sim.canRedo()) return { ok: false, why: 'none', cost };
         break;
     }
@@ -169,6 +170,7 @@ const Rig = {
   },
 
   update(dt) { this.heat = Math.max(0, this.heat - CONFIG.heatDecay * dt); },
+  cool(secs) { this.heat = Math.max(0, this.heat - CONFIG.heatDecay * Math.max(0, secs)); }, // time spent away from the claw scene
 
   // ---------------------------------------------------------------- Order helpers
   // How many of each slot you own (bag + everyone stitched up).
@@ -179,7 +181,8 @@ const Rig = {
     for (const c of Game.party) for (const t of c.parts()) n[PART_DEFS[t].slot]++;
     return n;
   },
-  // The slot you are shortest of, for the creature count you have (1 head, 1 torso, 2 arms, 2 legs, 1 heart, 1 back each).
+  // The slot you are shortest of, for the creature count you have (1 head, 1 torso, 2 arms, 2 legs, 1 heart, 1 back each),
+  // or null when you are not short of anything.
   suggestSlot() {
     const per = { head: 1, torso: 1, arm: 2, leg: 2, heart: 1, back: 1 };
     const crew = Math.max(1, Game.party.length), have = this.slotCounts();
@@ -188,6 +191,6 @@ const Rig = {
       const def = per[s] * crew - have[s];
       if (def > bestDef) { bestDef = def; best = s; }
     }
-    return best;
+    return bestDef > 0 ? best : null;
   },
 };
