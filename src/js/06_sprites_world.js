@@ -1365,3 +1365,134 @@ SPR.def('key_right', { // 11x11
     '.kkkkkkkkk.',
   ],
 });
+
+// ===== THE RIG ICONS (anchor = center pixel) =====
+// Luck pip: a gold horseshoe, open end up. Full, empty and mini (for cost labels).
+SPR.def('ico_luck', { // 7x7
+  anchor: [3, 3],
+  rows: [
+    'kLk.kLk',
+    'klk.kLk',
+    'klk.kmk',
+    'kLk.kmk',
+    'kLLkLmk',
+    'kmLLLmk',
+    '.kkkkk.',
+  ],
+});
+SPR.def('ico_luck_e', { // 7x7, an empty slot
+  anchor: [3, 3],
+  rows: [
+    'k3k.k2k',
+    'k4k.k2k',
+    'k3k.k2k',
+    'k3k.k2k',
+    'k33k32k',
+    'k23332k',
+    '.kkkkk.',
+  ],
+});
+SPR.def('ico_luck_s', { // 5x5, mini horseshoe for costs
+  anchor: [2, 2],
+  rows: [
+    'l...L',
+    'L...L',
+    'L...L',
+    'mL.Lm',
+    '.mLm.',
+  ],
+});
+
+// Quake: the cabinet itself, vibrating.
+SPR.def('ico_quake', { // 12x12
+  anchor: [6, 6],
+  rows: [
+    '............',
+    '..kkkkkkkk..',
+    '..kRRRRRRk..',
+    '.AkkkkkkkkA.',
+    'A.kcCCCCCk.A',
+    'A.kCCwCCCk.A',
+    'A.kCCCCCvk.A',
+    'A.kkkkkkkk.A',
+    '.AkqqqqqqkA.',
+    '..kQQQQQQk..',
+    '..kkkkkkkk..',
+    '............',
+  ],
+});
+
+// Nudge: a bold arrow shoving the glass, with speed dashes behind it (right = the mirror image).
+const NUDGE_ROWS = [
+    '............',
+    '............',
+    '...w........',
+    '..wwe...EEE.',
+    '.weeE.......',
+    'weeeeeeeEEE.',
+    'EEEEEEEEEii.',
+    '.EEEi.......',
+    '..EEi...iii.',
+    '...Ei.......',
+    '............',
+    '............',
+];
+SPR.def('ico_nudgeL', { anchor: [6, 6], rows: NUDGE_ROWS });
+SPR.def('ico_nudgeR', { anchor: [6, 6], rows: NUDGE_ROWS.map((r) => r.split('').reverse().join('')) });
+
+// Grip: a gold orb held in a cradle of prongs.
+SPR.def('ico_grip', { // 12x12
+  anchor: [6, 6],
+  rows: [
+    '.w.......w..',
+    '....kkkk....',
+    '...kllLLk...',
+    '.k.klLLLmk.k',
+    '.kEklLLLmkEk',
+    '.kEkLLLmmkEk',
+    '.kEEkmmmkEEk',
+    '..kEEkkkEEk.',
+    '...kEEEEEk..',
+    '....kkkkk...',
+    '............',
+    '............',
+  ],
+});
+
+// Order: a service bell.
+SPR.def('ico_order', { // 12x12
+  anchor: [6, 6],
+  rows: [
+    '.......w....',
+    '.....LL..w..',
+    '....kLLk....',
+    '...keeEik...',
+    '..keeeEEik..',
+    '.keeeEEEEik.',
+    '.keeEEEEEik.',
+    '.keEEEEEEik.',
+    '.kiiiiiiiik.',
+    'kEEEEEEEEEEk',
+    '.kiiiiiiiik.',
+    '............',
+  ],
+});
+
+// Redo: rewind, two arrowheads pointing back in time.
+SPR.def('ico_redo', { // 12x12
+  anchor: [6, 6],
+  rows: [
+    '............',
+    '....kk....kk',
+    '...kpk...kpk',
+    '..kppk..kppk',
+    '.kpppk.kpppk',
+    'kppppkkppppk',
+    '.kpPPk.kpPPk',
+    '..kPPk..kPPk',
+    '...kok...kok',
+    '....kk....kk',
+    '............',
+    '............',
+  ],
+});

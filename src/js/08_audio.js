@@ -508,12 +508,99 @@ const { AudioSys, Sfx, Music } = (() => {
       e.gain.linearRampToValueAtTime(0.08, t + 0.8); e.gain.linearRampToValueAtTime(0.6, t + 1); e.gain.linearRampToValueAtTime(0, t + d);
       wire(noise(v, t, t + d, true), f, am, e, v.out);
     },
+
+    // --- the Rig (RNG manipulation layer) ---
+    quake: (v, t, o) => { // the whole cabinet shudders: grinding low rumble, sub wobble, crack, rattling bones
+      const p = o.p, d = 2, f = filt(v, 'lowpass', 260 * p, 3), e = gain(v, 0);
+      Music.duck(0.45, 2.3);
+      sweep(f.frequency, t, 260 * p, [90 * p, d]);
+      e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(0.85, t + 0.12);
+      for (let k = 1; k < 10; k++) e.gain.linearRampToValueAtTime(rr(0.5, 1) * (1 - k / 11), t + 0.12 + k * 0.17);
+      e.gain.linearRampToValueAtTime(0, t + d);
+      wire(noise(v, t, t + d + 0.05, true), f, e, v.out);
+      const sub = tone(v, t, { f: 46 * p, f1: 34 * p, d, a: 0.05, g: 0.38 });
+      lfo(v, 11, 5, t, t + d).connect(sub.frequency); // the floor shudders
+      hiss(v, t, { d: 0.12, g: 0.7, type: 'highpass', f: 900 }); // the opening crack
+      tone(v, t, { f: 120 * p, f1: 38 * p, d: 0.35, g: 0.5 });
+      for (let k = 0; k < 24; k++) { // bones rattle, thinning out as it passes
+        const x = Math.pow(R(), 1.4), tk = t + 0.05 + x * (d - 0.25), i = 0.3 + 0.9 * (1 - x) * rr(0.5, 1), m = pick(['bone', 'bone', 'flesh', 'metal', 'squish']), x2 = rr(-0.7, 0.7);
+        defer(v, tk, () => knock(v, tk, m, i, p * rr(0.85, 1.15), pan(v, x2, v.out)));
+      }
+    },
+    nudge: (v, t, o) => { // a thump on the glass and the pile jostling
+      const p = o.p;
+      tone(v, t, { f: 150 * p, f1: 55 * p, glide: 0.1, d: 0.22, g: 0.5 });
+      hiss(v, t, { d: 0.09, g: 0.6, type: 'lowpass', f: 1400 });
+      hiss(v, t, { d: 0.03, g: 0.3, f: 2600 * p, q: 2 });
+      for (let k = 0; k < 4; k++) knock(v, t + 0.03 + k * 0.035 + R() * 0.02, pick(['bone', 'flesh']), 0.5 - k * 0.09, p * rr(0.9, 1.1), v.out);
+    },
+    tilt: (v, t, o) => { // pinball TILT: a harsh buzzer stab, stab, stab... and a groaning klaxon
+      const p = o.p;
+      Music.duck(0.5, 1.6);
+      for (const [dt, fr] of [[0, 660], [0.14, 660], [0.28, 440]]) {
+        tone(v, t + dt, { type: 'square', f: fr * p, f1: fr * 0.96 * p, d: 0.12, a: 0.004, g: 0.17, lp: 2600 });
+        tone(v, t + dt, { type: 'sawtooth', f: fr * 0.5 * p, d: 0.12, a: 0.004, g: 0.12, lp: 1200 });
+      }
+      tone(v, t + 0.45, { type: 'sawtooth', f: 150 * p, f1: 70 * p, d: 0.6, a: 0.01, g: 0.3, lp: 900 });
+      hiss(v, t, { d: 0.25, g: 0.6, type: 'lowpass', f: 1500 });
+      tone(v, t, { f: 90 * p, f1: 40 * p, d: 0.4, g: 0.4 });
+    },
+    luck_gain: (v, t, o) => { // a horseshoe clinks into the jar
+      const p = o.p;
+      bell(v, t, hz(91) * p, 0.14, 0.6);
+      bell(v, t + 0.07, hz(95) * p, 0.12, 0.7);
+      tone(v, t, { type: 'triangle', f: 1500 * p, f1: 2400 * p, d: 0.08, g: 0.1 });
+      hiss(v, t, { d: 0.02, g: 0.22, type: 'highpass', f: 5000 });
+    },
+    grip_arm: (v, t, o) => { // prongs clunk, a power-up swell, a gold ring
+      const p = o.p;
+      knock(v, t, 'metal', 1, p * 0.8, v.out);
+      tone(v, t + 0.04, { type: 'sawtooth', f: 180 * p, f1: 520 * p, d: 0.3, a: 0.02, g: 0.12, lp: 1800 });
+      hiss(v, t + 0.05, { d: 0.3, a: 0.12, g: 0.1, type: 'highpass', f: 5000, f1: 9000 });
+      bell(v, t + 0.22, hz(79) * p, 0.14, 0.9);
+      bell(v, t + 0.3, hz(86) * p, 0.1, 0.9);
+    },
+    order: (v, t, o) => { // ding-ding on the service bell, the dumbwaiter rumbles down
+      const p = o.p;
+      for (const dt of [0, 0.13]) {
+        bell(v, t + dt, hz(96) * p, 0.2, 0.9);
+        tone(v, t + dt, { f: 2100 * p, d: 0.02, g: 0.14 });
+        hiss(v, t + dt, { d: 0.012, g: 0.25, type: 'highpass', f: 4000 });
+      }
+      hiss(v, t + 0.3, { d: 0.5, a: 0.2, g: 0.1, type: 'lowpass', f: 500, brown: true });
+    },
+    rewind: (v, t, o) => { // tape whirr sweeping up, tick train, and a clunk as time lands
+      const p = o.p, d = 1.1, f = filt(v, 'bandpass', 400 * p, 2.5), e = gain(v, 0), am = gain(v, 0.5);
+      Music.duck(0.35, 1.4);
+      sweep(f.frequency, t, 400 * p, [2600 * p, d * 0.7], [1200 * p, d]);
+      e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(0.35, t + 0.1); e.gain.setValueAtTime(0.35, t + d - 0.15); e.gain.linearRampToValueAtTime(0, t + d);
+      wire(noise(v, t, t + d + 0.02), f, e, v.out);
+      const s = osc(v, 'sawtooth', 180 * p, t, t + d + 0.02);
+      sweep(s.frequency, t, 180 * p, [900 * p, d * 0.8], [420 * p, d]);
+      lfo(v, 28, 0.5, t, t + d).connect(am.gain);
+      wire(s, filt(v, 'lowpass', 1800), am, env(v, t, 0.05, 0.12, d - 0.2, 0.15), v.out);
+      for (let k = 0; k < 10; k++) tone(v, t + (k * d) / 10, { type: 'square', f: 1400 * p, d: 0.012, g: 0.06, lp: 3500 });
+      tone(v, t + d, { f: 140 * p, f1: 60 * p, d: 0.15, g: 0.4 });
+      knock(v, t + d, 'metal', 0.5, p, v.out);
+    },
+    roll_ok: (v, t, o) => { // the dice land well: two bright ticks and a ring
+      const p = o.p;
+      tone(v, t, { type: 'square', f: 1760 * p, d: 0.05, g: 0.15, lp: 5000 });
+      tone(v, t + 0.05, { type: 'square', f: 2350 * p, d: 0.09, g: 0.15, lp: 5000 });
+      bell(v, t + 0.05, 2350 * p, 0.12, 0.4);
+    },
+    roll_no: (v, t, o) => { // the dice land badly: a dull thud
+      const p = o.p;
+      tone(v, t, { type: 'triangle', f: 330 * p, f1: 180 * p, d: 0.18, g: 0.34 });
+      hiss(v, t, { d: 0.08, g: 0.5, type: 'lowpass', f: 700 });
+    },
   };
   // Per-name limits [max starts per second, max simultaneous voices (oldest is stolen)].
   const LIM = {
     bump: [12, 4], ui_hover: [15, 2], coins_count: [20, 3], twitch: [8, 2], heartbeat: [3, 2], chute: [6, 3],
     restock: [1.5, 1], thunder: [0.7, 1], alive: [1, 1], victory: [1, 1], defeat: [1, 1], zap: [8, 3],
     win_legendary: [1, 1], win_rare: [2, 1], meow: [3, 1], purr: [1, 1],
+    quake: [1, 1], nudge: [6, 2], tilt: [1, 1], luck_gain: [6, 2], grip_arm: [3, 1], order: [2, 1], rewind: [1, 1], roll_ok: [6, 2], roll_no: [6, 2],
   };
   // Reverb send per sound.
   const WET = {
@@ -521,6 +608,7 @@ const { AudioSys, Sfx, Music } = (() => {
     win_common: 0.2, win_uncommon: 0.22, win_rare: 0.28, win_legendary: 0.32, restock: 0.1, heartbeat: 0.12, bump: 0.05,
     stitch: 0.06, unstitch: 0.06, zap: 0.15, thunder: 0.45, alive: 0.4, enemy_die: 0.4, creature_die: 0.12,
     victory: 0.3, defeat: 0.35, meow: 0.12, page: 0.05, swing: 0.05,
+    quake: 0.25, nudge: 0.06, tilt: 0.2, luck_gain: 0.2, grip_arm: 0.15, order: 0.15, rewind: 0.2, roll_ok: 0.1, roll_no: 0.05,
   };
   // These use intensity themselves; the rest just get a mild loudness scale.
   const RAW = { bump: 1, hit: 1, claw_land: 1, swing: 1, heartbeat: 1, enemy_hit: 1, twitch: 1 };

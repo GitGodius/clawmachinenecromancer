@@ -32,6 +32,12 @@ class ClawSim {
     this.turn = null;
     this.turnCount = 0;
     this.grips = [];
+    // The Rig (12_clawrig.js): drop lock, chute lid, active quake, armed Iron Grip, turn recording for REDO
+    this.lockT = 0; this.lockWhy = null;
+    this.sealAge = 0; this.lid = null;
+    this.quakeS = null; this.settleS = null;
+    this.iron = false;
+    this.hist = null; this.redoHist = null; this.rw = null;
     this.build();
   }
 
@@ -173,7 +179,7 @@ class ClawSim {
     this.parts = this.parts.filter((q) => q !== p);
   }
 
-  clearParts() { for (const p of this.parts.slice()) this.removePart(p); }
+  clearParts() { for (const p of this.parts.slice()) this.removePart(p); this.hist = null; this.redoHist = null; }
 
   partPos(p) { const q = p.body.getPosition(); return [q.x * PPM, q.y * PPM]; }
 
@@ -219,12 +225,15 @@ class ClawSim {
   press() { this.pressed = true; }
 
   startDrop() {
-    if (this.state !== 'idle') return false;
+    if (this.state !== 'idle' || this.lockT > 0) return false;
+    this.unseal(); // a carried part would collide with the chute lid
     this.setState('drop');
-    this.turn = { won: [], grabbed: new Set(), slips: 0, startT: this.time, n: ++this.turnCount };
+    this.turn = { won: [], grabbed: new Set(), slips: 0, startT: this.time, n: ++this.turnCount, iron: this.iron };
+    this.iron = false; // Iron Grip lasts for exactly one drop
     this.landed = false;
     this.slackT = 0;
-    this.emit('drop');
+    this.beginRecord();
+    this.emit('drop', { iron: this.turn.iron });
     return true;
   }
 
@@ -278,11 +287,16 @@ class ClawSim {
     const M = MACHINE;
     this.time += h;
     this.stateT += h;
+    if (this.state === 'rewind') { this.pressed = false; this.rewindStep(h); return; } // time runs backwards: no physics
     this.world.setGravity(planck.Vec2(0, CONFIG.gravity));
     this.hub.setLinearDamping(CONFIG.swayDamping);
     const pressed = this.pressed;
     this.pressed = false;
-    const move = clamp(this.input.move || 0, -1, 1);
+    if (this.lockT > 0) {
+      this.lockT -= h;
+      if (this.lockT <= 0) { const why = this.lockWhy; this.lockT = 0; this.lockWhy = null; this.emit('unlock', { why }); }
+    }
+    const move = this.lockWhy === 'tilt' ? 0 : clamp(this.input.move || 0, -1, 1); // TILT freezes the carriage
 
     switch (this.state) {
       case 'idle':
@@ -380,12 +394,18 @@ class ClawSim {
         const p = this.spawnPart(it.type, rand(M.spawnX0 + 6, M.spawnX1 - 20), M.top + 12, rand(-3, 3), [rand(-10, 10), 20]);
         this.emit('spawn', { part: p });
         this.pendingT = 0.28;
+        this.redoHist = null; // the world gained a part: a rewind would put it somewhere wrong
+        if (this.hist) this.hist.tainted = true;
       }
     }
 
+    if (this.quakeS) this.quakeStep(h);
+    if (this.settleS) this.settleStep(h);
+    this.sealStep(h);
     this.impacts.clear();
     this.world.step(h, 10, 6);
     this.afterStep();
+    if (this.hist) this.recordStep(h);
   }
 
   setProngFriction(f) {
@@ -419,21 +439,31 @@ class ClawSim {
         if (!best || d < best.d) best = { b, lx, ly, d };
       }
       if (!best) continue;
-      const s = SPR.get(p.def.sprite);
-      const dim = p.def.chain ? 16 : Math.max(s.w, s.h);
-      const size = dim <= 20 ? 1 : dim <= 26 ? 0.85 : 0.7;
-      const center = 1 - 0.55 * Math.pow(Math.min(1, Math.abs(best.lx) / 16), 2);
-      const chance = clamp(CONFIG.grabChance * size * center * closure * (p.def.grip || 1), 0, 0.98);
+      const chance = this.chanceFor(p, best.lx, closure, !!(this.turn && this.turn.iron));
       cand.push({ p, ...best, chance });
     }
     cand.sort((a, b) => a.d - b.d);
     this.grabInfo = { open, closure, cand: cand.map((c) => ({ type: c.p.type, chance: c.chance })) };
     let first = true;
+    const rolls = [];
     for (const c of cand.slice(0, 2)) {
       const roll = first ? c.chance : c.chance * 0.3; // a second part is a lucky bonus
-      if (RNG() < roll) this.attachGrip(c.p, c.b);
+      const hit = RNG() < roll;
+      if (hit) this.attachGrip(c.p, c.b);
+      rolls.push({ type: c.p.type, chance: roll, hit, bonus: !first });
       first = false;
     }
+    this.emit('roll', { rolls, iron: !!(this.turn && this.turn.iron), closure }); // the Lens shows the dice
+  }
+
+  // Hold chance for a part whose centre is lx px off the claw's axis. One function for the rules
+  // (tryGrab) and for the Lens (predict), so the odds badge can never disagree with the dice.
+  chanceFor(p, lx, closure = 1, iron = false) {
+    const s = SPR.get(p.def.sprite);
+    const dim = p.def.chain ? 16 : Math.max(s.w, s.h);
+    const size = dim <= 20 ? 1 : dim <= 26 ? 0.85 : 0.7;
+    const center = 1 - 0.55 * Math.pow(Math.min(1, Math.abs(lx) / 16), 2);
+    return clamp(CONFIG.grabChance * size * center * closure * (p.def.grip || 1) * (iron ? CONFIG.ironBoost : 1), 0, 0.98);
   }
 
   attachGrip(p, body) {
@@ -453,6 +483,7 @@ class ClawSim {
   // Slip model: explicit, tunable odds (physics supplies the swing you can see).
   updateGrips(h) {
     const hv = this.hub.getLinearVelocity();
+    const ironK = this.turn && this.turn.iron ? CONFIG.ironSlip : 1; // Iron Grip: slip odds cut to a fraction
     for (const g of this.grips.slice()) {
       g.t += h;
       const gp = g.part.def.grip || 1;
@@ -464,7 +495,7 @@ class ClawSim {
       let lose = null;
       if (stretch > 9) lose = 'stuck'; // still wedged in the pile: it tears free of the claw
       else if (g.t > 0.4 && this.state !== 'lift') { // swinging only counts once the player is steering
-        const hazard = CONFIG.slipBase / gp + CONFIG.swingSlip * Math.max(0, vrel - CONFIG.swingSafe) / 30;
+        const hazard = (CONFIG.slipBase / gp + CONFIG.swingSlip * Math.max(0, vrel - CONFIG.swingSafe) / 30) * ironK;
         if (RNG() < hazard * h) lose = 'swing';
       }
       if (lose) this.loseGrip(g, lose);
@@ -482,7 +513,7 @@ class ClawSim {
   // one-off slip rolls (the jolt at the top of the lift, a twitch in the claw)
   rollSlip(p, chance, why) {
     const g = this.grips.find((x) => x.part === p);
-    if (g && RNG() < chance / (p.def.grip || 1)) this.loseGrip(g, why);
+    if (g && RNG() < chance / (p.def.grip || 1) * (this.turn && this.turn.iron ? CONFIG.ironSlip : 1)) this.loseGrip(g, why);
   }
 
   dropGrips() {
@@ -515,7 +546,8 @@ class ClawSim {
     const t = this.turn;
     const result = t && t.won.length ? 'win' : t && t.grabbed.size ? 'slip' : 'miss';
     this.setState('idle');
-    this.emit('turnEnd', { result, won: t ? t.won.slice() : [], grabbed: t ? [...t.grabbed] : [], turn: t });
+    this.endRecord(result); // a failed grab keeps its recording so REDO can rewind it
+    this.emit('turnEnd', { result, won: t ? t.won.slice() : [], grabbed: t ? [...t.grabbed] : [], turn: t, iron: !!(t && t.iron), redo: this.canRedo() });
     this.turn = null;
   }
 

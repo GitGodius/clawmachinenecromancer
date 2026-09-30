@@ -25,6 +25,7 @@ const Game = {
     this.talk = new Talker({ voice: 0.62, cps: 40 });
     this.sim = new ClawSim({ onEvent: (t, d) => Scenes.claw && Scenes.claw.onSim(t, d) });
     this.sim.fillPile(CONFIG.partCount);
+    Rig.reset();
   },
 
   addPart(type) {

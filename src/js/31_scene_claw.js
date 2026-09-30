@@ -19,6 +19,23 @@ Scenes.claw = (() => {
   const toScreen = (x, y) => [(x + GX) * 2, (y + GY) * 2];
   const say = (text, hold) => Game.talk.say(text, hold);
 
+  // --- The Rig (docs/RNG_LAYER.md). The right-hand column is 84 px wide and was already full, so
+  // it is budgeted in screen px: [y, height] per panel. Panels are drawn chunky in the 2x buffer
+  // (see drawSideArt) and their text and icons crisp at 1x (drawOverlay).
+  const CX = 394, CW = 84;
+  const LAY = { tokens: [6, 44], luck: [52, 26], talk: [80, 62], rig: [144, 70], ctrl: [216, 50] };
+  const CELL = { w: 24, h: 26, x: [398, 424, 450], y: [157, 185] };
+  const CELLS = [['nudgeL', 0, 0], ['quake', 1, 0], ['nudgeR', 2, 0], ['grip', 0, 1], ['order', 1, 1], ['redo', 2, 1]]; // id, column, row
+  const CELL_ICON = { nudgeL: 'ico_nudgeL', nudgeR: 'ico_nudgeR', quake: 'ico_quake', grip: 'ico_grip', order: 'ico_order', redo: 'ico_redo' };
+  const SLOT_ICON = { head: 'skull', torso: 'ribcage', arm: 'bonearm', leg: 'boneleg', heart: 'heart', back: 'tail' };
+  const PK = { x: 84, y: 66, w: 220, h: 134 }; // the Order menu
+  let picker = null; // Order menu: { sel } while open
+  let lens = null; // what a drop right here would hold: { part, chance, y, lx }
+  let noLuckT = 0, luckHint = 0, ironFlash = 0;
+  let pipPop = []; // per Luck pip: seconds left of its "just earned" pop
+  const cellPulse = {}; // lever id -> seconds left of a pulsing hint frame (first-time nudges)
+  let pickerBtns = [];
+
   function mk(w, h) { const c = SPR.makeCanvas(w, h); const x = c.getContext('2d'); x.imageSmoothingEnabled = false; return [c, x]; }
 
   // ---------------------------------------------------------------- statics
@@ -95,13 +112,18 @@ Scenes.claw = (() => {
       Music.play('claw');
       idleT = 0;
       topUp();
+      picker = null;
       if (!Game.seen.claw) {
         Game.seen.claw = true;
         say('Pick a part. Any part. They are ALL good parts.', 3.2);
+        if (Rig.on) { // the layer introduces itself
+          Game.talk.say('Psst. Panel on the right. The machine is rigged. Rig it back.', 3.6, false);
+          cellPulse.quake = 9;
+        }
       } else if (Game.sim.pending.length) say('Fresh stock! Straight from the graveyard.', 2.4);
       buildButtons();
     },
-    exit() { Sfx.motor(0, 0); Game.sim.input.move = 0; },
+    exit() { Sfx.motor(0, 0); Game.sim.input.move = 0; picker = null; },
     update(dt) {
       t += dt;
       const sim = Game.sim;
@@ -110,15 +132,38 @@ Scenes.claw = (() => {
       if (Input.held('right') || btn.right.held) move += 1;
       // hold the mouse / a finger on the glass to steer the claw toward the pointer
       const mp = Input.mouse;
-      if (!move && mp.down && mp.x >= 14 && mp.x < 374 && mp.y >= 14 && mp.y < 258 && (sim.state === 'idle' || sim.state === 'carry')) {
+      if (!move && !picker && mp.down && mp.x >= 14 && mp.x < 374 && mp.y >= 14 && mp.y < 258 && (sim.state === 'idle' || sim.state === 'carry')) {
         const d = mp.x / 2 - GX - sim.carX;
         if (Math.abs(d) > 2) move = clamp(d / 10, -1, 1);
       }
+      if (picker) move = 0; // arrows move the menu selection, not the claw
       if (move) { movedOnce = true; idleT = 0; } else idleT += dt;
       sim.input.move = move;
+      // The Rig: hotkeys (Q/E nudge, 1-4 levers; pad LB/RB, X, Y)
+      Rig.update(dt);
+      if (picker) updatePicker();
+      else if (Rig.on) {
+        if (Input.hit('nudgeL') || Input.hit('lb')) pull('nudgeL');
+        if (Input.hit('nudgeR') || Input.hit('rb')) pull('nudgeR');
+        if (Input.hit('quake') || Input.hit('x')) pull('quake');
+        if (Input.hit('grip') || Input.hit('y')) pull('grip');
+        if (Input.hit('order')) pull('order');
+        if (Input.hit('redo')) pull('redo');
+      }
       if (Input.hit('a')) S.pressA();
       if (Input.hit('b')) S.back();
       sim.step(dt);
+      lens = Rig.on && CONFIG.lens && !picker ? sim.predict() : null;
+      if (lens && lens.part && !Game.seen.lensHint && Game.seen.claw && movedOnce) {
+        Game.seen.lensHint = true;
+        Game.talk.say('That badge is your odds of holding something. Aim for green.', 3.2, false);
+      }
+      noLuckT = Math.max(0, noLuckT - dt); luckHint = Math.max(0, luckHint - dt); ironFlash = Math.max(0, ironFlash - dt);
+      for (let i = 0; i < pipPop.length; i++) pipPop[i] = Math.max(0, pipPop[i] - dt);
+      for (const k in cellPulse) cellPulse[k] = Math.max(0, cellPulse[k] - dt);
+      if ((sim.iron || (sim.turn && sim.turn.iron)) && chance(dt * 9)) { // Iron Grip: gold sparks around the claw head
+        fxW.add({ x: sim.hub.getPosition().x * PPM + rand(-11, 11), y: sim.hub.getPosition().y * PPM + rand(2, 28), vy: -14, life: 0.5, color: pick(['#fff1a6', '#f6c64b', '#ffffff']) });
+      }
 
       // motor voice
       const moving = Math.abs(sim.carV) / CONFIG.clawMoveSpeed;
@@ -154,16 +199,24 @@ Scenes.claw = (() => {
       flying = flying.filter((f) => {
         if (f.t < f.dur) return true;
         bagBump = 1;
-        fxS.text(436, 150, '+1', RARITY[PART_DEFS[f.type].rarity].color, { font: 'main' });
+        fxS.text(452, 34, '+1', RARITY[PART_DEFS[f.type].rarity].color, { font: 'main' });
         return false;
       });
-      btn.drop.label = sim.state === 'idle' ? (Game.tokens > 0 ? 'DROP' : 'NO TOKENS') : sim.state === 'carry' ? 'RELEASE' : sim.state === 'drop' ? 'STOP' : '...';
-      UI.set(Object.values(btn));
+      btn.drop.label = sim.state === 'rewind' ? 'REWIND' : sim.lockT > 0 ? (sim.lockWhy === 'tilt' ? 'TILT!' : 'SHAKING') :
+        sim.state === 'idle' ? (Game.tokens > 0 ? 'DROP' : 'NO TOKENS') : sim.state === 'carry' ? 'RELEASE' : sim.state === 'drop' ? 'STOP' : '...';
+      for (const [id] of CELLS) btn['r_' + id].tip = Rig.on && Input.lastDevice !== 'touch' ? tipFor(id) : null; // a tap would leave the tooltip stuck on screen
+      UI.set(picker ? pickerBtns : Object.values(btn));
     },
 
     pressA() {
       const sim = Game.sim;
+      if (picker) { confirmPicker(); return; }
       if (sim.state === 'idle') {
+        if (sim.lockT > 0) { // shaking or TILTed: no token is taken
+          Sfx.play('ui_deny');
+          say(sim.lockWhy === 'tilt' ? pick(['TILT! Hands off the glass.', 'The machine is sulking. Give it a second.']) : 'Hold on. It\'s still shaking.', 1.8);
+          return;
+        }
         if (Game.tokens <= 0) {
           if (Game.broke()) {
             Game.givePity();
@@ -183,13 +236,15 @@ Scenes.claw = (() => {
         slowmoDone = new Set();
         Sfx.play('coin');
         fxS.text(436, 30, '-1', PAL.L, { font: 'main' });
-        Telemetry.grabStart();
+        Telemetry.grabStart(Rig.takeRigged(), sim.iron);
         sim.startDrop();
       } else if (sim.state === 'drop' || sim.state === 'carry') sim.press();
     },
     back() {
       const sim = Game.sim;
+      if (picker) { picker = null; Sfx.play('ui_back'); return; }
       if (sim.state !== 'idle') { Sfx.play('ui_deny'); say('Finish your grab first.', 1.6); return; }
+      if (sim.lockT > 0) { Sfx.play('ui_deny'); say('Wait for the shaking to stop.', 1.6); return; }
       Engine.go('shop');
     },
 
@@ -200,6 +255,7 @@ Scenes.claw = (() => {
       switch (type) {
         case 'drop':
           Sfx.play('claw_drop');
+          if (d.iron) { ironFlash = 0.6; fxW.burst(hx, hy + 14, 10, { speed: 34, life: 0.5, color: ['#fff1a6', '#f6c64b'] }); Engine.flash('#f6c64b', 0.12); }
           if (chance(0.35)) say(pick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
           break;
         case 'land':
@@ -208,6 +264,37 @@ Scenes.claw = (() => {
           fxW.burst(d.x, d.y + 26, 10, { speed: 30, angle: -Math.PI / 2, spread: 1.3, ay: 80, life: 0.5, color: ['#6e5580', '#45365f', '#a08962'], size: 1 });
           break;
         case 'close': Sfx.play('claw_close'); break;
+        case 'roll': showRoll(d); break;
+        case 'iron': if (d.on) { Sfx.play('grip_arm'); ironFlash = 0.5; fxW.burst(hx, hy + 14, 12, { speed: 28, life: 0.6, color: ['#fff1a6', '#f6c64b', '#ffffff'] }); } else Sfx.play('ui_back'); break;
+        case 'quake':
+          if (d.phase === 'start') {
+            Sfx.play(d.tilt ? 'tilt' : 'quake');
+            Engine.hitPause(0.05);
+            if (d.tilt) { Engine.flash('#e8405a', 0.3); Engine.shake(5, 0.3); }
+            else fxS.text(194, 70, 'EARTHQUAKE!', '#ffb070', { font: 'main', scale: 3, life: 1.6, vy: -3, drag: 0.4, outline: PAL.k });
+          }
+          break;
+        case 'quakePulse': {
+          Engine.shake(d.big ? 4.5 : 2.6, 0.14);
+          const n = d.big ? 7 : 3;
+          for (let i = 0; i < n; i++) fxW.add({ x: rand(4, 176), y: rand(-2, 6), vx: rand(-6, 6), vy: rand(6, 24), ay: 55, life: rand(0.5, 1.2), color: pick(['#6e5580', '#45365f', '#a08962', '#c9b8e0']), size: pick([1, 1, 2]) });
+          if (d.big) fxW.burst(rand(10, 130), M.floor - 6, 6, { speed: 26, angle: -Math.PI / 2, spread: 1.2, ay: 80, life: 0.5, color: ['#6e5580', '#45365f', '#a08962'] });
+          break;
+        }
+        case 'unlock':
+          if (d.why === 'quake') say(pick(['New layout. Same pile. Funny how that works.', 'Look at that. A whole new set of possibilities.', 'Everything\'s in a different place. Isn\'t that nice?', 'Settled. Mostly. The bones are still talking.']), 2.6);
+          break;
+        case 'nudge': {
+          Sfx.play('nudge', { pan: d.dir * 0.5 });
+          Engine.shake(1.8, 0.12);
+          const wx = d.dir > 0 ? M.chuteX0 - 6 : 6;
+          fxW.burst(wx, M.floor - 10, 6, { speed: 24, angle: d.dir > 0 ? Math.PI : 0, spread: 0.7, ay: 60, life: 0.35, color: ['#6e5580', '#c9b8e0'] });
+          break;
+        }
+        case 'rewind':
+          if (d.phase === 'start') { Sfx.play('rewind'); Engine.flash('#6fd3ff', 0.15); }
+          else { Engine.flash('#c2f5ff', 0.25); Engine.shake(1.2, 0.12); }
+          break;
         case 'lift':
           if (d.grips.length) {
             const best = d.grips.slice().sort((a, b) => RARITY[b.def.rarity].order - RARITY[a.def.rarity].order)[0];
@@ -234,6 +321,11 @@ Scenes.claw = (() => {
         case 'win': onWin(d); break;
         case 'turnEnd': {
           Telemetry.grabEnd(d.result, d.won);
+          Rig.onTurnEnd(d); // bad luck fills the Luck meter
+          if (Rig.on && d.result !== 'win') {
+            if (!Game.seen.luckHint) { Game.seen.luckHint = true; luckHint = 5; setTimeout(() => { if (Engine.sceneName === 'claw') say('Bad luck is worth something here. Watch the LUCK meter.', 3.4); }, 250); }
+            else if (d.redo && Rig.luck >= Rig.cost('redo') && !Game.seen.redoHint) { Game.seen.redoHint = true; cellPulse.redo = 7; setTimeout(() => { if (Engine.sceneName === 'claw') say('Want that one back? REDO turns back time. Press 4.', 3.4); }, 250); }
+          }
           if (d.result === 'miss') {
             Sfx.play('miss');
             if (!Game.talk.visible() || chance(0.5)) say(pick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
@@ -312,11 +404,127 @@ Scenes.claw = (() => {
     setTimeout(() => say('Running low! Let me fetch more from the back room.', 3), 900);
   }
 
+  // ---------------------------------------------------------------- the Rig
+  // Every lever goes through Rig.use(); the scene only adds sound, light and words.
+  function pull(id) {
+    if (picker || !Rig.on) return;
+    if (id === 'order') { // a menu first: which slot?
+      const c = Rig.can('order');
+      if (!c.ok) { Rig.emit('deny', { name: id, why: c.why, cost: c.cost }); return; }
+      picker = { sel: Math.max(0, ORDER_SLOTS.indexOf(Rig.suggestSlot())) };
+      buildPickerButtons();
+      Sfx.play('ui_click');
+      return;
+    }
+    cellPulse[id] = 0;
+    Rig.use(id);
+  }
+
+  function tipFor(id) {
+    const T = RIG_TRICKS[id], c = Rig.can(id), cost = Rig.cost(id), armed = id === 'grip' && Game.sim.iron;
+    const lines = [{ t: armed ? 'Iron Grip: ARMED' : T.name + (cost ? '   ' + cost + ' LUCK' : '   FREE'), c: T.color }];
+    for (const l of T.tip) lines.push({ t: l, c: '#ecdcbc' });
+    const why = { luck: 'Not enough Luck.', tilt: 'The machine is tilted.', busy: 'Not right now.', none: 'Only after a missed or slipped grab.' }[c.why];
+    if (!c.ok && why) lines.push({ t: why, c: '#e8405a' });
+    lines.push({ t: 'key ' + T.key, c: '#7a6a9a' });
+    return lines;
+  }
+
+  // Luck, denials and the words that go with each lever.
+  function onRig(type, d) {
+    const inClaw = Engine.sceneName === 'claw';
+    switch (type) {
+      case 'luck':
+        if (d.delta > 0) {
+          Sfx.play('luck_gain', { pitch: 1 + 0.05 * d.delta });
+          if (inClaw) {
+            for (let i = Rig.luck - d.delta; i < Rig.luck; i++) pipPop[i] = 0.45;
+            fxS.text(436, LAY.luck[0] + 6, '+' + d.delta + ' LUCK', '#f6c64b', { font: 'main', life: 1.1, vy: -16, drag: 1.5 });
+            if (d.wasted > 0 && !Game.seen.luckFull) { Game.seen.luckFull = true; say('Your luck is overflowing. Use it or lose it.', 2.8); }
+          }
+        } else if (d.delta < 0 && inClaw && d.why !== 'tilt') fxS.text(436, LAY.luck[0] + 22, String(d.delta), '#e8405a', { font: 'main', life: 0.9, vy: -12, drag: 1.5 });
+        break;
+      case 'deny':
+        if (!inClaw) break;
+        Sfx.play('ui_deny');
+        if (d.why === 'luck') { noLuckT = 1.2; say(pick(['Not enough luck. Go fail a little more.', 'Luck is tight. Misfortune is a resource.', 'Short on luck. Try being unlucky.']), 2.2); }
+        else if (d.why === 'tilt') say('TILT! Nothing works until it cools off.', 2);
+        else if (d.why === 'none') say('Nothing to undo. Yet.', 1.6);
+        break;
+      case 'tilt':
+        if (inClaw) say(pick(['TILT! Hands off the glass!', 'Told you. Pinball rules.', 'The machine has feelings. Mostly anger.']), 2.6);
+        break;
+      case 'used':
+        if (!inClaw) break;
+        switch (d.name) {
+          case 'quake': say(pick(['Hold onto your bones!', 'Hope you like surprises.', 'The dead are restless today.', 'Shake it. Shake it ALL.']), 2.2); break;
+          case 'nudgeL': case 'nudgeR':
+            if (!d.tilt && chance(0.35)) say(pick(['Gentle...', 'Careful with the glass.', 'A little nudge never hurt. Much.']), 1.6);
+            break;
+          case 'grip':
+            say(d.disarm ? 'Changed your mind? Luck refunded.' : pick(['Iron grip. Try not to squeeze the life out of it.', 'A little necromancy on the prongs.', 'That claw is not letting go.']), 2.4);
+            break;
+          case 'order':
+            Sfx.play('order');
+            fxS.text(194, 70, 'SPECIAL ORDER', '#6fd3ff', { font: 'main', scale: 2, life: 1.4, vy: -6, drag: 0.6, outline: PAL.k });
+            say(`One ${SLOT_NAMES[d.slot].toLowerCase()}, fresh from the back room.`, 2.6);
+            break;
+          case 'redo': say(pick(['Rewinding. Don\'t ask how.', 'Never happened. Try again.', 'Time is cheap down here.']), 2.4); break;
+        }
+        break;
+    }
+  }
+  Rig.onEvent = onRig;
+
+  // The Lens, part two: the actual dice, shown when the claw closes.
+  function showRoll(d) {
+    if (!Rig.on || !CONFIG.lens) return;
+    const hp = Game.sim.hub.getPosition();
+    const [sx, sy] = toScreen(hp.x * PPM, hp.y * PPM + 12);
+    const x = clamp(sx, 70, 320);
+    if (!d.rolls.length) { fxS.text(x, sy, 'NOTHING IN THE CLAW', '#a6aec2', { life: 1.4, vy: -16, drag: 1.5 }); Sfx.play('roll_no'); return; }
+    let any = false;
+    d.rolls.forEach((r, i) => {
+      any = any || r.hit;
+      fxS.text(x, sy + i * 11, `${PART_DEFS[r.type].name.toUpperCase()} ${Math.round(r.chance * 100)}%  ${r.hit ? 'HELD!' : 'NO GRIP'}`, r.hit ? '#9be38f' : '#e8405a', { life: 1.8, vy: -14, drag: 1.5 });
+    });
+    Sfx.play(any ? 'roll_ok' : 'roll_no');
+  }
+
+  // ---- the Order menu (modal): pick a slot, the Reaper drops one in
+  function pickerCells() {
+    return ORDER_SLOTS.map((slot, i) => ({ slot, i, x: PK.x + 10 + (i % 3) * 68, y: PK.y + 28 + Math.floor(i / 3) * 44, w: 64, h: 40 }));
+  }
+  function buildPickerButtons() {
+    pickerBtns = pickerCells().map((c) => ({ id: 'pk' + c.i, x: c.x, y: c.y, w: c.w, h: c.h, label: '', silent: true, cell: c, onClick: () => { picker.sel = c.i; confirmPicker(); } }));
+  }
+  function confirmPicker() {
+    if (!picker) return;
+    const slot = ORDER_SLOTS[picker.sel];
+    picker = null;
+    Rig.use('order', slot);
+  }
+  function updatePicker() {
+    const sel = picker.sel, col = sel % 3, row = Math.floor(sel / 3);
+    let n = sel;
+    if (Input.hit('left')) n = row * 3 + (col + 2) % 3;
+    if (Input.hit('right')) n = row * 3 + (col + 1) % 3;
+    if (Input.hit('up') || Input.hit('down')) n = (1 - row) * 3 + col;
+    for (let i = 0; i < 6; i++) if (Input.hit('Digit' + (i + 1)) || Input.hit('Numpad' + (i + 1))) { picker.sel = i; confirmPicker(); return; }
+    if (n !== sel) { picker.sel = n; Sfx.play('ui_hover'); }
+    for (const b of pickerBtns) if (b.hover && Input.mouse.moved && picker.sel !== b.cell.i) { picker.sel = b.cell.i; Sfx.play('ui_hover'); }
+    // a click outside the menu closes it
+    if (Input.mouse.pressed && !Input.over(PK.x, PK.y, PK.w, PK.h)) { picker = null; Sfx.play('ui_back'); }
+  }
+
   function buildButtons() {
-    btn.left = { id: 'cl', x: 398, y: 212, w: 18, h: 16, label: '', hidden: false, silent: true, onClick() {} };
-    btn.right = { id: 'cr', x: 418, y: 212, w: 18, h: 16, label: '', silent: true, onClick() {} };
-    btn.drop = { id: 'ca', x: 398, y: 230, w: 76, h: 14, label: 'DROP', silent: true, onClick: () => S.pressA() };
-    btn.back = { id: 'cb', x: 398, y: 247, w: 76, h: 14, label: 'BACK', silent: true, onClick: () => S.back() };
+    btn.left = { id: 'cl', x: 398, y: 219, w: 18, h: 16, label: '', hidden: false, silent: true, onClick() {} };
+    btn.right = { id: 'cr', x: 418, y: 219, w: 18, h: 16, label: '', silent: true, onClick() {} };
+    btn.drop = { id: 'ca', x: 398, y: 236, w: 76, h: 14, label: 'DROP', silent: true, onClick: () => S.pressA() };
+    btn.back = { id: 'cb', x: 398, y: 251, w: 76, h: 14, label: 'BACK', silent: true, onClick: () => S.back() };
+    for (const [id, col, row] of CELLS) {
+      btn['r_' + id] = { id: 'r_' + id, x: CELL.x[col], y: CELL.y[row], w: CELL.w, h: CELL.h, label: '', silent: true, onClick: () => pull(id) };
+    }
   }
 
   // ---------------------------------------------------------------- drawing
@@ -378,11 +586,22 @@ Scenes.claw = (() => {
     SPR.draw(g, 'claw_hub', P.hubX, P.hubY, { rot: P.hubA || 0.0001 });
     SPR.draw(g, 'claw_prongL', P.lX, P.lY, { rot: P.lA || 0.0001 });
     SPR.draw(g, 'claw_prongR', P.rX, P.rY, { rot: P.rA || 0.0001 });
+    // Iron Grip: a gold halo on the claw head
+    const iron = sim.iron || (sim.turn && sim.turn.iron);
+    if (iron) Draw.glow(g, P.hubX, P.hubY + 12, 24 + ironFlash * 14, '#f6c64b', 0.3 + 0.1 * Math.sin(t * 6) + ironFlash * 0.3);
     // blinking status light on the claw head
-    g.fillStyle = sim.state === 'idle' ? (Math.sin(t * 5) > 0 ? '#9be38f' : '#274536') : sim.grips.length ? '#f6c64b' : '#e8405a';
+    g.fillStyle = iron ? (Math.sin(t * 10) > 0 ? '#fff1a6' : '#f6c64b') : sim.state === 'idle' ? (Math.sin(t * 5) > 0 ? '#9be38f' : '#274536') : sim.grips.length ? '#f6c64b' : '#e8405a';
     const la = P.hubA;
     g.fillRect(Math.round(P.hubX + Math.cos(la) * 7 - Math.sin(la) * -1), Math.round(P.hubY + Math.sin(la) * 7 + Math.cos(la) * -1), 1, 1);
 
+    // The Rig: while the machine is shaken (and until the next drop) the chute is sealed by a
+    // wall of light that only parts collide with. Shaken parts can't spill out for free.
+    if (sim.lid) {
+      const a = 0.14 + 0.06 * Math.sin(t * 5);
+      g.fillStyle = `rgba(111,211,255,${a})`; g.fillRect(M.guardX, 0, M.guardW, M.lipY);
+      g.fillStyle = `rgba(194,245,255,${a + 0.22})`;
+      for (let y = Math.floor(t * 28) % 7; y < M.lipY; y += 7) g.fillRect(M.guardX, y, M.guardW, 2);
+    }
     // chute front: acrylic guard + prize plate
     g.fillStyle = 'rgba(194,245,255,0.18)'; g.fillRect(M.guardX, M.lipY, M.guardW, M.floor - M.lipY);
     g.fillStyle = '#c2f5ff'; g.fillRect(M.guardX, M.lipY, M.guardW, 1);
@@ -430,7 +649,10 @@ Scenes.claw = (() => {
     for (let i = 0; i < n; i++) {
       const [x, y] = spots[i];
       let on, col;
-      if (winFx > 0) { on = Math.sin(t * 20 + i * 1.3) > 0; col = pick([PAL.l, PAL.r, PAL.C, PAL.p]); }
+      const sim = Game.sim;
+      if (sim.lockWhy === 'tilt' && sim.lockT > 0) { on = Math.sin(t * 9 + i * 0.4) > -0.2; col = '#ff5a5a'; }
+      else if (sim.quakeS) { on = Math.sin(t * 41 + i * 12.9898) > 0.1; col = PAL.A; }
+      else if (winFx > 0) { on = Math.sin(t * 20 + i * 1.3) > 0; col = pick([PAL.l, PAL.r, PAL.C, PAL.p]); }
       else { on = (i + Math.floor(t * 7)) % 4 === 0 || (i + Math.floor(t * 7)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
       g.fillStyle = on ? col : '#6b3a1c';
       g.fillRect(x, y, 1, 1);
@@ -439,57 +661,176 @@ Scenes.claw = (() => {
   }
 
   function drawSideArt() {
-    // tokens box, neon/reaper box, bag box, controls box (panels in buffer pixels)
+    // Panels in buffer pixels (2x on screen): tokens + bag, Luck, the Reaper's box, THE RIG, controls.
+    // Their text and icons are drawn crisp at 1x in drawOverlay.
+    const sim = Game.sim, tilted = sim.lockWhy === 'tilt' && sim.lockT > 0;
     Draw.panel(g, 197, 3 - Math.round(tokenBump * 1), 42, 22, 'slate');
-    const talking = Game.talk.visible();
-    Draw.panel(g, 197, 27, 42, 44, 'neon');
-    if (!talking) {
+    Draw.panel(g, 197, LAY.luck[0] / 2, 42, LAY.luck[1] / 2, noLuckT > 0 && Math.sin(t * 24) > 0 ? 'red' : 'dark');
+    Draw.panel(g, 197, LAY.talk[0] / 2, 42, LAY.talk[1] / 2, 'neon');
+    if (!Game.talk.visible()) { // the neon sign, until the Reaper has something to say
       const dim = neonOff > 0;
       const col = dim ? '#5a2a48' : '#ff8ac6';
-      if (!dim) Draw.glow(g, 218, 49, 26, '#b84a7c', 0.35);
+      if (!dim) Draw.glow(g, 218, 55, 26, '#b84a7c', 0.35);
       ['GRAB', 'SOME', 'FATE'].forEach((w, i) => {
-        Font.draw(g, w, 218, 32 + i * 12, { color: col, align: 'center', shadow: dim ? null : '#6b1f48' });
+        Font.draw(g, w, 218, 43 + i * 9, { color: col, align: 'center', shadow: dim ? null : '#6b1f48' });
       });
-    } else {
-      SPR.has('reaper_face') && SPR.draw(g, Game.talk.talking() && Math.sin(t * 22) > 0 ? (SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face') : 'reaper_face', 205, 36);
     }
-    Draw.panel(g, 197, 73 + Math.round(bagBump), 42, 27, 'dark');
-    Draw.panel(g, 197, 102, 42, 31, 'dark');
+    Draw.panel(g, 197, LAY.rig[0] / 2, 42, LAY.rig[1] / 2, tilted && Math.sin(t * 9) > -0.2 ? 'red' : 'dark');
+    Draw.panel(g, 197, LAY.ctrl[0] / 2, 42, LAY.ctrl[1] / 2, 'dark');
+  }
+
+  // ---- Luck: eight horseshoes, filled by bad luck
+  function drawLuckMeter(ctx) {
+    const y = LAY.luck[0];
+    if (!Rig.on) {
+      Font.draw(ctx, 'LUCK', 402, y + 5, { font: 'small', color: '#5b4a78' });
+      Font.draw(ctx, 'RIG OFF', 470, y + 5, { font: 'small', color: '#5b4a78', align: 'right' });
+      return;
+    }
+    const low = noLuckT > 0 && Math.sin(t * 24) > 0;
+    Font.draw(ctx, 'LUCK', 402, y + 5, { font: 'small', color: low ? '#e8405a' : '#f6c64b' });
+    Font.draw(ctx, Rig.luck + '/' + CONFIG.luckMax, 470, y + 5, { font: 'small', color: '#ecdcbc', align: 'right' });
+    const n = CONFIG.luckMax, step = Math.min(9, Math.floor(72 / n));
+    for (let i = 0; i < n; i++) {
+      const pop = pipPop[i] > 0, px = 406 + i * step;
+      SPR.draw(ctx, i < Rig.luck ? 'ico_luck' : 'ico_luck_e', px, y + 18 - (pop ? 2 : 0));
+      if (pop && Math.sin(t * 40 + i) > 0) Draw.rect(ctx, px - 1, y + 13, 2, 2, '#fff6e3'); // glint on a fresh pip
+    }
+    if (luckHint > 0 && Math.sin(t * 6) > 0) Draw.frame(ctx, CX - 1, y - 1, CW + 2, LAY.luck[1] + 2, '#f6c64b');
+  }
+
+  // ---- the Reaper's speech: the bubble fills the whole box (his face moved out to make room for THE RIG)
+  function drawSpeech(ctx) {
+    const tk = Game.talk;
+    if (!tk.visible()) return;
+    const x = 398, y = LAY.talk[0] + 3, w = 76, maxH = LAY.talk[1] - 6;
+    let font = 'main', lines = Font.wrap(tk.text, w - 12);
+    if (lines.length * Font.lineHeight('main') + 6 > maxH) { font = 'small'; lines = Font.wrap(tk.text, w - 12, 'small'); } // a long line: smaller type
+    const h = Math.min(maxH, lines.length * Font.lineHeight(font) + 8);
+    Draw.panel(ctx, x, y, w, h, 'paper');
+    Font.drawWrapped(ctx, tk.text, x + 6, y + 5, w - 12, { font, color: PAL.N, maxChars: Math.floor(tk.shown) });
+  }
+
+  // ---- THE RIG: six levers, the TILT gauge
+  function drawRigPanel(ctx) {
+    const sim = Game.sim, y0 = LAY.rig[0], tilted = sim.lockWhy === 'tilt' && sim.lockT > 0;
+    Font.draw(ctx, 'THE RIG', 402, y0 + 5, { font: 'small', color: tilted ? '#ff8a8a' : '#ff8ac6' });
+    if (!Rig.on) {
+      Font.draw(ctx, 'OFFLINE', 436, y0 + 32, { font: 'small', color: '#5b4a78', align: 'center' });
+      Font.draw(ctx, 'THE ORIGINAL CLAW', 436, y0 + 42, { font: 'small', color: '#3b3654', align: 'center' });
+      return;
+    }
+    const hk = Rig.heat / CONFIG.tiltAt; // nudge heat: fill it and the next nudge TILTs the machine
+    Font.draw(ctx, 'TILT', 436, y0 + 5, { font: 'small', color: hk > 0.66 || tilted ? '#e8405a' : '#7a6a9a' });
+    const SEG = ['#9be38f', '#f6c64b', '#e8405a'];
+    for (let i = 0; i < 3; i++) {
+      const lit = tilted ? Math.sin(t * 9) > -0.2 : hk > i / 3 + 0.02;
+      Draw.rect(ctx, 456 + i * 6, y0 + 4, 5, 5, lit ? SEG[i] : '#3b3654');
+    }
+    for (const [id] of CELLS) drawCell(ctx, btn['r_' + id], id);
+  }
+
+  function drawCell(ctx, b, id) {
+    const T = RIG_TRICKS[id], c = Rig.can(id), sim = Game.sim;
+    const cost = Rig.cost(id), armed = id === 'grip' && sim.iron, ok = c.ok || armed;
+    const x = b.x, y = b.y + (b.held ? 1 : 0);
+    Draw.panel(ctx, x, y, b.w, b.h, armed ? 'wood' : c.ok ? 'slate' : 'dark');
+    if (b.hover) Draw.frame(ctx, x - 1, y - 1, b.w + 2, b.h + 2, ok ? '#fff6e3' : '#5b4a78');
+    if (cellPulse[id] > 0 && Math.sin(t * 7) > 0) Draw.frame(ctx, x - 2, y - 2, b.w + 4, b.h + 4, '#ff8ac6'); // first-time hint
+    if (armed && Math.sin(t * 8) > -0.3) Draw.frame(ctx, x - 1, y - 1, b.w + 2, b.h + 2, '#f6c64b');
+    if (id === 'redo' && c.ok && Math.sin(t * 5) > 0) Draw.frame(ctx, x - 1, y - 1, b.w + 2, b.h + 2, '#e7a6f0'); // a redo is on offer
+    Font.draw(ctx, T.key, x + 3, y + 3, { font: 'small', color: ok ? '#8a7aa8' : '#4b4466' });
+    if (cost > 0) {
+      Font.draw(ctx, String(cost), x + b.w - 10, y + 3, { font: 'small', color: Rig.luck >= cost ? '#f6c64b' : '#e8405a' });
+      SPR.draw(ctx, 'ico_luck_s', x + b.w - 5, y + 5);
+    }
+    SPR.draw(ctx, CELL_ICON[id], x + 12, y + 13, { alpha: ok ? 1 : 0.4 });
+    Font.draw(ctx, armed ? 'ARMED' : T.label, x + 12, y + 19, { font: 'small', color: armed ? '#f6c64b' : ok ? '#ecdcbc' : '#5b4a78', align: 'center' });
+  }
+
+  // ---- the Lens: the odds of a drop right here, on the drop guide
+  function drawLens(ctx) {
+    if (!lens || !lens.part) return;
+    // The number is the chance this drop holds SOMETHING (already calibrated by the sim); the name is
+    // what sits under the claw. Green/yellow/red are cut on the calibrated number.
+    const sim = Game.sim, P = sim.clawPose(), pct = Math.round(lens.chance * 100);
+    const col = lens.chance >= 0.52 ? '#9be38f' : lens.chance >= 0.33 ? '#f6c64b' : '#e8405a';
+    const a = 'HOLD ~' + pct + '%', b = lens.part.def.name.toUpperCase();
+    const wa = Font.measure(a, 'small'), w = wa + Font.measure(b, 'small') + 14;
+    const [sx, sy] = toScreen(P.carX, (P.hubY + 30 + lens.y) / 2);
+    let x = Math.round(sx + 6);
+    if (x + w > 372) x = Math.round(sx - 6 - w);
+    const y = Math.round(sy) - 6;
+    Draw.panel(ctx, x, y, w, 12, 'dark');
+    Font.draw(ctx, a, x + 5, y + 3, { font: 'small', color: col });
+    Font.draw(ctx, b, x + 9 + wa, y + 3, { font: 'small', color: '#a6aec2' });
+    if (sim.iron) Font.draw(ctx, 'IRON GRIP', x + 5, y - 7, { font: 'small', color: '#f6c64b', outline: PAL.k });
+  }
+
+  // ---- rewinding: a tinted, scan-lined tape
+  function drawRewind(ctx) {
+    const sim = Game.sim;
+    ctx.fillStyle = 'rgba(111,211,255,0.10)'; ctx.fillRect(14, 14, 360, 244);
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    for (let y = 14 + (Math.floor(t * 50) % 4); y < 258; y += 4) ctx.fillRect(14, y, 360, 1);
+    ctx.fillStyle = 'rgba(194,245,255,0.12)'; ctx.fillRect(14, Math.round(14 + ((t * 160) % 238)), 360, 6); // a rolling glitch band
+    if (Math.sin(t * 8) > -0.3) Font.draw(ctx, '◀◀ REWIND', 24, 22, { scale: 2, color: '#c2f5ff', outline: PAL.k });
+    if (sim.rw) {
+      const k = clamp(sim.stateT / sim.rw.dur, 0, 1);
+      Draw.rect(ctx, 24, 44, 120, 3, PAL.k); Draw.rect(ctx, 25, 45, Math.round(118 * (1 - k)), 1, '#6fd3ff');
+    }
+  }
+
+  // ---- the Order menu
+  function drawPicker(ctx) {
+    ctx.fillStyle = 'rgba(14,11,22,0.62)'; ctx.fillRect(14, 14, 360, 244);
+    Draw.panel(ctx, PK.x, PK.y, PK.w, PK.h, 'dark');
+    Font.draw(ctx, 'SPECIAL ORDER', PK.x + 10, PK.y + 9, { color: '#6fd3ff', shadow: PAL.k });
+    const cost = Rig.cost('order');
+    Font.draw(ctx, cost + ' LUCK', PK.x + PK.w - 10, PK.y + 9, { color: '#f6c64b', align: 'right', shadow: PAL.k });
+    const counts = Rig.slotCounts(), need = Rig.suggestSlot();
+    for (const b of pickerBtns) {
+      const c = b.cell, sel = picker.sel === c.i;
+      Draw.panel(ctx, c.x, c.y, c.w, c.h, sel ? 'wood' : 'slate');
+      if (sel) Draw.frame(ctx, c.x - 1, c.y - 1, c.w + 2, c.h + 2, '#fff6e3');
+      drawPartIcon(ctx, SLOT_ICON[c.slot], c.x + 19, c.y + 20, 26);
+      Font.draw(ctx, String(c.i + 1), c.x + 4, c.y + 4, { font: 'small', color: '#8a7aa8' });
+      Font.draw(ctx, SLOT_NAMES[c.slot].toUpperCase(), c.x + 36, c.y + 9, { font: 'small', color: '#ecdcbc' });
+      Font.draw(ctx, 'OWN ' + counts[c.slot], c.x + 36, c.y + 18, { font: 'small', color: '#a6aec2' });
+      if (c.slot === need) Font.draw(ctx, 'NEEDED', c.x + 36, c.y + 27, { font: 'small', color: '#9be38f' });
+    }
+    Font.draw(ctx, '1-6 OR CLICK TO ORDER  ·  ESC TO CANCEL', PK.x + PK.w / 2, PK.y + PK.h - 12, { font: 'small', color: '#7a6a9a', align: 'center' });
   }
 
   function drawOverlay(ctx) {
     const sim = Game.sim;
-    // TOKENS
-    Font.draw(ctx, 'TOKENS', 436, 11 - Math.round(tokenBump * 2), { font: 'small', color: '#a6aec2', align: 'center' });
+    // TOKENS, with the bag folded in underneath
+    Font.draw(ctx, 'TOKENS', 436, 9 - Math.round(tokenBump * 2), { font: 'small', color: '#a6aec2', align: 'center' });
     const tk = String(Game.tokens);
-    Font.draw(ctx, tk, 436, 21 - Math.round(tokenBump * 2), { scale: 3, color: Game.tokens > 0 ? '#fff6e3' : noTokenT > 0 && Math.sin(t * 16) > 0 ? '#e8405a' : '#7a6a9a', align: 'center', shadow: PAL.k });
-    // reaper speech inside the neon box
-    if (Game.talk.visible()) {
-      Game.talk.drawBubble(ctx, 398, 90, 78, null, null, {});
-    }
-    // bag
-    Font.draw(ctx, 'BAG', 402, 151 + Math.round(bagBump * 2), { font: 'small', color: '#a6aec2' });
-    Font.draw(ctx, String(Game.inventory.length), 472, 151, { font: 'small', color: '#ecdcbc', align: 'right' });
-    Game.recent.slice(0, 3).forEach((type, i) => {
-      drawPartIcon(ctx, type, 413 + i * 24, 180 + Math.round(bagBump * 2), 17, { outline: RARITY[PART_DEFS[type].rarity].glow || undefined });
-    });
+    Font.draw(ctx, tk, 436, 15 - Math.round(tokenBump * 2), { scale: 3, color: Game.tokens > 0 ? '#fff6e3' : noTokenT > 0 && Math.sin(t * 16) > 0 ? '#e8405a' : '#7a6a9a', align: 'center', shadow: PAL.k });
+    Draw.rect(ctx, 400, 40, 76, 1, '#3b3654');
+    Font.draw(ctx, 'BAG', 402, 43 + Math.round(bagBump), { font: 'small', color: '#a6aec2' });
+    Font.draw(ctx, String(Game.inventory.length), 470, 43 + Math.round(bagBump), { font: 'small', color: '#ecdcbc', align: 'right' });
+    drawLuckMeter(ctx);
+    drawSpeech(ctx);
+    drawRigPanel(ctx);
     // flying prizes
     for (const f of flying) {
       if (f.t < 0) continue;
       const k = easeInOutQuad(clamp(f.t / f.dur, 0, 1));
-      const x = lerp(f.x0, 413, k), y = lerp(f.y0, 180, k) - Math.sin(k * Math.PI) * 60;
+      const x = lerp(f.x0, 452, k), y = lerp(f.y0, 44, k) - Math.sin(k * Math.PI) * 60;
       drawPartIcon(ctx, f.type, x, y, 22, { outline: RARITY[PART_DEFS[f.type].rarity].color });
     }
     // controls
     const ico = (name, x, y, fb) => (SPR.has(name) ? SPR.draw(ctx, name, x, y) : Font.draw(ctx, fb, x, y - 3, { align: 'center', color: '#ecdcbc' }));
-    ico('key_left', 407, 220, '◀'); ico('key_right', 427, 220, '▶');
-    Font.draw(ctx, 'MOVE', 442, 217, { color: '#ecdcbc' });
+    ico('key_left', 407, 227, '◀'); ico('key_right', 427, 227, '▶');
+    Font.draw(ctx, 'MOVE', 442, 224, { color: '#ecdcbc' });
     for (const b of [btn.drop, btn.back]) {
       const hot = b.hover || b.held;
       const pulse = b === btn.back && noTokenT > 0 && Math.sin(t * 10) > 0;
       if (hot || pulse) Draw.rect(ctx, b.x, b.y, b.w, b.h, pulse ? '#5a1834' : '#2b2d3d');
       ico(b === btn.drop ? 'btn_a' : 'btn_b', b.x + 9, b.y + 7, b === btn.drop ? 'A' : 'B');
-      Font.draw(ctx, b.label, b.x + 20, b.y + 4, { color: b === btn.drop && Game.tokens <= 0 && sim.state === 'idle' ? '#7a6a9a' : '#ecdcbc' });
+      Font.draw(ctx, b.label, b.x + 20, b.y + 4, { color: b === btn.drop && (Game.tokens <= 0 || sim.lockT > 0) && sim.state === 'idle' ? '#7a6a9a' : '#ecdcbc' });
     }
     if (btn.left.held || Input.held('left')) Draw.frame(ctx, btn.left.x, btn.left.y, btn.left.w, btn.left.h, '#fff6e3');
     if (btn.right.held || Input.held('right')) Draw.frame(ctx, btn.right.x, btn.right.y, btn.right.w, btn.right.h, '#fff6e3');
@@ -516,8 +857,18 @@ Scenes.claw = (() => {
       Font.draw(ctx, 'THEN  DROP', 190, 108, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
     }
     // first-time nudge: flash the controls if the player hasn't moved yet
-    if (!movedOnce && idleT > 5 && Math.sin(t * 6) > 0) Draw.frame(ctx, 396, 206, 80, 58, '#ff8ac6');
+    if (!movedOnce && idleT > 5 && Math.sin(t * 6) > 0) Draw.frame(ctx, 396, 217, 80, 49, '#ff8ac6');
+
+    drawLens(ctx);
+    // TILT: the machine is sulking
+    if (sim.lockWhy === 'tilt' && sim.lockT > 0) {
+      if (Math.sin(t * 9) > -0.2) Font.draw(ctx, 'TILT', 194, 96, { scale: 6, color: '#e8405a', outline: PAL.k, align: 'center' });
+      const k = clamp(sim.lockT / CONFIG.tiltLock, 0, 1);
+      Draw.rect(ctx, 134, 146, 120, 4, PAL.k); Draw.rect(ctx, 135, 147, Math.round(118 * k), 2, '#e8405a');
+    }
+    if (sim.state === 'rewind') drawRewind(ctx);
     fxS.draw(ctx);
+    if (picker) drawPicker(ctx);
   }
 
   S.draw = function (ctx) {

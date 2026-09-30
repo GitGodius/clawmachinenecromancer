@@ -17,6 +17,10 @@ const Input = {
     ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
     Space: 'a', Enter: 'a', KeyZ: 'a', KeyJ: 'a',
     Escape: 'b', Backspace: 'b', KeyX: 'b', KeyK: 'b',
+    // the Rig (claw scene): Q/E bump the glass, 1-4 pull a lever
+    KeyQ: 'nudgeL', KeyE: 'nudgeR',
+    Digit1: 'quake', Digit2: 'grip', Digit3: 'order', Digit4: 'redo',
+    Numpad1: 'quake', Numpad2: 'grip', Numpad3: 'order', Numpad4: 'redo',
   },
   init(canvas) {
     window.addEventListener('keydown', (e) => {
@@ -69,7 +73,7 @@ const Input = {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const gp = pads && [...pads].find((p) => p && p.connected);
     const P = this.pad;
-    if (!gp) { P.left = P.right = P.a = P.b = false; return; }
+    if (!gp) { P.left = P.right = P.a = P.b = P.x = P.y = P.lb = P.rb = false; return; }
     const ax = gp.axes[0] || 0;
     const now = {
       left: ax < -0.4 || (gp.buttons[14] && gp.buttons[14].pressed),
@@ -78,6 +82,10 @@ const Input = {
       down: (gp.axes[1] || 0) > 0.5 || (gp.buttons[13] && gp.buttons[13].pressed),
       a: gp.buttons[0] && gp.buttons[0].pressed,
       b: gp.buttons[1] && gp.buttons[1].pressed,
+      x: gp.buttons[2] && gp.buttons[2].pressed, // quake
+      y: gp.buttons[3] && gp.buttons[3].pressed, // iron grip
+      lb: gp.buttons[4] && gp.buttons[4].pressed, // nudge left
+      rb: gp.buttons[5] && gp.buttons[5].pressed, // nudge right
     };
     for (const k in now) {
       if (now[k] && !P.prev[k]) { this.pressed[k] = true; this.anyPressed = true; this.lastDevice = 'pad'; }
