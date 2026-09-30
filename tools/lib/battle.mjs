@@ -33,10 +33,13 @@ export function fightScene(game, party, stage, seed) {
 }
 
 export function fightSim(game, party, stage, seed) {
-  const CONFIG = game.get('CONFIG');
+  const G = game.get('Game'), CONFIG = game.get('CONFIG');
+  G.stage = stage;
+  G.party = party;
+  G.tokens = 0;
+  G.sim.pending = [];
   game.seedGameplay(seed);
-  const sim = game.run(`new BattleSim({ party: null, stage: ${stage} })`);
-  sim.setParty(party);
+  const sim = game.run(`new BattleSim({ party: Game.party, stage: ${stage} })`);
   sim.start();
   let t = 0, zapT = 0;
   while (t < 120 && !sim.over) {
@@ -45,6 +48,12 @@ export function fightSim(game, party, stage, seed) {
     if (sim.over) break;
     if (zapT > CONFIG.zapCooldown + 0.1) { sim.step(0.001); sim.zap(); zapT = 0; }
   }
-  const r = sim.finish(sim.won ? 'win' : 'lose');
-  return { won: r.kind === 'win', frames: Math.round(t / DT), reward: r.reward, alive: party.filter((c) => c.hp > 0).length, hp: Math.round(party.reduce((a, c) => a + Math.max(0, c.hp), 0)) };
+  if (sim.over) G.applyBattle(sim, sim.won ? 'win' : 'lose');
+  return {
+    won: G.stage > stage,
+    frames: Math.round(t / DT),
+    reward: G.tokens,
+    alive: G.party.filter((c) => c.hp > 0).length,
+    hp: Math.round(G.party.reduce((a, c) => a + Math.max(0, c.hp), 0)),
+  };
 }

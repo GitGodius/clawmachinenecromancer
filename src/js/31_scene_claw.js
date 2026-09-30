@@ -302,14 +302,9 @@ Scenes.claw = (() => {
     if (!d.inTurn) say('Free part! Don\'t tell the manager. I\'m the manager.', 2.6);
   }
 
-  // the machine never runs dry: below 5 parts the Reaper fetches more from the back room
+  // the machine never runs dry (rule lives in Game.topUpMachine); the Reaper just announces it
   function topUp() {
-    const sim = Game.sim;
-    const left = sim.parts.filter((p) => !p.won).length + sim.pending.length;
-    if (left >= 5) return;
-    for (let i = 0; i < 7; i++) sim.queueSpawn(randomPartType({ boost: 1 + Game.stage * 0.1 }), i * 0.25);
-    Telemetry.log('topup', { left });
-    setTimeout(() => say('Running low! Let me fetch more from the back room.', 3), 900);
+    if (Game.topUpMachine()) setTimeout(() => say('Running low! Let me fetch more from the back room.', 3), 900);
   }
 
   function buildButtons() {
