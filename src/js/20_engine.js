@@ -12,15 +12,19 @@ const Input = {
   pad: { left: false, right: false, a: false, b: false, prev: {} },
   anyPressed: false,
   lastDevice: 'mouse',
-  KEYMAP: {
-    ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
-    ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
-    Space: 'a', Enter: 'a', KeyZ: 'a', KeyJ: 'a',
-    Escape: 'b', Backspace: 'b', KeyX: 'b', KeyK: 'b',
+  KEYMAP: {}, // key code -> action, built from the player's bindings (Settings.v.keys)
+  capture: null, // while set, the next key press goes here instead of the game (the remap screen)
+  setBindings(keys) {
+    const map = {};
+    for (const a of KEY_ACTIONS) for (const c of keys[a.id] || []) if (c) map[c] = a.id;
+    this.KEYMAP = map;
+    this.down = {}; this.pressed = {};
   },
   init(canvas) {
+    this.setBindings(Settings.v.keys);
     window.addEventListener('keydown', (e) => {
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON' && e.code === 'Space')) return;
+      if (this.capture) { e.preventDefault(); if (!e.repeat) { const f = this.capture; this.capture = null; f(e.code); } return; }
       const act = this.KEYMAP[e.code];
       if (act || e.code === 'Space') e.preventDefault();
       if (!e.repeat) {
@@ -87,6 +91,8 @@ const Input = {
     P.prev = now;
   },
   held(act) { return !!(this.down[act] || this.pad[act]); },
+  // which key currently does this, for on-screen prompts (follows the player's bindings)
+  keyFor(act) { return Settings.hint(act); },
   hit(act) { return !!this.pressed[act]; },
   endFrame() {
     this.pressed = {}; this.released = {}; this.anyPressed = false;
@@ -105,6 +111,8 @@ const Engine = {
   pauseT: 0, slowT: 0, slowScale: 1,
   flashT: 0, flashDur: 0, flashColor: '#fff',
   paused: false,
+  overlays: [], // menus stacked over the game; the top one gets input. A non-live overlay freezes the scene under it.
+  errorRun: 0,  // consecutive frames whose scene code threw
 
   init() {
     this.canvas = document.getElementById('game');
@@ -115,7 +123,7 @@ const Engine = {
       // fit the canvas inside whatever the page leaves free (gutters, safe areas, the hint line)
       const px = (cs, k) => parseFloat(cs[k]) || 0;
       const de = document.documentElement, bs = getComputedStyle(document.body), rs = getComputedStyle(de);
-      const hint = document.getElementById('hint');
+      const hint = document.getElementById('under');
       const avW = de.clientWidth - px(bs, 'paddingLeft') - px(bs, 'paddingRight') - px(rs, 'paddingLeft') - px(rs, 'paddingRight');
       const avH = de.clientHeight - px(bs, 'paddingTop') - px(bs, 'paddingBottom') - px(rs, 'paddingTop') - px(rs, 'paddingBottom')
         - (hint && hint.offsetParent ? hint.offsetHeight + 6 : 0);
@@ -133,6 +141,14 @@ const Engine = {
 
   add(name, scene) { this.scenes[name] = scene; scene.name = name; },
 
+  // A scene threw. Report it (once per distinct error, see CrashLog) and keep the game alive: if the same
+  // scene keeps failing, drop back to the shop rather than freezing on a broken screen.
+  fault(e, where) {
+    this.errorRun++;
+    if (typeof CrashLog !== 'undefined') CrashLog.report(e, where + ' in ' + (this.sceneName || '?')); else console.error(e);
+    if (this.errorRun >= 30 && this.sceneName !== 'shop' && this.scenes.shop) { this.errorRun = 0; this.overlays.length = 0; this.trans = null; this._switch(this.scenes.shop, { skipIntro: true }); }
+  },
+
   // style: 'dither' (pixel fade through black) | 'cut'
   go(name, params, style = 'dither') {
     if (this.trans) return;
@@ -148,6 +164,7 @@ const Engine = {
     this.sceneName = to.name;
     Telemetry.scene(to.name);
     if (to.enter) to.enter(params || {}, from);
+    Save.soon();
   },
 
   shake(mag, dur = 0.25) {
@@ -156,17 +173,45 @@ const Engine = {
   },
   hitPause(sec) { this.pauseT = Math.max(this.pauseT, sec * CONFIG.hitPause); },
   slowmo(scale, sec) { if (!CONFIG.slowmo) return; this.slowScale = scale; this.slowT = sec; },
-  flash(color = '#fff', dur = 0.15) { this.flashColor = color; this.flashT = dur; this.flashDur = dur; },
+  flash(color = '#fff', dur = 0.15) { if (Settings.v.reduceFlash) return; this.flashColor = color; this.flashT = dur; this.flashDur = dur; },
+
+  // ---- overlays (pause, settings, title...): the game holds its breath while one is open
+  open(overlay, params) {
+    this.overlays.push(overlay);
+    overlay.parent = this.overlays.length > 1 ? this.overlays[this.overlays.length - 2] : null;
+    if (overlay.enter) overlay.enter(params || {});
+    if (!overlay.live) { Sfx.motor(0, 0); Music.dim(true); }
+    // the press that opened a menu belongs to the opener: without this the menu's own update, later in the
+    // same frame, sees it too (P opened pause and immediately closed it)
+    Input.mouse.down = false; Input.mouse.pressed = false; Input.pressed = {}; Input.anyPressed = false;
+  },
+  close() {
+    const o = this.overlays.pop();
+    if (o && o.exit) o.exit();
+    UI.set([]);
+    Input.mouse.down = false; Input.pressed = {};
+    if (!this.overlays.some((x) => !x.live)) Music.dim(false);
+    if (this.overlays.length) { const t = this.overlays[this.overlays.length - 1]; if (t.resume) t.resume(); }
+  },
+  get top() { return this.overlays.length ? this.overlays[this.overlays.length - 1] : null; },
+  // true while something is frozen the world: the pause menu says "no game actions" and means it
+  get frozen() { return this.overlays.some((o) => !o.live); },
+
 
   loop(now) {
     const realDt = Math.min(0.05, (now - (this._last || now)) / 1000);
     this._last = now;
     this.realT += realDt;
     Input.pollPad();
+    // keys that work everywhere, and follow the player's bindings
+    if (Input.hit('mute')) { Settings.v.muted = AudioSys.toggleMute(); Save.soon(); }
+    if (Input.hit('fullscreen') && typeof Platform !== 'undefined') Platform.fullscreen();
+    if (Input.hit('pause') && this.scene && !this.overlays.length && this.scene.pausable !== false && !this.trans && typeof Overlays !== 'undefined') Overlays.pause();
     let dt = realDt;
     if (this.pauseT > 0) { this.pauseT -= realDt; dt = 0; }
     if (this.slowT > 0) { this.slowT -= realDt; dt *= this.slowScale; }
-    if (this.paused) dt = 0;
+    if (this.paused || this.frozen) dt = 0;
+    if (!this.frozen && this.scene && this.scene.tracksTime !== false) Game.playTime += realDt;
     this.t += dt;
     this.dt = dt;
     this.frame++;
@@ -179,11 +224,13 @@ const Engine = {
       else if (tr.phase === 'in' && tr.t >= tr.dur) this.trans = null;
     }
 
-    if (this.scene && (!this.trans || this.trans.phase === 'in')) {
-      try { this.scene.update(dt, realDt); } catch (e) { console.error(e); }
+    if (this.scene && (!this.trans || this.trans.phase === 'in') && !this.frozen) {
+      try { this.scene.update(dt, realDt); this.errorRun = 0; } catch (e) { this.fault(e, 'update'); }
     }
+    const ov = this.top;
+    if (ov) { try { ov.update(realDt); } catch (e) { this.fault(e, 'overlay'); this.overlays.length = 0; } }
     UI.update(realDt);
-    Debug.update && Debug.update(realDt);
+    if (typeof Debug !== 'undefined' && Debug.update) Debug.update(realDt);
 
     // shake
     if (this.shakeT > 0) {
@@ -200,7 +247,7 @@ const Engine = {
     ctx.fillStyle = PAL.k;
     ctx.fillRect(0, 0, W, H);
     ctx.translate(this.shakeX, this.shakeY);
-    try { if (this.scene) this.scene.draw(ctx); } catch (e) { console.error(e); }
+    try { if (this.scene) this.scene.draw(ctx); } catch (e) { this.fault(e, 'draw'); }
     ctx.restore();
     if (this.flashT > 0) {
       this.flashT -= realDt;
@@ -209,6 +256,8 @@ const Engine = {
       ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
     }
+    for (const o of this.overlays) { try { o.draw(ctx); } catch (e) { this.fault(e, 'overlay draw'); this.overlays.length = 0; } }
+    if (typeof Overlays !== 'undefined') Overlays.drawToast(ctx, realDt);
     UI.drawOverlay(ctx);
     if (this.trans) {
       const tr = this.trans;

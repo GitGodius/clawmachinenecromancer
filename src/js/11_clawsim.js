@@ -185,8 +185,15 @@ class ClawSim {
     for (const slot in need) for (let i = 0; i < need[slot]; i++) types.push(randomPartType({ slot, rarity: i === 0 ? 'common' : undefined }));
     while (types.length < n) types.push(randomPartType());
     shuffle(types);
+    this.layoutPile(types.slice(0, Math.max(n, 5)));
+  }
+
+  // Drop these part types into the machine in a loose grid, then let them settle into a pile.
+  // (Also how a saved run rebuilds the machine: the types are kept, the exact pile is not.)
+  layoutPile(types) {
+    const M = MACHINE;
     const cols = 5, cw = (M.spawnX1 - M.spawnX0) / cols;
-    types.slice(0, Math.max(n, 5)).forEach((t, i) => {
+    types.forEach((t, i) => {
       const col = i % cols, row = Math.floor(i / cols);
       this.spawnPart(t, M.spawnX0 + cw * (col + 0.5) + rand(-3, 3), M.floor - 14 - row * 23 + rand(-2, 2), rand(-Math.PI, Math.PI));
     });
@@ -240,9 +247,11 @@ class ClawSim {
     return Math.hypot(b.x - a.x, b.y - a.y) * PPM;
   }
 
-  driveCarriage(target, h) {
+  // accel: how hard the carriage may change speed this tick. Aiming (idle) is snappy; carrying has momentum
+  // (pillar 3: how you steer with something in the claw decides whether you keep it).
+  driveCarriage(target, h, accel = CONFIG.clawAccel) {
     const M = MACHINE;
-    this.carV = approach(this.carV, target, CONFIG.clawAccel * h);
+    this.carV = approach(this.carV, target, accel * h);
     let nx = this.carX + this.carV * h;
     if (nx < M.carMin) { nx = M.carMin; this.carV = 0; }
     if (nx > M.carMax) { nx = M.carMax; this.carV = 0; }
@@ -278,6 +287,7 @@ class ClawSim {
     const M = MACHINE;
     this.time += h;
     this.stateT += h;
+    this.slipOpenT = Math.max(0, (this.slipOpenT || 0) - h);
     this.world.setGravity(planck.Vec2(0, CONFIG.gravity));
     this.hub.setLinearDamping(CONFIG.swayDamping);
     const pressed = this.pressed;
@@ -326,7 +336,7 @@ class ClawSim {
         break;
       }
       case 'lift': {
-        this.prongs('close', CONFIG.gripFade > 0 ? this.stateT / CONFIG.gripFade : 1);
+        this.prongs(this.slipOpenT > 0 ? 'open' : 'close', CONFIG.gripFade > 0 ? this.stateT / CONFIG.gripFade : 1);
         this.updateGrips(h);
         this.driveCarriage(0, h);
         const d = this.ropeDist();
@@ -342,17 +352,19 @@ class ClawSim {
         break;
       }
       case 'carry':
-        this.prongs('close', 1);
+        this.prongs(this.slipOpenT > 0 ? 'open' : 'close', 1);
         this.updateGrips(h);
-        this.driveCarriage(move * CONFIG.clawMoveSpeed, h);
+        this.driveCarriage(move * CONFIG.clawMoveSpeed, h, move ? CONFIG.carryAccel : CONFIG.carryBrake);
         if (pressed || (CONFIG.carryTime > 0 && this.stateT > CONFIG.carryTime)) this.startRelease();
         break;
       case 'return': {
-        this.prongs('close', 1);
+        this.prongs(this.slipOpenT > 0 ? 'open' : 'close', 1);
         this.updateGrips(h);
+        // the auto-carry assist: a steady, safe, deliberately unhurried speed with a smooth stop. It takes the
+        // carry off your hands, and a careful human who takes the quick steady line still does slightly better.
         const d = M.home - this.carX;
-        const vmax = Math.sqrt(2 * CONFIG.clawAccel * Math.abs(d));
-        this.driveCarriage(Math.sign(d) * Math.min(CONFIG.clawMoveSpeed, vmax), h);
+        const vmax = Math.sqrt(2 * CONFIG.carryBrake * Math.abs(d));
+        this.driveCarriage(Math.sign(d) * Math.min(CONFIG.swingSafe * CONFIG.assistSpeed, CONFIG.clawMoveSpeed, vmax), h, CONFIG.carryAccel);
         if (Math.abs(d) < 0.6 && Math.abs(this.carV) < 6 && this.stateT > 0.3) this.startRelease();
         break;
       }
@@ -457,7 +469,8 @@ class ClawSim {
       g.t += h;
       const gp = g.part.def.grip || 1;
       const v = g.body.getLinearVelocity();
-      const vrel = Math.hypot(v.x - hv.x, v.y - hv.y) * PPM; // how hard it's swinging, px/s
+      // how hard it's swinging, px/s: the part's motion against the claw, or how fast the carriage is going
+      const vrel = Math.max(Math.hypot(v.x - hv.x, v.y - hv.y) * PPM, this.state === 'lift' ? 0 : Math.abs(this.carV));
       const A = g.joint.getAnchorA(), B = g.joint.getAnchorB();
       const stretch = (Math.hypot(A.x - B.x, A.y - B.y) - g.joint.getLength()) * PPM;
       g.load = vrel;
@@ -471,11 +484,23 @@ class ClawSim {
     }
   }
 
+  // How steady the carry is right now, for the wobble meter. ratio 0 = calm, 1 = at the edge, >1 = shedding.
+  swayInfo() {
+    if (!this.grips.length || this.state === 'lift') return null;
+    const speed = Math.abs(this.carV), safe = CONFIG.swingSafe;
+    const over = Math.max(0, speed - safe);
+    return { speed, safe, ratio: speed / Math.max(1, safe), over, hazard: CONFIG.slipBase + CONFIG.swingSlip * over / 30 };
+  }
+
   loseGrip(g, why) {
     if (!this.grips.includes(g)) return;
     this.world.destroyJoint(g.joint);
     this.unclamp(g.part);
     this.grips = this.grips.filter((x) => x !== g);
+    // Losing the grip has to mean losing the part. The prongs form a cup, so a part whose grip spring is gone
+    // used to stay wedged in them anyway, which quietly hid how you carried. When the last grip goes the jaws
+    // sag open for a moment and the load drops.
+    if (!this.grips.length && CONFIG.slipOpen > 0) this.slipOpenT = CONFIG.slipOpen;
     this.emit('gripLost', { part: g.part, why });
   }
 

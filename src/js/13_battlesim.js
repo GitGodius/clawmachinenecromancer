@@ -13,7 +13,7 @@
 const ARENA = { ground: 214, minX: 20, maxX: 460, allyLanes: [0, 11, -11], enemyLanes: [0, 11, -11, 5, -5], allyStartX: 120, allyGap: 38, enemyStartX: 350, enemyGap: 36 };
 
 class BattleSim {
-  constructor({ party, stage, onEvent }) {
+  constructor({ party, stage, onEvent, enemies }) {
     this.onEvent = onEvent || (() => {});
     this.stage = stage;
     this.state = 'ready'; // ready -> fight -> over
@@ -26,7 +26,7 @@ class BattleSim {
     this.over = false;
     this.won = false;
     (party || []).filter((c) => c.hp > 0).slice(0, 3).forEach((c, i) => this.units.push(this.makeAlly(c, i)));
-    this.kinds = stageEnemies(stage);
+    this.kinds = enemies || stageEnemies(stage); // `enemies` overrides the stage table (matchup tests)
     this.kinds.forEach((k, i) => this.units.push(this.makeEnemy(k, i)));
   }
 
@@ -34,6 +34,19 @@ class BattleSim {
   allies() { return this.units.filter((u) => u.team === 'ally'); }
   enemies() { return this.units.filter((u) => u.team === 'enemy'); }
   static alive(arr) { return arr.filter((u) => !u.dead); }
+
+  // How much of the enemy's health has been chewed through, 0..1. Even a lost fight pays for this.
+  progress() {
+    const es = this.enemies();
+    const max = es.reduce((a, u) => a + u.maxHp, 0);
+    return max ? clamp(1 - es.reduce((a, u) => a + Math.max(0, u.hp), 0) / max, 0, 1) : 0;
+  }
+  // Fraction of your creatures' total health still standing (the dead count as zero).
+  standing() {
+    const as = this.allies();
+    const max = as.reduce((a, u) => a + u.maxHp, 0);
+    return max ? as.reduce((a, u) => a + Math.max(0, u.hp), 0) / max : 0;
+  }
 
   makeAlly(c, i) {
     return {
@@ -50,7 +63,7 @@ class BattleSim {
     const hp = Math.round(K.hp * m * CONFIG.enemyHp);
     return {
       team: 'enemy', kind, K, name: K.name, x: ARENA.enemyStartX + i * ARENA.enemyGap + (K.boss ? 20 : 0), y: ARENA.ground + ARENA.enemyLanes[i % 5],
-      hp, maxHp: hp, atk: K.atk * m * CONFIG.enemyAtk, def: 0, atkTime: K.atkTime, speed: K.speed, range: K.range,
+      hp, maxHp: hp, atk: K.atk * m * CONFIG.enemyAtk, def: K.def || 0, atkTime: K.atkTime, speed: K.speed, range: K.range,
       dodge: K.dodge, crit: 0.05, traits: [], cd: rand(0.3, 0.9), state: 'idle', animT: 0, kx: 0,
       stunT: 0, bleedT: 0, burnT: 0, hasteT: 0, hits: 0, dead: false,
     };

@@ -234,6 +234,7 @@ Scenes.claw = (() => {
         case 'win': onWin(d); break;
         case 'turnEnd': {
           Telemetry.grabEnd(d.result, d.won);
+          Save.soon();
           if (d.result === 'miss') {
             Sfx.play('miss');
             if (!Game.talk.visible() || vchance(0.5)) say(vpick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);

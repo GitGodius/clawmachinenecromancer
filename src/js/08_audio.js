@@ -800,6 +800,13 @@ const { AudioSys, Sfx, Music } = (() => {
       hold(p, t); p.linearRampToValueAtTime(1 - a, t + 0.08);
       p.setValueAtTime(1 - a, Math.max(end, t + 0.08)); p.linearRampToValueAtTime(1, Math.max(end, t + 0.08) + 0.6);
     },
+    // hold the music low while a menu has the game paused; dim(false) brings it back
+    dim(on) {
+      if (!ctx || !B) return;
+      const t = ctx.currentTime, p = B.duck.gain;
+      hold(p, t); p.linearRampToValueAtTime(on ? 0.3 : 1, t + 0.15);
+      B.duckEnd = 0; B.duckAmt = 0;
+    },
     get track() { return want; },
     // test hook: schedule `secs` of a track into the current (offline) context in one go
     _fill(name, secs) { const I = instance(name, ctx.currentTime + 0.05); I.g.gain.value = I.d.gain; advance(I, ctx.currentTime + secs); },

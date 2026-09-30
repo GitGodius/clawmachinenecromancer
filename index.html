@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>The Good Parts</title>
-<meta name="description" content="A claw machine necromancer prototype: grab body parts, stitch monsters, fight for more tokens.">
+<meta name="description" content="A claw machine necromancer game: win body parts from the claw, stitch them into monsters, send them to fight, and get the parts back.">
 <style>
 /* The Good Parts: one deliberate dark world (a night-time arcade), so no light theme.
    Layout: a single canvas centred in the viewport; overlays (tuning panel, report) slide over it. */
@@ -21,7 +21,19 @@ body { background: var(--bg); color: var(--ink); overflow: hidden; box-sizing: b
 #game { image-rendering: pixelated; image-rendering: crisp-edges; display: block; touch-action: none; cursor: default; outline: none; flex: none;
   box-shadow: 0 0 0 1px #000, 0 20px 80px rgba(0, 0, 0, .6); }
 #game:focus-visible { box-shadow: 0 0 0 2px var(--accent), 0 20px 80px rgba(0, 0, 0, .6); }
-#hint { flex: none; margin: 0; color: var(--muted); text-align: center; font-size: 11px; max-width: 100%; }
+#under { flex: none; display: flex; gap: 10px; align-items: center; justify-content: center; max-width: 100%; }
+#hint { margin: 0; color: var(--muted); text-align: center; font-size: 11px; }
+#menuBtn { flex: none; background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); font: inherit; padding: 4px 9px; cursor: pointer; border-radius: 3px; min-height: 28px; }
+#menuBtn:hover { border-color: var(--accent); }
+#menuBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+#crash { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 9; display: none; background: #3a1424ee; border: 1px solid #e8405a; color: var(--ink); padding: 7px 10px; border-radius: 3px; }
+#crash.open { display: block; }
+#crash button, #copybox { font: inherit; }
+#crash button { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); padding: 3px 8px; margin-left: 4px; cursor: pointer; border-radius: 3px; }
+#crash button:hover, #crash button:focus-visible { border-color: var(--accent); }
+#copybox { position: fixed; left: 8px; right: 8px; bottom: 8px; height: 30vh; z-index: 10; display: none; background: var(--bg); color: var(--ink); border: 1px solid var(--accent); }
+#copybox.open { display: block; }
 #hint kbd { font: inherit; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
 #dbgToggle { position: fixed; left: 8px; bottom: 8px; z-index: 5; background: #1b1526cc; color: var(--muted); border: 1px solid var(--line);
   font: inherit; padding: 3px 7px; cursor: pointer; border-radius: 3px; opacity: .55; }
@@ -51,9 +63,9 @@ body { background: var(--bg); color: var(--ink); overflow: hidden; box-sizing: b
 </head>
 <body>
 <div id="boot">loading…</div>
-<canvas id="game" width="480" height="270" tabindex="0" aria-label="The Good Parts, a claw machine necromancer game"></canvas>
-<button id="dbgToggle" title="Tuning panel ( ` )">⚙ tune</button>
-<div id="debug"></div>
+<canvas id="game" width="480" height="270" tabindex="0" role="application" aria-label="The Good Parts, a claw machine necromancer game. Menus and the Reaper's lines are read out."></canvas>
+<div id="under"><p id="hint"></p><button id="menuBtn" type="button" title="Pause and settings">☰ Menu</button></div>
+<div id="sr" class="sr-only" aria-live="polite" role="status"></div>
 <script>
 (function(global,factory){typeof exports==="object"&&typeof module!=="undefined"?factory(exports):typeof define==="function"&&define.amd?define(["exports"],factory):(global=typeof globalThis!=="undefined"?globalThis:global||self,factory(global.planck={}))})(this,function(exports2){"use strict";
 /**
@@ -82,6 +94,19 @@ body { background: var(--bg); color: var(--ink); overflow: hidden; box-sizing: b
 </script>
 <script>
 "use strict";
+// ==== 00_build.js ====
+// ---------------------------------------------------------------------------
+// BUILD — what kind of page is this? tools/build.mjs stamps the version into index.html; dev.html sets
+// window.__DEV__ before loading anything. Developer tools (tuning panel, cheats, URL flags) only exist when
+// BUILD.dev is true, so the page players get has none of them.
+// ---------------------------------------------------------------------------
+const BUILD = {
+  dev: !!(typeof window !== 'undefined' && window.__DEV__),
+  version: '0.9.0', /*@version*/
+  name: 'The Good Parts',
+  issues: 'https://github.com/GitGodius/clawmachinenecromancer/issues/new',
+};
+
 // ==== 01_config.js ====
 // ---------------------------------------------------------------------------
 // TUNABLES — everything worth tweaking lives here. The debug panel (press `)
@@ -100,11 +125,15 @@ const CONFIG_META = [
   ['Claw', 'closeFriction', 0.08, 0, 1.5, 0.02, 'Prong friction while closing'],
   ['Claw', 'prongFriction', 1.0, 0, 3, 0.05, 'Prong friction while holding'],
   ['Claw', 'grabChance', 0.9, 0, 1, 0.02, 'Grab chance (part in claw, centered)'],
-  ['Claw', 'slipBase', 0.05, 0, 1, 0.01, 'Slip chance /s while carrying'],
-  ['Claw', 'swingSlip', 1.6, 0, 5, 0.05, 'Extra slip from swinging it around'],
-  ['Claw', 'swingSafe', 30, 0, 120, 1, 'Swing speed that is still safe (px/s)'],
-  ['Claw', 'topSlip', 0.15, 0, 1, 0.01, 'Slip chance on the jolt at the top'],
+  ['Claw', 'slipBase', 0.02, 0, 1, 0.01, 'Slip chance /s while carrying'],
+  ['Claw', 'swingSlip', 1.0, 0, 5, 0.05, 'Extra slip per second from carrying fast'],
+  ['Claw', 'swingSafe', 28, 0, 120, 1, 'Carry speed that is still steady (px/s)'],
+  ['Claw', 'carryAccel', 60, 10, 400, 5, 'Carriage acceleration while carrying (momentum)'],
+  ['Claw', 'carryBrake', 30, 10, 400, 5, 'Carriage slowdown while carrying, key released'],
+  ['Claw', 'assistSpeed', 0.6, 0.2, 1, 0.05, 'Auto-carry cruise, as a share of the steady speed'],
+  ['Claw', 'topSlip', 0.12, 0, 1, 0.01, 'Slip chance on the jolt at the top'],
   ['Claw', 'twitchSlip', 0.4, 0, 1, 0.05, 'Slip chance when a held part twitches'],
+  ['Claw', 'slipOpen', 0.5, 0, 2, 0.05, 'Seconds the jaws sag open when the last grip is lost'],
   ['Claw', 'gripFade', 0.8, 0, 3, 0.05, 'Seconds to fade close→hold torque'],
   ['Claw', 'gripSpring', 6, 1, 20, 0.5, 'Grip springiness (Hz)'],
   ['Claw', 'gripAssist', 0.3, 0, 1, 0.05, 'Held parts weigh less'],
@@ -126,6 +155,9 @@ const CONFIG_META = [
   ['Economy', 'winTokens', 3, 0, 12, 1, 'Tokens per battle won (+stage)'],
   ['Economy', 'restockParts', 3, 0, 10, 1, 'Parts restocked per battle'],
   ['Economy', 'pityTokens', 3, 0, 10, 1, 'Pity tokens when broke'],
+  ['Economy', 'partialPay', 0.8, 0, 1, 0.05, 'Share of the win pay a lost/retreated fight earns per damage dealt'],
+  ['Economy', 'ladderMax', 4, 0, 12, 1, 'Most extra tokens the Reaper adds after repeated failed fights'],
+  ['Battle', 'enemyGrowth', 0.18, 0.05, 0.5, 0.01, 'Enemy HP and ATK growth per stage'],
   ['Battle', 'enemyHp', 1, 0.2, 3, 0.05, 'Enemy HP ×'],
   ['Battle', 'enemyAtk', 1, 0.2, 3, 0.05, 'Enemy ATK ×'],
   ['Battle', 'allyAtk', 1, 0.2, 3, 0.05, 'Creature ATK ×'],
@@ -189,6 +221,14 @@ function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(RNG() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
   return arr;
 }
+
+// On/off at `hz` blinks per second, for indicators that pulse for attention. With "reduce flashing" on it
+// never goes faster than 1.5 per second (accessibility: nothing may strobe faster than 3 flashes a second).
+const blinkOn = (t, hz, duty = 0.5) => {
+  const calm = typeof Settings !== 'undefined' && Settings.v.reduceFlash;
+  const f = calm ? Math.min(hz, 1.5) : hz;
+  return (t * f) % 1 < duty;
+};
 
 // ==== 03_palette.js ====
 // ---------------------------------------------------------------------------
@@ -4053,6 +4093,13 @@ const { AudioSys, Sfx, Music } = (() => {
       hold(p, t); p.linearRampToValueAtTime(1 - a, t + 0.08);
       p.setValueAtTime(1 - a, Math.max(end, t + 0.08)); p.linearRampToValueAtTime(1, Math.max(end, t + 0.08) + 0.6);
     },
+    // hold the music low while a menu has the game paused; dim(false) brings it back
+    dim(on) {
+      if (!ctx || !B) return;
+      const t = ctx.currentTime, p = B.duck.gain;
+      hold(p, t); p.linearRampToValueAtTime(on ? 0.3 : 1, t + 0.15);
+      B.duckEnd = 0; B.duckAmt = 0;
+    },
     get track() { return want; },
     // test hook: schedule `secs` of a track into the current (offline) context in one go
     _fill(name, secs) { const I = instance(name, ctx.currentTime + 0.05); I.g.gain.value = I.d.gain; advance(I, ctx.currentTime + secs); },
@@ -4119,6 +4166,215 @@ const { AudioSys, Sfx, Music } = (() => {
   const Sfx = { play, motor, voice: talk, names: Object.keys(S) };
   return { AudioSys, Sfx, Music };
 })();
+
+// ==== 09_store.js ====
+// ---------------------------------------------------------------------------
+// STORE — everything that outlives a page load: settings, records and the run in progress.
+//
+//   Store      safe key/value storage. Works when localStorage throws (sandboxed iframes, private windows,
+//              blocked site data) by falling back to memory, and says so via Store.persistent.
+//   Settings   what the player chose: volumes, accessibility, key bindings. Applied to CONFIG/Audio/Input.
+//   Save       the versioned save file: { v, settings, records, run }. Old saves are migrated forward, saves
+//              from a NEWER build are never overwritten, and anything unreadable is kept, not destroyed.
+//
+// Nothing here touches the DOM, so tools/test.mjs can exercise all of it headless.
+// ---------------------------------------------------------------------------
+const Store = (() => {
+  const mem = {};
+  let ls = null;
+  let persistent = false;
+  try {
+    ls = typeof localStorage !== 'undefined' ? localStorage : null; // touching it can throw in a sandboxed frame
+    if (ls) { ls.setItem('__gp_probe', '1'); ls.removeItem('__gp_probe'); persistent = true; }
+  } catch (e) { ls = null; persistent = false; }
+  return {
+    get persistent() { return persistent; },
+    get(key) {
+      try { if (ls) { const v = ls.getItem(key); if (v !== null) return v; } } catch (e) { persistent = false; }
+      return Object.prototype.hasOwnProperty.call(mem, key) ? mem[key] : null;
+    },
+    set(key, val) {
+      mem[key] = String(val);
+      try { if (ls) { ls.setItem(key, String(val)); return true; } } catch (e) { persistent = false; }
+      return false; // kept for this page load only
+    },
+    remove(key) { delete mem[key]; try { if (ls) ls.removeItem(key); } catch (e) { /* nothing to do */ } },
+  };
+})();
+
+// ------------------------------------------------------------------ settings
+// Actions a key can be bound to. Two slots each. `fixed: true` = can never end up with no key at all.
+const KEY_ACTIONS = [
+  { id: 'left', label: 'Move left', fixed: true }, { id: 'right', label: 'Move right', fixed: true },
+  { id: 'up', label: 'Menu up', fixed: true }, { id: 'down', label: 'Menu down', fixed: true },
+  { id: 'a', label: 'Drop / confirm', fixed: true }, { id: 'b', label: 'Back / cancel', fixed: true },
+  { id: 'pause', label: 'Pause' }, { id: 'mute', label: 'Mute' }, { id: 'fullscreen', label: 'Fullscreen' },
+];
+const DEFAULT_KEYS = {
+  left: ['ArrowLeft', 'KeyA'], right: ['ArrowRight', 'KeyD'], up: ['ArrowUp', 'KeyW'], down: ['ArrowDown', 'KeyS'],
+  a: ['Space', 'Enter'], b: ['Escape', 'KeyX'], pause: ['KeyP', null], mute: ['KeyM', null], fullscreen: ['KeyF', null],
+};
+
+const SETTINGS_DEFAULTS = {
+  master: 0.8, music: 0.45, sfx: 0.8, muted: false,
+  shake: 1,            // screen shake multiplier: 0 off, 0.5 low, 1 full
+  reduceFlash: false,  // no full-screen flashes, nothing that blinks faster than 3 times a second
+  slowmo: true,        // slow-motion on rare catches
+  dropGuide: true,     // the dotted line under the claw
+  autoCarry: false,    // assist: the machine carries a part to the chute for you (steady, never clever)
+  carryTime: 8,        // seconds you get to carry: 8 normal, 16 extended, 0 unlimited
+  steering: 'hold',    // 'hold' the arrow to move, or 'toggle': tap once to start, tap again to stop
+  keys: DEFAULT_KEYS,
+};
+
+const Settings = {
+  v: JSON.parse(JSON.stringify(SETTINGS_DEFAULTS)),
+
+  // merge anything from disk over the defaults, keeping only values of the right type
+  load(saved) {
+    const d = SETTINGS_DEFAULTS, v = JSON.parse(JSON.stringify(d));
+    if (saved && typeof saved === 'object') {
+      for (const k of Object.keys(d)) {
+        if (k === 'keys') continue;
+        if (typeof saved[k] === typeof d[k]) v[k] = saved[k];
+      }
+      for (const k of ['master', 'music', 'sfx']) v[k] = clamp(+v[k] || 0, 0, 1);
+      if (![0, 0.5, 1].includes(v.shake)) v.shake = 1;
+      if (![0, 8, 16].includes(v.carryTime)) v.carryTime = 8;
+      if (!['hold', 'toggle'].includes(v.steering)) v.steering = 'hold';
+      v.keys = Settings.cleanKeys(saved.keys);
+    }
+    Settings.v = v;
+    return v;
+  },
+
+  // every action gets an array of two codes (or null); a code may belong to only one action
+  cleanKeys(saved) {
+    const out = {}, used = new Set();
+    for (const a of KEY_ACTIONS) {
+      const src = saved && Array.isArray(saved[a.id]) ? saved[a.id] : DEFAULT_KEYS[a.id];
+      const slots = [0, 1].map((i) => (typeof src[i] === 'string' && src[i].length < 24 && !used.has(src[i]) ? src[i] : null));
+      slots.forEach((c) => c && used.add(c));
+      if (a.fixed && !slots[0] && !slots[1]) { // never leave a movement key unbound
+        const fb = DEFAULT_KEYS[a.id].find((c) => c && !used.has(c)) || DEFAULT_KEYS[a.id][0];
+        slots[0] = fb; used.add(fb);
+      }
+      out[a.id] = slots;
+    }
+    return out;
+  },
+
+  // Put `code` on `action` slot `slot`. A key that was somewhere else moves (the old spot goes empty), and
+  // a movement action can never be left with no key. Returns what it took the key away from, if anything.
+  bind(action, slot, code) {
+    const keys = Settings.v.keys;
+    let stolen = null;
+    for (const a of KEY_ACTIONS) for (let i = 0; i < 2; i++) if (keys[a.id][i] === code && !(a.id === action && i === slot)) { keys[a.id][i] = null; stolen = a.id; }
+    keys[action][slot] = code;
+    Settings.v.keys = Settings.cleanKeys(keys);
+    return stolen;
+  },
+  unbind(action, slot) {
+    const a = KEY_ACTIONS.find((x) => x.id === action), keys = Settings.v.keys;
+    if (a.fixed && !keys[action][1 - slot]) return false; // it is the last key for this action
+    keys[action][slot] = null;
+    return true;
+  },
+  resetKeys() { Settings.v.keys = JSON.parse(JSON.stringify(DEFAULT_KEYS)); },
+
+  // Push the settings into the systems that use them. Safe to call any time, headless or not.
+  apply() {
+    const v = Settings.v;
+    if (typeof AudioSys !== 'undefined') { AudioSys.setVolumes({ master: v.master, music: v.music, sfx: v.sfx }); AudioSys.setMuted(v.muted); }
+    CONFIG.shake = v.shake;
+    CONFIG.slowmo = v.slowmo ? 1 : 0;
+    CONFIG.dropGuide = v.dropGuide ? 1 : 0;
+    CONFIG.carryManual = v.autoCarry ? 0 : 1;
+    CONFIG.carryTime = v.carryTime;
+    if (typeof Input !== 'undefined' && Input.setBindings) Input.setBindings(v.keys);
+  },
+  // "M" for a key code, for on-screen hints ("KeyM" -> "M", "ArrowLeft" -> "←")
+  keyName(code) {
+    if (!code) return '—';
+    const named = { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Space: 'SPACE', Enter: 'ENTER', Escape: 'ESC', Backspace: 'BKSP', Tab: 'TAB', ShiftLeft: 'L-SHIFT', ShiftRight: 'R-SHIFT', Backquote: '`', Minus: '-', Equal: '=', Comma: ',', Period: '.', Slash: '/', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\' };
+    if (named[code]) return named[code];
+    return code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'NUM ');
+  },
+  // first bound key for an action, for prompts like "press SPACE to drop"
+  hint(action) { const k = Settings.v.keys[action]; return Settings.keyName(k[0] || k[1]); },
+};
+
+// ---------------------------------------------------------------------------- save
+const SAVE_VERSION = 1;
+const SAVE_KEY = 'thegoodparts.save';
+// Old part ids that were renamed or retired map to a current one. Add a line here whenever a part id changes,
+// or saves that hold it lose the part. (Nothing is wasted: an unknown part becomes a common one of its slot.)
+const PART_ALIASES = {};
+// One function per version step: MIGRATIONS[n] turns a version-n save into version n+1. Append, never edit.
+const MIGRATIONS = {};
+
+const Save = {
+  enabled: true,     // tools turn this off so bots never write a save
+  readOnly: false,   // set when the file came from a newer build: we may read what we understand, never write
+  notes: [],         // things to tell the player once ("2 parts from an older version were retired")
+  problem: null,     // 'corrupt' | 'newer' | null
+  data: null,
+  _timer: null,
+
+  blank() { return { v: SAVE_VERSION, settings: null, records: { bestStage: 0, runs: 0, wins: 0, grabs: 0, creatures: 0, bestWinMinutes: 0 }, run: null }; },
+
+  load() {
+    Save.notes = []; Save.problem = null; Save.readOnly = false;
+    const raw = Store.get(SAVE_KEY);
+    let d = null;
+    if (raw) {
+      try { d = JSON.parse(raw); if (!d || typeof d !== 'object' || Array.isArray(d)) throw new Error('not an object'); }
+      catch (e) { Save.problem = 'corrupt'; Store.set(SAVE_KEY + '.corrupt', raw); d = null; } // keep it: someone may want to recover it
+    }
+    if (d) {
+      const v = Number.isInteger(d.v) ? d.v : 0;
+      if (v > SAVE_VERSION) { Save.problem = 'newer'; Save.readOnly = true; Store.set(SAVE_KEY + '.newer', raw); d = Object.assign(Save.blank(), { settings: d.settings || null, records: d.records || Save.blank().records }); }
+      else d = Save.migrate(d);
+    }
+    Save.data = d || Save.blank();
+    Save.data.records = Object.assign(Save.blank().records, Save.data.records || {});
+    Settings.load(Save.data.settings);
+    return Save.data;
+  },
+
+  migrate(d) {
+    let v = Number.isInteger(d.v) ? d.v : 0;
+    while (v < SAVE_VERSION) {
+      const step = MIGRATIONS[v];
+      if (!step) { d.v = SAVE_VERSION; break; } // no step written for it: the shape did not change
+      d = step(d) || d;
+      v++; d.v = v;
+    }
+    d.v = SAVE_VERSION;
+    return d;
+  },
+
+  // flush the current settings + run to storage (debounced by callers via Save.soon)
+  flush() {
+    if (!Save.enabled || Save.readOnly || !Save.data) return false;
+    if (typeof Game !== 'undefined') Save.data.run = Game.toSave();
+    Save.data.settings = JSON.parse(JSON.stringify(Settings.v));
+    Save.data.v = SAVE_VERSION;
+    const prev = Store.get(SAVE_KEY);
+    if (prev) Store.set(SAVE_KEY + '.bak', prev); // one step of undo if a bug ever writes rubbish
+    return Store.set(SAVE_KEY, JSON.stringify(Save.data));
+  },
+  soon() { // coalesce bursts of changes (a grab, a stitch) into one write
+    if (!Save.enabled || Save._timer) return;
+    Save._timer = setTimeout(() => { Save._timer = null; Save.flush(); }, 400);
+  },
+  reset() { // "new run" keeps settings and records, drops only the run
+    if (Save.data) Save.data.run = null;
+    Save.flush();
+  },
+  wipe() { Save.data = Save.blank(); Settings.load(null); Store.remove(SAVE_KEY); },
+  hasRun() { return !!(Save.data && Save.data.run); },
+};
 
 // ==== 10_parts.js ====
 // ---------------------------------------------------------------------------
@@ -4395,8 +4651,15 @@ class ClawSim {
     for (const slot in need) for (let i = 0; i < need[slot]; i++) types.push(randomPartType({ slot, rarity: i === 0 ? 'common' : undefined }));
     while (types.length < n) types.push(randomPartType());
     shuffle(types);
+    this.layoutPile(types.slice(0, Math.max(n, 5)));
+  }
+
+  // Drop these part types into the machine in a loose grid, then let them settle into a pile.
+  // (Also how a saved run rebuilds the machine: the types are kept, the exact pile is not.)
+  layoutPile(types) {
+    const M = MACHINE;
     const cols = 5, cw = (M.spawnX1 - M.spawnX0) / cols;
-    types.slice(0, Math.max(n, 5)).forEach((t, i) => {
+    types.forEach((t, i) => {
       const col = i % cols, row = Math.floor(i / cols);
       this.spawnPart(t, M.spawnX0 + cw * (col + 0.5) + rand(-3, 3), M.floor - 14 - row * 23 + rand(-2, 2), rand(-Math.PI, Math.PI));
     });
@@ -4450,9 +4713,11 @@ class ClawSim {
     return Math.hypot(b.x - a.x, b.y - a.y) * PPM;
   }
 
-  driveCarriage(target, h) {
+  // accel: how hard the carriage may change speed this tick. Aiming (idle) is snappy; carrying has momentum
+  // (pillar 3: how you steer with something in the claw decides whether you keep it).
+  driveCarriage(target, h, accel = CONFIG.clawAccel) {
     const M = MACHINE;
-    this.carV = approach(this.carV, target, CONFIG.clawAccel * h);
+    this.carV = approach(this.carV, target, accel * h);
     let nx = this.carX + this.carV * h;
     if (nx < M.carMin) { nx = M.carMin; this.carV = 0; }
     if (nx > M.carMax) { nx = M.carMax; this.carV = 0; }
@@ -4488,6 +4753,7 @@ class ClawSim {
     const M = MACHINE;
     this.time += h;
     this.stateT += h;
+    this.slipOpenT = Math.max(0, (this.slipOpenT || 0) - h);
     this.world.setGravity(planck.Vec2(0, CONFIG.gravity));
     this.hub.setLinearDamping(CONFIG.swayDamping);
     const pressed = this.pressed;
@@ -4536,7 +4802,7 @@ class ClawSim {
         break;
       }
       case 'lift': {
-        this.prongs('close', CONFIG.gripFade > 0 ? this.stateT / CONFIG.gripFade : 1);
+        this.prongs(this.slipOpenT > 0 ? 'open' : 'close', CONFIG.gripFade > 0 ? this.stateT / CONFIG.gripFade : 1);
         this.updateGrips(h);
         this.driveCarriage(0, h);
         const d = this.ropeDist();
@@ -4552,17 +4818,19 @@ class ClawSim {
         break;
       }
       case 'carry':
-        this.prongs('close', 1);
+        this.prongs(this.slipOpenT > 0 ? 'open' : 'close', 1);
         this.updateGrips(h);
-        this.driveCarriage(move * CONFIG.clawMoveSpeed, h);
+        this.driveCarriage(move * CONFIG.clawMoveSpeed, h, move ? CONFIG.carryAccel : CONFIG.carryBrake);
         if (pressed || (CONFIG.carryTime > 0 && this.stateT > CONFIG.carryTime)) this.startRelease();
         break;
       case 'return': {
-        this.prongs('close', 1);
+        this.prongs(this.slipOpenT > 0 ? 'open' : 'close', 1);
         this.updateGrips(h);
+        // the auto-carry assist: a steady, safe, deliberately unhurried speed with a smooth stop. It takes the
+        // carry off your hands, and a careful human who takes the quick steady line still does slightly better.
         const d = M.home - this.carX;
-        const vmax = Math.sqrt(2 * CONFIG.clawAccel * Math.abs(d));
-        this.driveCarriage(Math.sign(d) * Math.min(CONFIG.clawMoveSpeed, vmax), h);
+        const vmax = Math.sqrt(2 * CONFIG.carryBrake * Math.abs(d));
+        this.driveCarriage(Math.sign(d) * Math.min(CONFIG.swingSafe * CONFIG.assistSpeed, CONFIG.clawMoveSpeed, vmax), h, CONFIG.carryAccel);
         if (Math.abs(d) < 0.6 && Math.abs(this.carV) < 6 && this.stateT > 0.3) this.startRelease();
         break;
       }
@@ -4667,7 +4935,8 @@ class ClawSim {
       g.t += h;
       const gp = g.part.def.grip || 1;
       const v = g.body.getLinearVelocity();
-      const vrel = Math.hypot(v.x - hv.x, v.y - hv.y) * PPM; // how hard it's swinging, px/s
+      // how hard it's swinging, px/s: the part's motion against the claw, or how fast the carriage is going
+      const vrel = Math.max(Math.hypot(v.x - hv.x, v.y - hv.y) * PPM, this.state === 'lift' ? 0 : Math.abs(this.carV));
       const A = g.joint.getAnchorA(), B = g.joint.getAnchorB();
       const stretch = (Math.hypot(A.x - B.x, A.y - B.y) - g.joint.getLength()) * PPM;
       g.load = vrel;
@@ -4681,11 +4950,23 @@ class ClawSim {
     }
   }
 
+  // How steady the carry is right now, for the wobble meter. ratio 0 = calm, 1 = at the edge, >1 = shedding.
+  swayInfo() {
+    if (!this.grips.length || this.state === 'lift') return null;
+    const speed = Math.abs(this.carV), safe = CONFIG.swingSafe;
+    const over = Math.max(0, speed - safe);
+    return { speed, safe, ratio: speed / Math.max(1, safe), over, hazard: CONFIG.slipBase + CONFIG.swingSlip * over / 30 };
+  }
+
   loseGrip(g, why) {
     if (!this.grips.includes(g)) return;
     this.world.destroyJoint(g.joint);
     this.unclamp(g.part);
     this.grips = this.grips.filter((x) => x !== g);
+    // Losing the grip has to mean losing the part. The prongs form a cup, so a part whose grip spring is gone
+    // used to stay wedged in them anyway, which quietly hid how you carried. When the last grip goes the jaws
+    // sag open for a moment and the load drops.
+    if (!this.grips.length && CONFIG.slipOpen > 0) this.slipOpenT = CONFIG.slipOpen;
     this.emit('gripLost', { part: g.part, why });
   }
 
@@ -4822,34 +5103,71 @@ class ClawSim {
 // ==== 12_stages.js ====
 // ---------------------------------------------------------------------------
 // STAGES — who is waiting in the graveyard. Pure data plus a few pure functions, so the battle sim, the
-// scene, the shop's stage preview and the balance bots all read the same table.
+// scene, the stage preview and the balance bots all read the same table.
+//
+// A run is FINAL_STAGE stages in three acts. The boss of the last one ends it. Every stage is written out
+// (no dice), because the Reaper tells you what is coming and the claw only becomes a shopping trip if he
+// is telling the truth.
+//
+// Each enemy asks a different question of your parts (pillar 4, see docs/DESIGN.md):
+//   Wisp    swarms in. Many small hits, so armour and a big health pool answer it.
+//   Shade   is armoured. Hits smaller than its armour barely count, so big single hits answer it.
+//   Wraith  is a boss. Big, slow, a lot of health, so sustain and burst answer it.
 // ---------------------------------------------------------------------------
 const ENEMY_KINDS = {
-  wisp:   { name: 'Wisp',   hp: 10, atk: 2, atkTime: 1.1, speed: 34, range: 24, dodge: 0.1, spr: 'wisp', hover: 10, w: 14 },
-  shade:  { name: 'Shade',  hp: 24, atk: 4, atkTime: 1.25, speed: 22, range: 28, dodge: 0.05, spr: 'shade', hover: 3, w: 22 },
-  wraith: { name: 'Wraith', hp: 90, atk: 8, atkTime: 1.6, speed: 15, range: 38, dodge: 0, spr: 'wraith', hover: 4, w: 36, boss: true },
+  wisp:   { name: 'Wisp',   hp: 10, atk: 2, def: 0, atkTime: 1.1, speed: 34, range: 24, dodge: 0.1, spr: 'wisp', hover: 10, w: 14,
+            ask: 'Swarms in. Many small hits: armour and health answer it.' },
+  shade:  { name: 'Shade',  hp: 24, atk: 4, def: 2, atkTime: 1.25, speed: 22, range: 28, dodge: 0.05, spr: 'shade', hover: 3, w: 22,
+            ask: 'Armoured. Small hits barely scratch it: big hits answer it.' },
+  wraith: { name: 'Wraith', hp: 70, atk: 8, def: 0, atkTime: 1.6, speed: 15, range: 38, dodge: 0, spr: 'wraith', hover: 4, w: 36, boss: true,
+            ask: 'A boss. Huge and slow: staying power and burst answer it.' },
 };
 
-function stageEnemies(n) {
-  const fixed = { 1: ['wisp', 'wisp'], 2: ['wisp', 'shade'], 3: ['shade', 'shade'], 4: ['shade', 'wisp', 'shade'], 5: ['wraith'] };
-  if (fixed[n]) return fixed[n];
-  if (n % 5 === 0) return ['wisp', 'wraith', 'wisp'];
-  const list = [];
-  let budget = 2 + n * 1.1;
-  while (budget > 0.9 && list.length < 5) {
-    const k = budget >= 2.2 && chance(0.6) ? 'shade' : 'wisp';
-    list.push(k);
-    budget -= k === 'shade' ? 2.2 : 1;
-  }
-  return list;
-}
+const FINAL_STAGE = 15;
+
+// stage -> enemies, left to right. `boss` stages are 5, 10 and 15.
+const STAGES = {
+  1:  ['wisp', 'wisp'],
+  2:  ['wisp', 'shade'],
+  3:  ['shade', 'shade'],
+  4:  ['shade', 'wisp', 'shade'],
+  5:  ['wraith'],
+  6:  ['wisp', 'wisp', 'wisp', 'wisp'],
+  7:  ['shade', 'wisp', 'shade', 'wisp'],
+  8:  ['shade', 'shade', 'wisp', 'shade'],
+  9:  ['wisp', 'wisp', 'wisp', 'wisp', 'wisp'],
+  10: ['wisp', 'wraith', 'wisp'],
+  11: ['shade', 'wisp', 'shade', 'wisp'],
+  12: ['shade', 'shade', 'shade', 'shade'],
+  13: ['wisp', 'wisp', 'shade', 'wisp', 'wisp'],
+  14: ['shade', 'shade', 'wisp', 'shade', 'shade'],
+  15: ['shade', 'wraith', 'shade'],
+};
+
+const stageEnemies = (n) => STAGES[Math.min(Math.max(1, n), FINAL_STAGE)];
 
 // Enemy health and attack both grow by this factor per stage.
-const enemyScale = (n) => 1 + 0.2 * (n - 1);
+const enemyScale = (n) => 1 + CONFIG.enemyGrowth * (n - 1);
 const isBossStage = (n) => n % 5 === 0;
+const isFinalStage = (n) => n >= FINAL_STAGE;
 
-const STAGE_NAMES = ['Graveyard of Second Chances', 'The Leaning Crypts', 'Moonlit Ossuary', 'Hollow Hill', 'The Landlord\'s Plot'];
-const stageName = (n) => STAGE_NAMES[Math.floor((n - 1) / 5) % STAGE_NAMES.length];
+const ACTS = [
+  { name: 'Graveyard of Second Chances', from: 1 },
+  { name: 'The Leaning Crypts', from: 6 },
+  { name: 'The Landlord\'s Plot', from: 11 },
+];
+const actOf = (n) => (n >= 11 ? 2 : n >= 6 ? 1 : 0);
+const stageName = (n) => ACTS[actOf(n)].name;
+const stageTitle = (n) => 'Stage ' + n + (n >= FINAL_STAGE ? '  ·  THE LANDLORD' : isBossStage(n) ? '  ·  BOSS' : '');
+
+// What the Reaper says about a stage before you go: counts by kind, and the question it asks.
+function stagePreview(n) {
+  const kinds = stageEnemies(n), count = {};
+  for (const k of kinds) count[k] = (count[k] || 0) + 1;
+  const lead = kinds.slice().sort((a, b) => ENEMY_KINDS[b].hp - ENEMY_KINDS[a].hp)[0];
+  const parts = Object.entries(count).map(([k, c]) => c + ' ' + ENEMY_KINDS[k].name + (c > 1 ? 's' : ''));
+  return { n, kinds, count, text: parts.join(', '), ask: ENEMY_KINDS[lead].ask, boss: isBossStage(n), final: isFinalStage(n) };
+}
 
 // Sanity checks for tools/test.mjs: returns a list of problems (empty = fine).
 function checkStageTable() {
@@ -4857,12 +5175,16 @@ function checkStageTable() {
   for (const [k, e] of Object.entries(ENEMY_KINDS)) {
     if (!SPR.has(e.spr + '_0') && !SPR.has(e.spr)) bad.push(`enemy ${k}: sprite ${e.spr} is not defined`);
     for (const f of ['hp', 'atk', 'atkTime', 'speed', 'range']) if (!(e[f] > 0)) bad.push(`enemy ${k}: ${f} must be > 0`);
+    if (!e.ask) bad.push(`enemy ${k}: needs an 'ask' line for the stage preview`);
   }
-  for (let n = 1; n <= 40; n++) {
-    const kinds = stageEnemies(n);
-    if (!kinds.length) bad.push(`stage ${n} has no enemies`);
+  for (let n = 1; n <= FINAL_STAGE; n++) {
+    const kinds = STAGES[n];
+    if (!kinds || !kinds.length) { bad.push(`stage ${n} has no enemies`); continue; }
+    if (kinds.length > 5) bad.push(`stage ${n} has ${kinds.length} enemies; the arena fits 5`);
     for (const k of kinds) if (!ENEMY_KINDS[k]) bad.push(`stage ${n}: unknown enemy ${k}`);
+    if (isBossStage(n) !== kinds.includes('wraith')) bad.push(`stage ${n}: boss stages (every 5th) are exactly the ones with a Wraith`);
   }
+  if (Object.keys(STAGES).length !== FINAL_STAGE) bad.push('STAGES must have exactly FINAL_STAGE entries');
   return bad;
 }
 
@@ -4882,7 +5204,7 @@ function checkStageTable() {
 const ARENA = { ground: 214, minX: 20, maxX: 460, allyLanes: [0, 11, -11], enemyLanes: [0, 11, -11, 5, -5], allyStartX: 120, allyGap: 38, enemyStartX: 350, enemyGap: 36 };
 
 class BattleSim {
-  constructor({ party, stage, onEvent }) {
+  constructor({ party, stage, onEvent, enemies }) {
     this.onEvent = onEvent || (() => {});
     this.stage = stage;
     this.state = 'ready'; // ready -> fight -> over
@@ -4895,7 +5217,7 @@ class BattleSim {
     this.over = false;
     this.won = false;
     (party || []).filter((c) => c.hp > 0).slice(0, 3).forEach((c, i) => this.units.push(this.makeAlly(c, i)));
-    this.kinds = stageEnemies(stage);
+    this.kinds = enemies || stageEnemies(stage); // `enemies` overrides the stage table (matchup tests)
     this.kinds.forEach((k, i) => this.units.push(this.makeEnemy(k, i)));
   }
 
@@ -4903,6 +5225,19 @@ class BattleSim {
   allies() { return this.units.filter((u) => u.team === 'ally'); }
   enemies() { return this.units.filter((u) => u.team === 'enemy'); }
   static alive(arr) { return arr.filter((u) => !u.dead); }
+
+  // How much of the enemy's health has been chewed through, 0..1. Even a lost fight pays for this.
+  progress() {
+    const es = this.enemies();
+    const max = es.reduce((a, u) => a + u.maxHp, 0);
+    return max ? clamp(1 - es.reduce((a, u) => a + Math.max(0, u.hp), 0) / max, 0, 1) : 0;
+  }
+  // Fraction of your creatures' total health still standing (the dead count as zero).
+  standing() {
+    const as = this.allies();
+    const max = as.reduce((a, u) => a + u.maxHp, 0);
+    return max ? as.reduce((a, u) => a + Math.max(0, u.hp), 0) / max : 0;
+  }
 
   makeAlly(c, i) {
     return {
@@ -4919,7 +5254,7 @@ class BattleSim {
     const hp = Math.round(K.hp * m * CONFIG.enemyHp);
     return {
       team: 'enemy', kind, K, name: K.name, x: ARENA.enemyStartX + i * ARENA.enemyGap + (K.boss ? 20 : 0), y: ARENA.ground + ARENA.enemyLanes[i % 5],
-      hp, maxHp: hp, atk: K.atk * m * CONFIG.enemyAtk, def: 0, atkTime: K.atkTime, speed: K.speed, range: K.range,
+      hp, maxHp: hp, atk: K.atk * m * CONFIG.enemyAtk, def: K.def || 0, atkTime: K.atkTime, speed: K.speed, range: K.range,
       dodge: K.dodge, crit: 0.05, traits: [], cd: rand(0.3, 0.9), state: 'idle', animT: 0, kx: 0,
       stunT: 0, bleedT: 0, burnT: 0, hasteT: 0, hits: 0, dead: false,
     };
@@ -5098,15 +5433,19 @@ const Input = {
   pad: { left: false, right: false, a: false, b: false, prev: {} },
   anyPressed: false,
   lastDevice: 'mouse',
-  KEYMAP: {
-    ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
-    ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
-    Space: 'a', Enter: 'a', KeyZ: 'a', KeyJ: 'a',
-    Escape: 'b', Backspace: 'b', KeyX: 'b', KeyK: 'b',
+  KEYMAP: {}, // key code -> action, built from the player's bindings (Settings.v.keys)
+  capture: null, // while set, the next key press goes here instead of the game (the remap screen)
+  setBindings(keys) {
+    const map = {};
+    for (const a of KEY_ACTIONS) for (const c of keys[a.id] || []) if (c) map[c] = a.id;
+    this.KEYMAP = map;
+    this.down = {}; this.pressed = {};
   },
   init(canvas) {
+    this.setBindings(Settings.v.keys);
     window.addEventListener('keydown', (e) => {
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON' && e.code === 'Space')) return;
+      if (this.capture) { e.preventDefault(); if (!e.repeat) { const f = this.capture; this.capture = null; f(e.code); } return; }
       const act = this.KEYMAP[e.code];
       if (act || e.code === 'Space') e.preventDefault();
       if (!e.repeat) {
@@ -5173,6 +5512,8 @@ const Input = {
     P.prev = now;
   },
   held(act) { return !!(this.down[act] || this.pad[act]); },
+  // which key currently does this, for on-screen prompts (follows the player's bindings)
+  keyFor(act) { return Settings.hint(act); },
   hit(act) { return !!this.pressed[act]; },
   endFrame() {
     this.pressed = {}; this.released = {}; this.anyPressed = false;
@@ -5191,6 +5532,8 @@ const Engine = {
   pauseT: 0, slowT: 0, slowScale: 1,
   flashT: 0, flashDur: 0, flashColor: '#fff',
   paused: false,
+  overlays: [], // menus stacked over the game; the top one gets input. A non-live overlay freezes the scene under it.
+  errorRun: 0,  // consecutive frames whose scene code threw
 
   init() {
     this.canvas = document.getElementById('game');
@@ -5201,7 +5544,7 @@ const Engine = {
       // fit the canvas inside whatever the page leaves free (gutters, safe areas, the hint line)
       const px = (cs, k) => parseFloat(cs[k]) || 0;
       const de = document.documentElement, bs = getComputedStyle(document.body), rs = getComputedStyle(de);
-      const hint = document.getElementById('hint');
+      const hint = document.getElementById('under');
       const avW = de.clientWidth - px(bs, 'paddingLeft') - px(bs, 'paddingRight') - px(rs, 'paddingLeft') - px(rs, 'paddingRight');
       const avH = de.clientHeight - px(bs, 'paddingTop') - px(bs, 'paddingBottom') - px(rs, 'paddingTop') - px(rs, 'paddingBottom')
         - (hint && hint.offsetParent ? hint.offsetHeight + 6 : 0);
@@ -5219,6 +5562,14 @@ const Engine = {
 
   add(name, scene) { this.scenes[name] = scene; scene.name = name; },
 
+  // A scene threw. Report it (once per distinct error, see CrashLog) and keep the game alive: if the same
+  // scene keeps failing, drop back to the shop rather than freezing on a broken screen.
+  fault(e, where) {
+    this.errorRun++;
+    if (typeof CrashLog !== 'undefined') CrashLog.report(e, where + ' in ' + (this.sceneName || '?')); else console.error(e);
+    if (this.errorRun >= 30 && this.sceneName !== 'shop' && this.scenes.shop) { this.errorRun = 0; this.overlays.length = 0; this.trans = null; this._switch(this.scenes.shop, { skipIntro: true }); }
+  },
+
   // style: 'dither' (pixel fade through black) | 'cut'
   go(name, params, style = 'dither') {
     if (this.trans) return;
@@ -5234,6 +5585,7 @@ const Engine = {
     this.sceneName = to.name;
     Telemetry.scene(to.name);
     if (to.enter) to.enter(params || {}, from);
+    Save.soon();
   },
 
   shake(mag, dur = 0.25) {
@@ -5242,17 +5594,45 @@ const Engine = {
   },
   hitPause(sec) { this.pauseT = Math.max(this.pauseT, sec * CONFIG.hitPause); },
   slowmo(scale, sec) { if (!CONFIG.slowmo) return; this.slowScale = scale; this.slowT = sec; },
-  flash(color = '#fff', dur = 0.15) { this.flashColor = color; this.flashT = dur; this.flashDur = dur; },
+  flash(color = '#fff', dur = 0.15) { if (Settings.v.reduceFlash) return; this.flashColor = color; this.flashT = dur; this.flashDur = dur; },
+
+  // ---- overlays (pause, settings, title...): the game holds its breath while one is open
+  open(overlay, params) {
+    this.overlays.push(overlay);
+    overlay.parent = this.overlays.length > 1 ? this.overlays[this.overlays.length - 2] : null;
+    if (overlay.enter) overlay.enter(params || {});
+    if (!overlay.live) { Sfx.motor(0, 0); Music.dim(true); }
+    // the press that opened a menu belongs to the opener: without this the menu's own update, later in the
+    // same frame, sees it too (P opened pause and immediately closed it)
+    Input.mouse.down = false; Input.mouse.pressed = false; Input.pressed = {}; Input.anyPressed = false;
+  },
+  close() {
+    const o = this.overlays.pop();
+    if (o && o.exit) o.exit();
+    UI.set([]);
+    Input.mouse.down = false; Input.pressed = {};
+    if (!this.overlays.some((x) => !x.live)) Music.dim(false);
+    if (this.overlays.length) { const t = this.overlays[this.overlays.length - 1]; if (t.resume) t.resume(); }
+  },
+  get top() { return this.overlays.length ? this.overlays[this.overlays.length - 1] : null; },
+  // true while something is frozen the world: the pause menu says "no game actions" and means it
+  get frozen() { return this.overlays.some((o) => !o.live); },
+
 
   loop(now) {
     const realDt = Math.min(0.05, (now - (this._last || now)) / 1000);
     this._last = now;
     this.realT += realDt;
     Input.pollPad();
+    // keys that work everywhere, and follow the player's bindings
+    if (Input.hit('mute')) { Settings.v.muted = AudioSys.toggleMute(); Save.soon(); }
+    if (Input.hit('fullscreen') && typeof Platform !== 'undefined') Platform.fullscreen();
+    if (Input.hit('pause') && this.scene && !this.overlays.length && this.scene.pausable !== false && !this.trans && typeof Overlays !== 'undefined') Overlays.pause();
     let dt = realDt;
     if (this.pauseT > 0) { this.pauseT -= realDt; dt = 0; }
     if (this.slowT > 0) { this.slowT -= realDt; dt *= this.slowScale; }
-    if (this.paused) dt = 0;
+    if (this.paused || this.frozen) dt = 0;
+    if (!this.frozen && this.scene && this.scene.tracksTime !== false) Game.playTime += realDt;
     this.t += dt;
     this.dt = dt;
     this.frame++;
@@ -5265,11 +5645,13 @@ const Engine = {
       else if (tr.phase === 'in' && tr.t >= tr.dur) this.trans = null;
     }
 
-    if (this.scene && (!this.trans || this.trans.phase === 'in')) {
-      try { this.scene.update(dt, realDt); } catch (e) { console.error(e); }
+    if (this.scene && (!this.trans || this.trans.phase === 'in') && !this.frozen) {
+      try { this.scene.update(dt, realDt); this.errorRun = 0; } catch (e) { this.fault(e, 'update'); }
     }
+    const ov = this.top;
+    if (ov) { try { ov.update(realDt); } catch (e) { this.fault(e, 'overlay'); this.overlays.length = 0; } }
     UI.update(realDt);
-    Debug.update && Debug.update(realDt);
+    if (typeof Debug !== 'undefined' && Debug.update) Debug.update(realDt);
 
     // shake
     if (this.shakeT > 0) {
@@ -5286,7 +5668,7 @@ const Engine = {
     ctx.fillStyle = PAL.k;
     ctx.fillRect(0, 0, W, H);
     ctx.translate(this.shakeX, this.shakeY);
-    try { if (this.scene) this.scene.draw(ctx); } catch (e) { console.error(e); }
+    try { if (this.scene) this.scene.draw(ctx); } catch (e) { this.fault(e, 'draw'); }
     ctx.restore();
     if (this.flashT > 0) {
       this.flashT -= realDt;
@@ -5295,6 +5677,8 @@ const Engine = {
       ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
     }
+    for (const o of this.overlays) { try { o.draw(ctx); } catch (e) { this.fault(e, 'overlay draw'); this.overlays.length = 0; } }
+    if (typeof Overlays !== 'undefined') Overlays.drawToast(ctx, realDt);
     UI.drawOverlay(ctx);
     if (this.trans) {
       const tr = this.trans;
@@ -7046,17 +7430,76 @@ const Game = {
   recent: [], // last won part types (for the bag display)
   seen: {},
   started: false,
+  won: false, // the final boss is down: the run is over
+  playTime: 0, // seconds of play in this run (menus and pauses don't count)
+  failStreak: 0, // failed fights in a row; the Reaper adds a token per failure (up to ladderMax) so bad luck cannot become a dead end
 
-  newGame() {
+  newGame(opts = {}) {
     this.tokens = CONFIG.startTokens;
     this.inventory = [];
     this.party = [];
     this.stage = 1;
+    this.won = false;
+    this.failStreak = 0;
     this.recent = [];
     this.seen = {};
     this.talk = new Talker({ voice: 0.62, cps: 40 });
+    this.playTime = 0;
+    if (typeof Scenes !== 'undefined' && Scenes.slab && Scenes.slab.reset) Scenes.slab.reset();
     this.sim = new ClawSim({ onEvent: (t, d) => Scenes.claw && Scenes.claw.onSim(t, d) });
-    this.sim.fillPile(CONFIG.partCount);
+    if (opts.pile !== false) this.sim.fillPile(CONFIG.partCount);
+  },
+
+  // ---- saving: the run as plain data. Positions are not kept; the pile is rebuilt from part types.
+  toSave() {
+    const sim = this.sim;
+    const machine = sim ? [...sim.parts.filter((p) => !p.won).map((p) => p.type), ...sim.pending.map((p) => p.type)] : [];
+    const inGrab = !!sim && sim.state !== 'idle'; // a drop in flight: the token comes back, the part it carries is in the pile
+    return {
+      tokens: this.tokens + (inGrab ? 1 : 0), stage: this.stage, bestStage: this.bestStage, won: this.won, failStreak: this.failStreak,
+      playTime: Math.round(this.playTime || 0), seen: this.seen,
+      inventory: [...this.inventory.map((i) => i.type), ...(typeof Scenes !== 'undefined' && Scenes.slab && Scenes.slab.buildTypes ? Scenes.slab.buildTypes() : [])],
+      party: this.party.map((c) => ({ slots: c.slots, hp: c.hp, name: c.name, kills: c.kills })),
+      machine,
+    };
+  },
+
+  // Rebuild a run from saved data. Part ids that no longer exist are mapped through PART_ALIASES; anything
+  // still unknown becomes nothing and is reported through Save.notes (never a crash).
+  fromSave(run) {
+    this.newGame({ pile: false });
+    let retired = 0;
+    const fix = (t) => {
+      if (PART_DEFS[t]) return t;
+      if (PART_ALIASES[t] && PART_DEFS[PART_ALIASES[t]]) return PART_ALIASES[t];
+      retired++;
+      return null;
+    };
+    const num = (v, d, lo, hi) => (Number.isFinite(+v) ? clamp(+v, lo, hi) : d);
+    this.tokens = num(run.tokens, CONFIG.startTokens, 0, 9999);
+    this.stage = Math.round(num(run.stage, 1, 1, FINAL_STAGE));
+    this.bestStage = Math.round(num(run.bestStage, 0, 0, FINAL_STAGE));
+    this.won = !!run.won;
+    this.failStreak = Math.round(num(run.failStreak, 0, 0, 99));
+    this.playTime = num(run.playTime, 0, 0, 1e7);
+    this.seen = run.seen && typeof run.seen === 'object' ? run.seen : {};
+    for (const t of run.inventory || []) { const f = fix(t); if (f) this.inventory.push(makePartItem(f)); }
+    for (const c of (run.party || []).slice(0, 3)) {
+      const slots = {};
+      for (const [slot, t] of Object.entries(c.slots || {})) { const f = t ? fix(t) : null; if (f && RIG_SLOTS.some(([k]) => k === slot)) slots[slot] = f; }
+      if (!Object.keys(slots).length) continue;
+      const cr = new Creature(slots);
+      cr.hp = num(c.hp, cr.maxHp, 1, cr.maxHp);
+      if (typeof c.name === 'string' && c.name.length < 60) cr.name = c.name;
+      cr.kills = Math.round(num(c.kills, 0, 0, 9999));
+      this.party.push(cr);
+    }
+    const machine = (run.machine || []).map(fix).filter(Boolean);
+    const first = machine.slice(0, 22);
+    this.sim.layoutPile(first.length >= 5 ? first : [...first, ...Array.from({ length: 5 - first.length }, () => randomPartType())]);
+    machine.slice(22).forEach((t, i) => this.sim.queueSpawn(t, i * 0.25));
+    if (retired) Save.notes.push(retired + (retired > 1 ? ' parts' : ' part') + ' from an older version ' + (retired > 1 ? 'were' : 'was') + ' retired.');
+    return this;
   },
 
   addPart(type) {
@@ -7084,11 +7527,24 @@ const Game = {
     return 7;
   },
 
+  // What a fight pays. A win pays winTokens + stage. Anything else pays a share of that for the damage you
+  // did (CONFIG.partialPay of it, scaled by how much of the enemy you got through), so a lost fight is a
+  // bad day and not a dead end: the early game had a poverty trap where a defeat paid 1 token and the parts
+  // it scattered cost ~30 to win back (see docs/BALANCE.md, "Failing forward").
+  battlePay(stage, kind, progress, goldSurvivor) {
+    const full = CONFIG.winTokens + stage + (goldSurvivor ? 1 : 0);
+    if (kind === 'win') return full;
+    const share = Math.round(CONFIG.partialPay * (CONFIG.winTokens + stage) * progress);
+    // the ladder scales with the damage you did, so pressing FIGHT and then RETREAT earns nothing, and a scratch earns a scratch
+    const ladder = Math.round(Math.min(CONFIG.ladderMax, this.failStreak + 1) * progress);
+    return (kind === 'lose' ? Math.max(1, share) : share) + ladder;
+  },
+
   // Turn a finished fight into consequences: creature health, dead creatures, tokens, restocks, stage.
   // kind: 'win' | 'lose' | 'retreat'. This is the whole economy of a battle, in one place.
-  //   win      tokens = winTokens + stage (+1 with a Heart of Gold), 3 parts drop into the machine, party is healed
-  //   lose     1 token; creatures that died fall apart into the machine
-  //   retreat  no reward; survivors keep at least 1 HP
+  //   win      full pay, 3 parts drop into the machine, the run advances (the last boss ends it)
+  //   lose     partial pay; creatures that died fall apart into the machine
+  //   retreat  partial pay; nobody dies and the Reaper patches everyone up
   // Dead creatures' parts ALWAYS go back into the machine, never the bag (pillar: the claw is the only door).
   applyBattle(sim, kind) {
     const allies = sim.units.filter((u) => u.team === 'ally');
@@ -7097,27 +7553,34 @@ const Game = {
     for (const u of allies) u.c.hp = u.dead ? 0 : Math.max(1, Math.ceil(u.hp));
     const deadParts = deadAllies.flatMap((u) => u.c.parts());
     this.party = this.party.filter((c) => c.hp > 0);
-    let reward = 0;
     const restocked = [];
+    const reward = this.battlePay(this.stage, kind, kind === 'win' ? 1 : sim.progress(), survivors.some((u) => u.traits.includes('golden')));
     if (kind === 'win') {
-      reward = CONFIG.winTokens + this.stage;
-      if (survivors.some((u) => u.traits.includes('golden'))) reward += 1;
       const boost = 1 + this.stage * 0.2;
       for (let i = 0; i < CONFIG.restockParts; i++) restocked.push(randomPartType({ boost }));
-      for (const c of this.party) c.hp = c.maxHp; // the Reaper patches them up
       Telemetry.c.victories++;
       Telemetry.c.bestStage = Math.max(Telemetry.c.bestStage, this.stage);
       this.bestStage = Math.max(this.bestStage, this.stage);
-      this.stage++;
-    } else if (kind === 'lose') {
-      reward = 1;
-      Telemetry.c.defeats++;
+      if (isFinalStage(this.stage)) this.won = true; else this.stage++;
+      this.failStreak = 0;
     } else {
-      for (const c of this.party) c.hp = Math.max(1, c.hp);
+      if (kind === 'lose') Telemetry.c.defeats++;
+      this.failStreak++;
     }
+    for (const c of this.party) c.hp = c.maxHp; // the Reaper patches up everyone who is still standing
     this.tokens += reward + sim.goldKills;
     this.restock([...restocked, ...deadParts]);
-    return { kind, reward, gold: sim.goldKills, restocked, deadParts, lost: deadAllies.map((u) => u.name) };
+    this.recordProgress();
+    Save.soon();
+    return { kind, reward, gold: sim.goldKills, restocked, deadParts, lost: deadAllies.map((u) => u.name), won: this.won, progress: sim.progress() };
+  },
+
+  // lifetime records live in the save file, next to the run
+  recordProgress() {
+    const r = Save.data && Save.data.records;
+    if (!r) return;
+    r.bestStage = Math.max(r.bestStage, this.bestStage);
+    if (this.won) { r.wins++; const m = Math.round(this.playTime / 60); if (!r.bestWinMinutes || m < r.bestWinMinutes) r.bestWinMinutes = m; }
   },
 
   canFight() { return this.party.some((c) => c.hp > 0); },
@@ -7366,6 +7829,7 @@ Scenes.claw = (() => {
         case 'win': onWin(d); break;
         case 'turnEnd': {
           Telemetry.grabEnd(d.result, d.won);
+          Save.soon();
           if (d.result === 'miss') {
             Sfx.play('miss');
             if (!Game.talk.visible() || vchance(0.5)) say(vpick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
@@ -7961,6 +8425,9 @@ Scenes.slab = (() => {
     } else if (!Game.inventory.length && !count()) say('Empty-handed? The claw awaits.', 2.5);
   };
   S.exit = function () {};
+  // Parts stitched on but not yet brought to life still belong to the player: a save counts them as bag parts.
+  S.buildTypes = () => (build ? Object.values(build).filter(Boolean).map((i) => i.type) : []);
+  S.reset = () => { build = null; life = null; selected = null; page = 0; lastStitch = null; };
 
   function stitch(item) {
     const d = PART_DEFS[item.type];
@@ -7977,6 +8444,7 @@ Scenes.slab = (() => {
     const pt = { head: L.neck, torso: [0, L.ty], armL: L.shL, armR: L.shR, legL: L.hipL, legR: L.hipR, heart: L.heart, back: L.back }[slot] || [0, -30];
     fx.burst(FEET_X + pt[0] * 2, FEET_Y + pt[1] * 2, 10, { speed: 50, life: 0.45, ay: 60, color: ['#9be38f', '#fff6e3', '#4fae6c'] });
     Telemetry.log('stitch', { part: item.type, slot });
+    Save.soon();
     if (vchance(0.3)) say(vpick(['Snug.', 'It fits. Mostly.', 'Needle, thread, hope.', 'Ooh, that suits them.', 'Stitch, stitch, stitch.', 'Lovely. Horrible. Lovely.']), 1.6);
     if (item.type === 'pegleg' && vchance(0.6)) say('A peg leg. Classic look. Terrible posture.', 2.2);
   }
@@ -8003,6 +8471,7 @@ Scenes.slab = (() => {
     const c = life.c;
     c.born = Engine.t;
     Game.party.push(c);
+    Save.soon();
     build = emptyBuild();
     life = null;
     say(vpick(['Not pretty. But it\'ll fight.', 'Look at them go. Well. Look at them.', 'It\'s alive! Ish.', 'A face only a necromancer could love.']), 3);
@@ -8085,6 +8554,7 @@ Scenes.slab = (() => {
             selected = null;
             Sfx.play('unstitch');
             Telemetry.c.unstitched++;
+            Save.soon();
             say(vpick([`${c.name.split(' ')[0]} is parts again. Circle of life.`, 'Back to bits. No hard feelings.']), 2.4);
           } else { selected = c; Sfx.play('ui_click'); }
         } });
@@ -8465,7 +8935,7 @@ Scenes.battle = (() => {
 
     // HUD: stage title
     Font.draw(ctx, stageName(fightStage), 472, 7, { align: 'right', color: '#cdb892', shadow: PAL.k });
-    Font.draw(ctx, 'Stage ' + fightStage + (fightStage % 5 === 0 ? '  ·  BOSS' : ''), 472, 18, { align: 'right', color: '#a6aec2', shadow: PAL.k });
+    Font.draw(ctx, stageTitle(fightStage), 472, 18, { align: 'right', color: '#a6aec2', shadow: PAL.k });
     if (SPR.has('ico_token')) SPR.draw(ctx, 'ico_token', 12, 12);
     Font.draw(ctx, String(Game.tokens + (phase === 'fight' ? sim.goldKills : 0)), 20, 8, { color: PAL.L, shadow: PAL.k });
 
@@ -8546,19 +9016,27 @@ Scenes.shop = (() => {
       else if (Game.stage > 1 && !Game.seen['stage' + Game.stage]) { Game.seen['stage' + Game.stage] = 1; say(vpick(['Welcome back, champion. The machine restocked itself. Funny, that.', 'Fresh parts in the machine. Some of them are your old friends.']), 3.5); }
       else if (vchance(0.5)) say(vpick(['Welcome back.', 'Good parts make great friends.', 'The machine missed you. It told me.']), 2.4);
     }
+    if (params && params.title) { opened = false; titleT = 0; } // back to the title screen: the Reaper waits for the player again
     if (params && params.skipIntro) open();
   };
 
-  function open() {
+  // The title screen (36_menu.js) calls this when the player picks START or CONTINUE.
+  function open(resumed) {
     if (opened) return;
     opened = true;
     AudioSys.init();
     Sfx.play('coin');
-    say('Good parts make great friends.', 2.4);
-    Game.talk.say(`Here. ${Game.tokens} tokens. The first ones are always free.`, 3.2, false);
+    if (resumed) {
+      say('Welcome back. I kept your place.', 2.6);
+      Game.talk.say(`${Game.tokens} tokens. Stage ${Game.stage}. Shall we?`, 3, false);
+    } else {
+      say('Good parts make great friends.', 2.4);
+      Game.talk.say(`Here. ${Game.tokens} tokens. The first ones are always free.`, 3.2, false);
+    }
     tokenPop = 1;
     Telemetry.log('open');
   }
+  S.open = open;
 
   function goClaw() {
     if (zoom) return;
@@ -8578,7 +9056,6 @@ Scenes.shop = (() => {
     lean = approach(lean, Game.talk.visible() ? 1 : 0, dt * 3);
     if (!opened) {
       titleT += dt;
-      if (Input.anyPressed || Input.mouse.pressed) open();
       UI.set([]);
       return;
     }
@@ -8716,19 +9193,427 @@ Scenes.shop = (() => {
     if (Game.talk.visible()) Game.talk.drawBubble(ctx, REAPER_X - 70, 150, 170, REAPER_X - 8, 158, { anchorBottom: true });
     fx.draw(ctx);
     ctx.restore();
-    // title overlay
-    if (!opened) {
-      ctx.fillStyle = 'rgba(14,11,22,0.45)'; ctx.fillRect(0, 0, W, H);
-      const k = clamp(titleT / 0.8, 0, 1);
-      Font.draw(ctx, 'THE GOOD PARTS', 240, 92 - Math.round((1 - easeOutBack(k)) * 30), { scale: 4, color: '#fff1d6', outline: '#3a0c20', shadow: '#b0224a', align: 'center', alpha: k });
-      Font.draw(ctx, 'a claw machine necromancer prototype', 240, 132, { color: '#cdb892', align: 'center', alpha: k, outline: PAL.k });
-      if (Math.sin(t * 4) > -0.2) Font.draw(ctx, Input.lastDevice === 'touch' ? 'TAP TO OPEN THE SHOP' : 'CLICK OR PRESS ANY KEY', 240, 176, { color: '#ff8ac6', align: 'center', outline: PAL.k });
-      Font.draw(ctx, '← →  MOVE    SPACE  DROP    ESC  BACK    M  MUTE    F  FULLSCREEN', 240, 252, { font: 'small', color: '#7a6a9a', align: 'center' });
-    }
   };
 
   return S;
 })();
+
+// ==== 36_menu.js ====
+// ---------------------------------------------------------------------------
+// MENUS — title, pause, settings, controls and how-to-play, drawn on the canvas like the rest of the game.
+//
+// ListMenu is one widget (rows you can move through, flip, slide and press) with three ways in that all do
+// the same things: keys (whatever the player bound), mouse, touch. Overlays are what Engine.open() stacks on
+// top of the game; a non-live overlay freezes the scene under it, and while it is up no game action works.
+// That is the pause rule in docs/DESIGN.md: you cannot ZAP, retreat, stitch or steer the claw while paused.
+// ---------------------------------------------------------------------------
+class ListMenu {
+  // items: { label, kind: 'button'|'toggle'|'slider'|'choice'|'header'|'info', get(), set(v), choices:[[value,text]], onClick(), disabled(), hint }
+  constructor({ title, items, x = 130, y = 40, w = 220, rows = 11, onBack, footer }) {
+    Object.assign(this, { title, items, x, y, w, rows, onBack, footer });
+    this.sel = this.items.findIndex((i) => this.pickable(i));
+    this.top = 0;
+    this.drag = null;
+  }
+  pickable(i) { return i.kind !== 'header' && i.kind !== 'info' && !(i.hidden && i.hidden()); }
+  visible() { return this.items.filter((i) => !(i.hidden && i.hidden())); }
+  rowY(idx) { return this.y + 16 + (idx - this.top) * 13; }
+  sound(n, o) { if (typeof Sfx !== 'undefined') Sfx.play(n, o); }
+
+  move(d) {
+    const v = this.visible();
+    let i = v.indexOf(this.items[this.sel]);
+    for (let n = 0; n < v.length; n++) { i = (i + d + v.length) % v.length; if (this.pickable(v[i])) break; }
+    this.select(this.items.indexOf(v[i]));
+    this.sound('ui_hover');
+  }
+  select(idx) {
+    this.sel = idx;
+    const v = this.visible(), vi = v.indexOf(this.items[idx]);
+    if (vi < this.top) this.top = vi;
+    if (vi >= this.top + this.rows) this.top = vi - this.rows + 1;
+    if (typeof Announce !== 'undefined') { const it = this.items[idx]; Announce.say(it.label + (it.get ? ', ' + this.valueText(it) : '') + (it.hint ? '. ' + it.hint : '')); }
+  }
+  valueText(it) {
+    if (it.kind === 'toggle') return it.get() ? 'ON' : 'OFF';
+    if (it.kind === 'slider') return Math.round(it.get() * 100) + '%';
+    if (it.kind === 'choice') { const c = it.choices.find(([v]) => v === it.get()); return c ? c[1] : ''; }
+    return it.text ? it.text() : '';
+  }
+  adjust(it, d) {
+    if (!it || it.disabled && it.disabled()) return;
+    if (it.kind === 'slider') { it.set(clamp(Math.round((it.get() + d * 0.1) * 10) / 10, 0, 1)); this.sound('ui_click'); }
+    else if (it.kind === 'toggle') { it.set(!it.get()); this.sound('ui_click'); }
+    else if (it.kind === 'choice') {
+      const i = it.choices.findIndex(([v]) => v === it.get());
+      it.set(it.choices[(i + d + it.choices.length) % it.choices.length][0]); this.sound('ui_click');
+    }
+    if (typeof Announce !== 'undefined') Announce.say(it.label + ', ' + this.valueText(it));
+  }
+  activate(it) {
+    if (!it) return;
+    if (it.disabled && it.disabled()) { this.sound('ui_deny'); return; }
+    if (it.kind === 'button') { this.sound(it.sound || 'ui_click'); it.onClick(); }
+    else if (it.kind !== 'slider') this.adjust(it, 1);
+  }
+
+  update() {
+    UI.set([]); // the menu handles its own pointer; nothing underneath may react
+    const v = this.visible();
+    if (Input.hit('up')) this.move(-1);
+    if (Input.hit('down')) this.move(1);
+    const it = this.items[this.sel];
+    if (Input.hit('left')) this.adjust(it, -1);
+    if (Input.hit('right')) this.adjust(it, 1);
+    if (Input.hit('a')) this.activate(it);
+    if (Input.hit('b') && this.onBack) { this.sound('ui_back'); this.onBack(); return; }
+    // pointer: hover selects, press activates, dragging a slider sets it
+    const m = Input.mouse;
+    if (m.x >= 0) {
+      const inX = m.x >= this.x && m.x < this.x + this.w;
+      const row = inX ? Math.floor((m.y - this.rowY(this.top)) / 13) + this.top : -1;
+      const hov = row >= this.top && row < this.top + this.rows && row < v.length ? v[row] : null;
+      if (m.moved && hov && this.pickable(hov) && this.items.indexOf(hov) !== this.sel) { this.select(this.items.indexOf(hov)); this.sound('ui_hover'); }
+      if (m.pressed && hov && this.pickable(hov)) {
+        this.select(this.items.indexOf(hov));
+        if (hov.kind === 'slider') this.drag = hov; else this.activate(hov);
+      }
+      if (m.pressed && inX && m.y < this.y + 14 + 2 && this.top > 0) this.top--; // click the ▲
+      if (m.pressed && inX && m.y > this.rowY(this.top + this.rows) - 2 && this.top + this.rows < v.length && m.y < this.rowY(this.top + this.rows) + 12) this.top++; // click the ▼
+    }
+    if (this.drag) {
+      if (m.down) { const k = clamp((m.x - (this.x + this.w - 84)) / 60, 0, 1); const nv = Math.round(k * 10) / 10; if (nv !== this.drag.get()) { this.drag.set(nv); this.sound('ui_hover', { pitch: 0.8 + nv * 0.6 }); } }
+      else this.drag = null;
+    }
+  }
+
+  draw(ctx) {
+    const v = this.visible(), h = 26 + Math.min(this.rows, v.length) * 13 + (this.footer ? 12 : 0);
+    Draw.panel(ctx, this.x - 8, this.y - 6, this.w + 16, h + 6, 'slate');
+    Font.draw(ctx, this.title, this.x + this.w / 2, this.y, { align: 'center', color: '#fff6e3', shadow: PAL.k });
+    if (this.top > 0) Font.draw(ctx, '↑', this.x + this.w - 4, this.y + 4, { font: 'small', color: '#7a6a9a', align: 'right' });
+    const sel = this.items[this.sel];
+    for (let i = this.top; i < Math.min(v.length, this.top + this.rows); i++) {
+      const it = v[i], y = this.rowY(i), on = it === sel, off = it.disabled && it.disabled();
+      if (it.kind === 'header') { Font.draw(ctx, it.label, this.x, y + 3, { font: 'small', color: '#ff8ac6' }); Draw.rect(ctx, this.x + Font.measure(it.label, 'small') + 4, y + 6, this.w - Font.measure(it.label, 'small') - 4, 1, '#3b3654'); continue; }
+      if (on) { Draw.rect(ctx, this.x - 2, y - 1, this.w + 4, 12, '#2d3344'); Draw.frame(ctx, this.x - 2, y - 1, this.w + 4, 12, '#ff8ac6'); Font.draw(ctx, '▶', this.x + 1, y + 2, { color: '#fff6e3' }); }
+      const col = off ? '#5b4a78' : on ? '#fff6e3' : '#cdb892';
+      Font.draw(ctx, it.label, this.x + 11, y + 2, { color: col, shadow: on ? PAL.k : null });
+      if (it.kind === 'slider') {
+        const bx = this.x + this.w - 84, k = it.get();
+        Draw.rect(ctx, bx, y + 4, 62, 4, PAL.k); Draw.rect(ctx, bx + 1, y + 5, 60, 2, '#33274a');
+        Draw.rect(ctx, bx + 1, y + 5, Math.round(60 * k), 2, off ? '#5b4a78' : '#9be38f');
+        Draw.rect(ctx, bx + Math.round(60 * k) - 1, y + 2, 3, 8, '#fff6e3');
+        Font.draw(ctx, Math.round(k * 100) + '%', this.x + this.w - 2, y + 3, { font: 'small', color: col, align: 'right' });
+      } else if (it.kind === 'toggle') {
+        Font.draw(ctx, this.valueText(it), this.x + this.w - 2, y + 2, { color: it.get() ? '#9be38f' : '#7a6a9a', align: 'right' });
+      } else if (it.kind === 'choice') {
+        Font.draw(ctx, (on ? '◀ ' : '') + this.valueText(it) + (on ? ' ▶' : ''), this.x + this.w - 2, y + 2, { color: '#9be38f', align: 'right' });
+      } else if (it.text) Font.draw(ctx, it.text(), this.x + this.w - 2, y + 2, { color: '#7a6a9a', align: 'right' });
+    }
+    if (this.top + this.rows < v.length) Font.draw(ctx, '↓', this.x + this.w - 4, this.rowY(this.top + this.rows) + 1, { font: 'small', color: '#7a6a9a', align: 'right' });
+    // the hint for the highlighted row, then the key reminder
+    const foot = this.y + 18 + Math.min(this.rows, v.length) * 13;
+    if (sel && sel.hint) Font.drawWrapped(ctx, sel.hint, this.x, foot - 1, this.w, { font: 'small', color: '#a6aec2' });
+    else if (this.footer) Font.draw(ctx, typeof this.footer === 'function' ? this.footer() : this.footer, this.x + this.w / 2, foot, { font: 'small', color: '#7a6a9a', align: 'center' });
+  }
+}
+
+const dimBackdrop = (ctx, a = 0.72) => { ctx.fillStyle = `rgba(14,11,22,${a})`; ctx.fillRect(0, 0, W, H); };
+const keyLine = () => `${Settings.hint('up')} ${Settings.hint('down')} select   ${Settings.hint('left')} ${Settings.hint('right')} change   ${Settings.hint('a')} ok   ${Settings.hint('b')} back`;
+
+// -------------------------------------------------------------------- overlays
+const Overlays = (() => {
+  const persist = () => { Settings.apply(); Save.soon(); };
+  const S = () => Settings.v;
+
+  // A message with two choices. Default is the SAFE one (No), so a stray Enter cannot delete a run.
+  function confirm(text, yes, { yesLabel = 'YES', noLabel = 'NO', danger = false } = {}) {
+    const menu = new ListMenu({ title: '', x: 150, y: 128, w: 180, rows: 2, onBack: () => Engine.close(), items: [
+      { label: noLabel, kind: 'button', onClick: () => Engine.close() },
+      { label: yesLabel, kind: 'button', onClick: () => { Engine.close(); yes(); } },
+    ] });
+    menu.sel = 0;
+    Engine.open({
+      update() { menu.update(); },
+      draw(ctx) {
+        dimBackdrop(ctx, 0.55);
+        Draw.panel(ctx, 110, 84, 260, 40, danger ? 'red' : 'slate');
+        Font.drawWrapped(ctx, text, 122, 94, 236, { color: '#fff6e3' });
+        menu.draw(ctx);
+      },
+    });
+    if (typeof Announce !== 'undefined') Announce.say(text);
+  }
+
+  function help() {
+    const menu = new ListMenu({ title: '', x: 0, y: 0, w: 0, rows: 0, onBack: () => Engine.close(), items: [] });
+    Engine.open({
+      update() { menu.update(); if (Input.mouse.pressed || Input.hit('a')) Engine.close(); },
+      draw(ctx) {
+        dimBackdrop(ctx, 0.82);
+        Draw.panel(ctx, 40, 14, 400, 242, 'slate');
+        Font.draw(ctx, 'HOW TO PLAY', 240, 22, { align: 'center', color: '#fff6e3', shadow: PAL.k });
+        const K = (a) => Settings.hint(a);
+        const lines = [
+          ['THE IDEA', '#ff8ac6'],
+          ['Win body parts from the claw machine. Stitch them into monsters on the slab. Send them to fight the shades in the graveyard. Every part they lose goes back in the machine.', '#ecdcbc'],
+          ['THE CLAW', '#ff8ac6'],
+          [`${K('left')} ${K('right')} steer.  ${K('a')} drops the claw, and again to let go over the chute.  Hold the mouse or a finger on the glass to steer toward it. Carrying: hold a direction to speed up, ease off to steady it. Fast carries swing, and swinging parts slip.`, '#ecdcbc'],
+          ['THE FIGHT', '#ff8ac6'],
+          [`Once you press FIGHT it is live. ZAP heals and hastes (it recharges). RETREAT keeps everyone alive and pays for the damage you did. ${K('pause')} pauses, and nothing can be done while paused.`, '#ecdcbc'],
+          ['THE RUN', '#ff8ac6'],
+          ['Fifteen stages in three acts. Every fifth is a boss; the last one is the Landlord. The Reaper tells you what is coming: build for it.', '#ecdcbc'],
+        ];
+        let y = 34;
+        for (const [t, c] of lines) {
+          if (c === '#ff8ac6') { Font.draw(ctx, t, 54, y, { font: 'small', color: c }); y += 10; }
+          else { const r = Font.drawWrapped(ctx, t, 54, y, 372, { color: c }); y += Math.max(1, (Font.wrap(t, 372).length)) * 10 + 6; }
+        }
+        Font.draw(ctx, 'press any key or click to close', 240, 244, { font: 'small', color: '#7a6a9a', align: 'center' });
+      },
+    });
+    if (typeof Announce !== 'undefined') Announce.say('How to play. Win parts from the claw, stitch monsters, fight. Press any key to close.');
+  }
+
+  // ---------------------------------------------------------------- controls
+  function controls() {
+    let row = 0, slot = 0, capturing = null, msg = '';
+    const rows = KEY_ACTIONS.length + 1; // + reset
+    const open = (r, s) => {
+      capturing = { r, s };
+      msg = '';
+      Input.capture = (code) => {
+        capturing = null;
+        const a = KEY_ACTIONS[r];
+        if (code === 'Escape') { Sfx.play('ui_back'); return; }
+        if (code === 'Backspace' || code === 'Delete') { msg = Settings.unbind(a.id, s) ? a.label + ' cleared.' : 'Every action needs at least one key.'; Sfx.play(msg.endsWith('.') && msg !== 'Every action needs at least one key.' ? 'ui_click' : 'ui_deny'); persist(); return; }
+        if (/^F\d+$|^Tab$|^ContextMenu$|^Meta|^Control|^Alt|^Shift/.test(code)) { msg = 'That key is not available.'; Sfx.play('ui_deny'); return; }
+        const stolen = Settings.bind(a.id, s, code);
+        const from = stolen && stolen !== a.id ? KEY_ACTIONS.find((x) => x.id === stolen).label : null;
+        msg = Settings.keyName(code) + ' → ' + a.label + (from ? ' (was ' + from + ')' : '');
+        Sfx.play('ui_click');
+        persist();
+      };
+    };
+    Engine.open({
+      update() {
+        UI.set([]);
+        if (capturing) return;
+        if (Input.hit('up')) { row = (row + rows - 1) % rows; Sfx.play('ui_hover'); }
+        if (Input.hit('down')) { row = (row + 1) % rows; Sfx.play('ui_hover'); }
+        if (Input.hit('left')) { slot = 0; Sfx.play('ui_hover'); }
+        if (Input.hit('right')) { slot = 1; Sfx.play('ui_hover'); }
+        if (Input.hit('a')) { if (row === KEY_ACTIONS.length) { Settings.resetKeys(); msg = 'Keys reset to their defaults.'; Sfx.play('ui_click'); persist(); } else open(row, slot); }
+        if (Input.hit('b')) { Sfx.play('ui_back'); Engine.close(); return; }
+        const m = Input.mouse;
+        if (m.x >= 0) {
+          const r = Math.floor((m.y - 44) / 15);
+          if (r >= 0 && r <= KEY_ACTIONS.length && m.x > 100 && m.x < 380) {
+            const s = m.x > 290 ? 1 : 0;
+            if (m.moved && (r !== row || (r < KEY_ACTIONS.length && s !== slot))) { row = r; if (r < KEY_ACTIONS.length && m.x > 210) slot = s; }
+            if (m.pressed) { row = r; if (r === KEY_ACTIONS.length) { Settings.resetKeys(); msg = 'Keys reset to their defaults.'; Sfx.play('ui_click'); persist(); } else if (m.x > 210) { slot = s; open(r, s); } }
+          }
+        }
+      },
+      exit() { Input.capture = null; },
+      draw(ctx) {
+        dimBackdrop(ctx, 0.85);
+        Draw.panel(ctx, 90, 14, 300, 242, 'slate');
+        Font.draw(ctx, 'KEY BINDINGS', 240, 22, { align: 'center', color: '#fff6e3', shadow: PAL.k });
+        Font.draw(ctx, 'Two keys per action. Gamepad: d-pad, A and B.', 240, 32, { align: 'center', font: 'small', color: '#7a6a9a' });
+        KEY_ACTIONS.forEach((a, i) => {
+          const y = 44 + i * 15, on = i === row;
+          if (on) { Draw.rect(ctx, 98, y - 2, 284, 14, '#2d3344'); Draw.frame(ctx, 98, y - 2, 284, 14, '#ff8ac6'); }
+          Font.draw(ctx, a.label, 106, y + 1, { color: on ? '#fff6e3' : '#cdb892' });
+          for (let s = 0; s < 2; s++) {
+            const x = 214 + s * 82, sel = on && slot === s, cap = capturing && capturing.r === i && capturing.s === s;
+            Draw.panel(ctx, x, y - 2, 76, 14, cap ? 'red' : sel ? 'green' : 'dark');
+            Font.draw(ctx, cap ? 'PRESS A KEY' : Settings.keyName(Settings.v.keys[a.id][s]), x + 38, y + 1, { align: 'center', color: cap ? '#fff6e3' : sel ? '#fff6e3' : '#ecdcbc' });
+          }
+        });
+        const ry = 44 + KEY_ACTIONS.length * 15, ron = row === KEY_ACTIONS.length;
+        if (ron) { Draw.rect(ctx, 98, ry - 2, 284, 14, '#2d3344'); Draw.frame(ctx, 98, ry - 2, 284, 14, '#ff8ac6'); }
+        Font.draw(ctx, 'RESET TO DEFAULTS', 240, ry + 1, { align: 'center', color: ron ? '#fff6e3' : '#cdb892' });
+        Font.drawWrapped(ctx, capturing ? 'Press the new key. ESC cancels, BACKSPACE clears this slot.' : msg || `${Settings.hint('left')} ${Settings.hint('right')} pick a slot   ${Settings.hint('a')} rebind   ${Settings.hint('b')} back`, 106, 226, 268, { font: 'small', color: capturing ? '#ff8ac6' : '#a6aec2' });
+      },
+    });
+    if (typeof Announce !== 'undefined') Announce.say('Key bindings. Up and down choose an action, then press to rebind.');
+  }
+
+  // ---------------------------------------------------------------- settings
+  function settings() {
+    const on = (k) => ({ get: () => S()[k], set: (v) => { S()[k] = v; persist(); } });
+    const menu = new ListMenu({ title: 'SETTINGS', x: 100, y: 20, w: 280, rows: 14, onBack: () => { Save.flush(); Engine.close(); }, footer: keyLine, items: [
+      { label: 'AUDIO', kind: 'header' },
+      { label: 'Master volume', kind: 'slider', ...on('master') },
+      { label: 'Music volume', kind: 'slider', ...on('music') },
+      { label: 'Effects volume', kind: 'slider', ...on('sfx') },
+      { label: 'Mute', kind: 'toggle', get: () => S().muted, set: (v) => { S().muted = v; persist(); }, hint: `Also on the ${Settings.hint('mute')} key.` },
+      { label: 'COMFORT', kind: 'header' },
+      { label: 'Screen shake', kind: 'choice', choices: [[0, 'Off'], [0.5, 'Low'], [1, 'Full']], ...on('shake') },
+      { label: 'Reduce flashing', kind: 'toggle', ...on('reduceFlash'), hint: 'No full-screen flashes, and nothing blinks faster than 1.5 times a second.' },
+      { label: 'Slow-motion on rare catches', kind: 'toggle', ...on('slowmo') },
+      { label: 'THE CLAW', kind: 'header' },
+      { label: 'Drop guide', kind: 'toggle', ...on('dropGuide'), hint: 'The dotted line that shows where the claw will land.' },
+      { label: 'Auto-carry assist', kind: 'toggle', ...on('autoCarry'), hint: 'The machine carries a part to the chute for you at a steady speed. Where you drop the claw is still up to you.' },
+      { label: 'Carry time', kind: 'choice', choices: [[8, '8 s'], [16, '16 s'], [0, 'No limit']], ...on('carryTime'), hint: 'How long you get to bring a part to the chute.' },
+      { label: 'Steering', kind: 'choice', choices: [['hold', 'Hold key'], ['toggle', 'Tap to toggle']], ...on('steering'), hint: 'Tap to toggle: tap a direction to start moving, tap again to stop. Nothing needs holding.' },
+      { label: 'CONTROLS', kind: 'header' },
+      { label: 'Key bindings…', kind: 'button', onClick: () => controls(), hint: 'Change any key. Every action has two slots.' },
+      { label: 'THIS DEVICE', kind: 'header' },
+      { label: 'Saving', kind: 'info', text: () => (Store.persistent ? 'on' : 'off in this window') },
+      { label: 'Copy debug info', kind: 'button', onClick: () => { Platform.copy(CrashLog.text('Debug info'), (ok) => Overlays.toast(ok ? 'Copied. Paste it into a bug report.' : 'Could not copy: it is shown in the report window.')); }, hint: 'Version, browser and the last few errors, ready to paste into a bug report.' },
+      { label: 'Report a problem…', kind: 'button', onClick: () => Platform.open(BUILD.issues), hint: BUILD.issues.replace('https://', '') },
+      { label: 'Delete saved run and records…', kind: 'button', onClick: () => confirm('Delete your saved run, records and settings? This cannot be undone.', () => { Save.wipe(); Settings.apply(); Engine.overlays.length = 0; Game.newGame(); Engine.go('shop', { title: true }); Overlays.title(); }, { yesLabel: 'DELETE EVERYTHING', noLabel: 'KEEP', danger: true }) },
+      { label: 'About', kind: 'info', text: () => BUILD.name + ' ' + BUILD.version },
+    ] });
+    Engine.open({ update() { menu.update(); }, draw(ctx) { dimBackdrop(ctx, 0.85); menu.draw(ctx); } });
+    if (typeof Announce !== 'undefined') Announce.say('Settings.');
+  }
+
+  // ------------------------------------------------------------------- pause
+  function pause() {
+    const back = () => { Sfx.play('ui_back'); Engine.close(); };
+    const menu = new ListMenu({ title: 'PAUSED', x: 160, y: 84, w: 160, rows: 4, onBack: back, footer: () => `${Settings.hint('pause')} or ${Settings.hint('b')} to resume`, items: [
+      { label: 'RESUME', kind: 'button', onClick: back },
+      { label: 'SETTINGS', kind: 'button', onClick: settings },
+      { label: 'HOW TO PLAY', kind: 'button', onClick: help },
+      { label: 'QUIT TO TITLE', kind: 'button', onClick: () => confirm('Back to the title screen? Your run is saved.', () => { Save.flush(); Engine.overlays.length = 0; Engine.go('shop', { title: true }); Overlays.title(); }, { yesLabel: 'QUIT', noLabel: 'STAY' }) },
+    ] });
+    Engine.open({
+      pausePanel: true,
+      update() {
+        menu.update();
+        if (Input.hit('pause') && Engine.top === this) back();
+      },
+      resume() { UI.set([]); },
+      draw(ctx) {
+        dimBackdrop(ctx, 0.6);
+        menu.draw(ctx);
+        Font.draw(ctx, 'The clock is stopped. Nothing can be done while paused.', 240, 176, { font: 'small', color: '#a6aec2', align: 'center' });
+      },
+    });
+    if (typeof Announce !== 'undefined') Announce.say('Paused.');
+  }
+
+  // ------------------------------------------------------------------- title
+  function title() {
+    const cont = () => { Engine.close(); Game.fromSave(Save.data.run); Scenes.shop.open(true); };
+    const fresh = () => { Engine.close(); Game.newGame(); Save.data.records.runs++; Save.reset(); Scenes.shop.open(false); };
+    let t = 0;
+    const has = Save.hasRun();
+    const summary = has ? (() => { const r = Save.data.run; return 'Stage ' + r.stage + ' · ' + (r.party || []).length + ' creature' + ((r.party || []).length === 1 ? '' : 's') + ' · ' + (r.inventory || []).length + ' parts'; })() : '';
+    const items = [];
+    if (has) items.push({ label: 'CONTINUE', kind: 'button', onClick: cont, hint: summary });
+    items.push({ label: has ? 'NEW RUN' : 'START', kind: 'button', onClick: has ? () => confirm('Start a new run? The run you have saved will be lost.', fresh, { yesLabel: 'NEW RUN', noLabel: 'KEEP MY RUN', danger: true }) : fresh });
+    items.push({ label: 'SETTINGS', kind: 'button', onClick: settings });
+    items.push({ label: 'HOW TO PLAY', kind: 'button', onClick: help });
+    const menu = new ListMenu({ title: '', x: 170, y: 150, w: 140, rows: 5, items, footer: () => `${Settings.hint('a')} to choose` });
+    Engine.open({
+      live: true,
+      update(dt) {
+        t += dt;
+        menu.update();
+      },
+      draw(ctx) {
+        ctx.fillStyle = 'rgba(14,11,22,0.5)'; ctx.fillRect(0, 0, W, H);
+        const k = clamp(t / 0.8, 0, 1);
+        Font.draw(ctx, 'THE GOOD PARTS', 240, 60 - Math.round((1 - easeOutBack(k)) * 30), { scale: 4, color: '#fff1d6', outline: '#3a0c20', shadow: '#b0224a', align: 'center', alpha: k });
+        Font.draw(ctx, 'Collect · Reanimate · Conquer', 240, 100, { color: '#cdb892', align: 'center', alpha: k, outline: PAL.k });
+        menu.draw(ctx);
+        // things the player should know before they invest in a run
+        let ny = 236;
+        const note = (s, c) => { Font.draw(ctx, s, 240, ny, { font: 'small', color: c, align: 'center', outline: PAL.k }); ny -= 9; };
+        if (Save.problem === 'corrupt') note('Your save could not be read. A copy is kept, and this is a fresh start.', '#ff7d8a');
+        if (Save.problem === 'newer') note('This save is from a newer version. It will not be overwritten.', '#f6c64b');
+        if (!Store.persistent) note('Progress cannot be saved in this window (storage is blocked).', '#f6c64b');
+        for (const n of Save.notes) note(n, '#f6c64b');
+        Font.draw(ctx, BUILD.version, W - 4, H - 8, { font: 'small', color: '#5b4a78', align: 'right' });
+      },
+    });
+    if (typeof Announce !== 'undefined') Announce.say('The Good Parts. ' + (has ? 'Continue, or start a new run.' : 'Start.'));
+  }
+
+  // --------------------------------------------------------- a line of feedback
+  let toastText = '', toastT = 0;
+  function toast(s) { toastText = s; toastT = 3; if (typeof Announce !== 'undefined') Announce.say(s); }
+  function drawToast(ctx, dt) {
+    if (toastT <= 0) return;
+    toastT -= dt;
+    Draw.panel(ctx, 240 - Font.measure(toastText) / 2 - 8, 246, Font.measure(toastText) + 16, 16, 'dark');
+    Font.draw(ctx, toastText, 240, 251, { align: 'center', color: '#fff6e3' });
+  }
+
+  return { confirm, help, controls, settings, pause, title, toast, drawToast };
+})();
+
+// ==== 39_crashlog.js ====
+// ---------------------------------------------------------------------------
+// CRASH LOG — when something breaks, keep the evidence and keep playing.
+//
+// Errors are de-duplicated, kept in a short list, written to storage (so the NEXT launch can offer them) and
+// formatted as a paste-able report: version, browser, graphics, what the game was doing, the last events.
+// There is no server. The player copies the text or opens a prefilled GitHub issue; nothing is sent
+// anywhere unless they choose to. No names, no account info, nothing beyond what is listed below.
+// The DOM half (the toast, window error hooks) lives in 42_dom.js; this half also runs in Node for tests.
+// ---------------------------------------------------------------------------
+const CrashLog = {
+  list: [],
+  max: 6,
+  gpu: '', // filled in by 42_dom.js (the WebGL renderer string), so reports say what graphics card ran it
+  previous: null, // what the last session left behind, if it crashed
+  onReport: null, // set by 42_dom.js to show the toast
+
+  init() { this.previous = Store.get('thegoodparts.crash'); },
+
+  report(err, where) {
+    const msg = String((err && err.message) || err || 'unknown error').slice(0, 300);
+    const stack = String((err && err.stack) || '').split('\n').slice(0, 6).join('\n').slice(0, 900);
+    const key = where + '|' + msg + '|' + (stack.split('\n')[1] || '');
+    let e = this.list.find((x) => x.key === key);
+    if (e) { e.count++; e.last = Math.round(Telemetry.now()); return e; }
+    e = { key, where, msg, stack, count: 1, first: Math.round(Telemetry.now()), last: Math.round(Telemetry.now()) };
+    this.list.push(e);
+    if (this.list.length > this.max) this.list.shift();
+    try { Store.set('thegoodparts.crash', this.text('Crash')); } catch (x) { /* storage is best effort */ }
+    if (typeof console !== 'undefined') console.error(err);
+    if (this.onReport) { try { this.onReport(e); } catch (x) { /* never let the reporter break the game */ } }
+    return e;
+  },
+
+  // Everything a bug report needs, in plain text.
+  text(heading = 'Report') {
+    const nav = typeof navigator !== 'undefined' ? navigator : {};
+    const scr = typeof screen !== 'undefined' ? screen : {};
+    const G = typeof Game !== 'undefined' ? Game : null;
+    const lines = [
+      `${BUILD.name} ${BUILD.version}: ${heading}`,
+      `when: ${new Date().toISOString()}   session: ${Math.round(Telemetry.now())}s`,
+      `browser: ${nav.userAgent || 'n/a'}`,
+      `screen: ${scr.width || '?'}x${scr.height || '?'} @${typeof devicePixelRatio !== 'undefined' ? devicePixelRatio : '?'}x   game scale: ${typeof Engine !== 'undefined' ? Engine.scale.toFixed(2) : '?'}`,
+      `graphics: ${this.gpu || 'unknown'}`,
+      `in a frame: ${typeof window !== 'undefined' && window.top !== window.self ? 'yes' : 'no'}   storage: ${Store.persistent ? 'works' : 'blocked'}   audio: ${typeof AudioSys !== 'undefined' && AudioSys.ctx ? AudioSys.ctx.state : 'not started'}`,
+      G ? `game: scene ${typeof Engine !== 'undefined' ? Engine.sceneName : '?'}, stage ${G.stage}, tokens ${G.tokens}, bag ${G.inventory.length}, party ${G.party.length}, play ${Math.round(G.playTime || 0)}s, won ${!!G.won}` : 'game: not started',
+      typeof Settings !== 'undefined' ? `settings: ${JSON.stringify(Object.assign({}, Settings.v, { keys: undefined }))}` : '',
+      '',
+    ];
+    if (this.list.length) {
+      lines.push('errors this session:');
+      for (const e of this.list) lines.push(`  x${e.count} [${e.where}] ${e.msg}`, ...e.stack.split('\n').slice(1, 4).map((s) => '      ' + s.trim()));
+      lines.push('');
+    } else lines.push('errors this session: none', '');
+    if (this.previous) lines.push('left behind by the previous session:', ...String(this.previous).split('\n').slice(0, 14).map((s) => '  ' + s), '');
+    lines.push('last events:', ...Telemetry.events.slice(-14).map((e) => `  ${e.t}s ${e.type} ${Object.entries(e).filter(([k]) => k !== 't' && k !== 'type').map(([k, v]) => k + '=' + v).join(' ')}`));
+    return lines.join('\n');
+  },
+
+  // a prefilled GitHub issue, kept under URL length limits
+  issueUrl() {
+    const body = this.text('Bug report').slice(0, 3500);
+    return BUILD.issues + '?title=' + encodeURIComponent(`Bug: ${this.list.length ? this.list[this.list.length - 1].msg.slice(0, 70) : 'describe what happened'}`) + '&body=' + encodeURIComponent('**What happened?**\n\n\n<details><summary>Debug info</summary>\n\n```\n' + body + '\n```\n</details>');
+  },
+};
 
 // ==== 40_telemetry.js ====
 // ---------------------------------------------------------------------------
@@ -8807,113 +9692,111 @@ const Telemetry = {
   },
 };
 
-// ==== 41_debug.js ====
+// ==== 42_dom.js ====
 // ---------------------------------------------------------------------------
-// DEBUG PANEL — press ` (backquote) or the wrench to tune CONFIG live.
-// "Copy values" puts the current CONFIG (diff from defaults) on the clipboard.
-// Also: cheats for fast iteration and the playtest report (P).
+// DOM — the parts of the game that live outside the canvas. Only loaded in a real page (tools/test.mjs skips
+// it), and nothing else depends on it: every caller checks `typeof Platform` / `typeof Announce` first.
+//
+//   Platform   fullscreen, clipboard and links, each written to fail quietly inside a sandboxed frame
+//   Announce   an aria-live region so a screen reader hears the Reaper and the menus
+//   crash toast, error hooks, save-on-hide, auto-pause when the tab is hidden, the on-page Menu button
 // ---------------------------------------------------------------------------
-const Debug = {
-  el: null, open: false, reportEl: null,
-  build() {
-    const el = (this.el = document.getElementById('debug'));
-    if (!el) return;
-    const groups = {};
-    for (const m of CONFIG_META) (groups[m[0]] ||= []).push(m);
-    let html = `<div class="dbg-head"><b>TUNING</b><span>live — changes apply instantly</span><button data-act="close">×</button></div>
-      <div class="dbg-btns">
-        <button data-act="copy">Copy values</button><button data-act="reset">Reset</button><button data-act="report">Playtest report</button>
-      </div>
-      <div class="dbg-btns">
-        <button data-act="tokens">+5 tokens</button><button data-act="refill">Refill machine</button><button data-act="rare">Drop a legendary in</button>
-        <button data-act="parts">+6 random parts</button><button data-act="win">Win battle</button><button data-act="stage">Stage +1</button>
-      </div>`;
-    for (const g in groups) {
-      html += `<details ${g === 'Claw' ? 'open' : ''}><summary>${g}</summary>`;
-      for (const [, key, def, min, max, step, label] of groups[g]) {
-        html += `<label title="${key}"><span>${label}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${CONFIG[key]}" data-key="${key}"><output data-out="${key}">${CONFIG[key]}</output></label>`;
-      }
-      html += '</details>';
-    }
-    el.innerHTML = html;
-    el.addEventListener('input', (e) => {
-      const k = e.target.dataset.key;
-      if (!k) return;
-      CONFIG[k] = parseFloat(e.target.value);
-      el.querySelector(`[data-out="${k}"]`).textContent = CONFIG[k];
-    });
-    el.addEventListener('click', (e) => {
-      const act = e.target.dataset.act;
-      if (!act) return;
-      this.action(act, e.target);
-    });
-    const tog = document.getElementById('dbgToggle');
-    if (tog) tog.addEventListener('click', () => this.toggle());
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'Backquote') { this.toggle(); e.preventDefault(); }
-      if (e.code === 'KeyP' && !(e.target && e.target.tagName === 'INPUT')) this.showReport();
-      if (e.code === 'KeyM') AudioSys.toggleMute();
-      if (e.code === 'KeyF' && !(e.target && e.target.tagName === 'INPUT')) this.fullscreen();
-    });
-  },
-  toggle() { this.open = !this.open; this.el.classList.toggle('open', this.open); },
-  sync() { for (const inp of this.el.querySelectorAll('input[data-key]')) { inp.value = CONFIG[inp.dataset.key]; this.el.querySelector(`[data-out="${inp.dataset.key}"]`).textContent = CONFIG[inp.dataset.key]; } },
-  action(act, btn) {
-    if (act === 'close') this.toggle();
-    if (act === 'copy') {
-      const diff = {};
-      for (const k in CONFIG) if (CONFIG[k] !== CONFIG_DEFAULTS[k]) diff[k] = CONFIG[k];
-      const txt = JSON.stringify(Object.keys(diff).length ? diff : CONFIG, null, 1);
-      const ok = () => { btn.textContent = 'Copied!'; setTimeout(() => (btn.textContent = 'Copy values'), 1200); };
-      try { navigator.clipboard.writeText(txt).then(ok, () => this.showText(txt)); } catch (err) { this.showText(txt); }
-    }
-    if (act === 'reset') { Object.assign(CONFIG, CONFIG_DEFAULTS); this.sync(); }
-    if (act === 'report') this.showReport();
-    if (act === 'tokens') Game.tokens += 5;
-    if (act === 'refill') { Game.sim.clearParts(); Game.sim.fillPile(CONFIG.partCount); }
-    if (act === 'rare') Game.sim.queueSpawn(randomPartType({ rarity: 'legendary' }));
-    if (act === 'parts') for (let i = 0; i < 6; i++) Game.addPart(randomPartType());
-    if (act === 'win' && Engine.sceneName === 'battle') Scenes.battle.cheatWin();
-    if (act === 'stage') Game.stage++;
-  },
-  // clipboard blocked (embedded page)? show the text selected, ready for Ctrl+C
-  showText(txt) {
-    let ta = document.getElementById('dbgText');
-    if (!ta) {
-      ta = document.createElement('textarea');
-      ta.id = 'dbgText'; ta.readOnly = true;
-      this.el.querySelector('.dbg-btns').after(ta);
-    }
-    ta.value = txt;
-    ta.focus(); ta.select();
-  },
+const Platform = {
   fullscreen() {
     try {
       if (document.fullscreenElement) document.exitFullscreen();
       else { const p = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); if (p && p.catch) p.catch(() => {}); }
-    } catch (err) { /* not allowed here: fine */ }
+    } catch (err) { /* not allowed here (a frame without allow=fullscreen): fine */ }
   },
-  showReport() {
-    let r = this.reportEl;
-    if (!r) {
-      r = this.reportEl = document.createElement('div');
-      r.id = 'report';
-      r.innerHTML = '<div class="rep-head"><b>Playtest report</b><button data-r="copy">Copy</button><button data-r="close">×</button></div><pre></pre>';
-      document.body.appendChild(r);
-      r.addEventListener('click', (e) => {
-        if (e.target.dataset.r === 'close') r.classList.remove('open');
-        if (e.target.dataset.r === 'copy') {
-          const pre = r.querySelector('pre');
-          const select = () => { const sel = getSelection(), rg = document.createRange(); rg.selectNodeContents(pre); sel.removeAllRanges(); sel.addRange(rg); };
-          try { navigator.clipboard.writeText(pre.textContent).catch(select); } catch (err) { select(); }
-        }
+  // cb(true) if it landed on the clipboard. When the clipboard is blocked, show the text selected instead.
+  copy(text, cb) {
+    const fallback = () => {
+      let ta = document.getElementById('copybox');
+      if (!ta) {
+        ta = document.createElement('textarea');
+        ta.id = 'copybox'; ta.readOnly = true; ta.setAttribute('aria-label', 'Debug info: select all and copy');
+        document.body.appendChild(ta);
+        ta.addEventListener('blur', () => ta.classList.remove('open'));
+      }
+      ta.value = text; ta.classList.add('open'); ta.focus(); ta.select();
+      cb && cb(false);
+    };
+    try { navigator.clipboard.writeText(text).then(() => cb && cb(true), fallback); } catch (err) { fallback(); }
+  },
+  open(url) {
+    try { const w = window.open(url, '_blank', 'noopener'); if (w) return; } catch (err) { /* blocked */ }
+    Platform.copy(url, () => Overlays.toast('Could not open a tab. The link is on your clipboard.'));
+  },
+};
+
+const Announce = {
+  el: null,
+  say(text) {
+    if (!this.el) this.el = document.getElementById('sr');
+    if (!this.el || !text) return;
+    this.el.textContent = ''; // clearing first makes a repeated line get read again
+    setTimeout(() => { if (this.el) this.el.textContent = text; }, 30);
+  },
+};
+
+(function domLayer() {
+  if (typeof document === 'undefined') return;
+
+  // ---- a graphics card string for bug reports (what ran it, on which machine)
+  try {
+    const c = document.createElement('canvas'), gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+    const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    CrashLog.gpu = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl ? 'webgl (renderer hidden)' : 'no webgl';
+  } catch (e) { CrashLog.gpu = 'unknown'; }
+
+  // ---- the crash toast: small, dismissable, never blocks play
+  let toast = null;
+  CrashLog.onReport = (e) => {
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'crash'; toast.setAttribute('role', 'alert');
+      toast.innerHTML = '<b>Something broke.</b> <span data-msg></span> The game is still running. <button data-a="copy">Copy report</button> <button data-a="issue">Report on GitHub</button> <button data-a="x" aria-label="Dismiss">×</button>';
+      document.body.appendChild(toast);
+      toast.addEventListener('click', (ev) => {
+        const a = ev.target.dataset && ev.target.dataset.a;
+        if (a === 'x') toast.classList.remove('open');
+        if (a === 'copy') Platform.copy(CrashLog.text('Crash report'), (ok) => { ev.target.textContent = ok ? 'Copied' : 'Select and copy'; });
+        if (a === 'issue') Platform.open(CrashLog.issueUrl());
       });
     }
-    r.querySelector('pre').textContent = Telemetry.report();
-    r.classList.toggle('open');
-  },
-  update() {},
-};
+    toast.querySelector('[data-msg]').textContent = '(' + e.msg.slice(0, 80) + ')';
+    toast.classList.add('open');
+  };
+  window.addEventListener('error', (ev) => CrashLog.report(ev.error || ev.message, 'window'));
+  window.addEventListener('unhandledrejection', (ev) => CrashLog.report(ev.reason, 'promise'));
+
+  // ---- the run survives a closed tab, a refresh, a crash: save whenever the page is about to go away
+  const flush = () => { try { Save.flush(); } catch (e) { /* nothing more to do */ } };
+  window.addEventListener('pagehide', flush);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    flush();
+    // a hidden tab pauses the game for you: come back to the pause menu, not to a fight that kept going
+    if (typeof Engine !== 'undefined' && Engine.scene && !Engine.overlays.length && Engine.scene.pausable !== false && Engine.sceneName !== 'shop') Overlays.pause();
+  });
+
+  // ---- the on-page Menu button: the only way to pause on a phone
+  const btn = document.getElementById('menuBtn');
+  if (btn) btn.addEventListener('click', () => {
+    if (typeof Engine === 'undefined' || !Engine.scene) return;
+    if (Engine.overlays.length) { const t = Engine.top; if (t && t.pausePanel) Engine.close(); return; }
+    if (Engine.scene.pausable !== false && !Engine.trans) Overlays.pause();
+    const c = document.getElementById('game'); if (c) c.focus({ preventScroll: true });
+  });
+
+  // ---- the hint line under the canvas follows the player's own keys
+  window.refreshHint = () => {
+    const el = document.getElementById('hint');
+    if (!el) return;
+    const k = (a) => `<kbd>${Settings.hint(a)}</kbd>`;
+    el.innerHTML = `Click the game once so it gets your keys. ${k('left')} ${k('right')} steer · ${k('a')} drop · ${k('pause')} pause · ${k('mute')} mute · ${k('fullscreen')} fullscreen. Mouse and touch work too: hold on the glass to steer.`;
+  };
+})();
 
 // ==== 98_fallbacks.js ====
 // ---------------------------------------------------------------------------
@@ -8921,7 +9804,7 @@ const Debug = {
 // ---------------------------------------------------------------------------
 if (typeof AudioSys === 'undefined') window.AudioSys = { init() {}, toggleMute() {}, setMuted() {}, setVolumes() {}, muted: false, ctx: null };
 if (typeof Sfx === 'undefined') window.Sfx = { play() {}, motor() {}, voice() {} };
-if (typeof Music === 'undefined') window.Music = { play() {}, stop() {}, duck() {} };
+if (typeof Music === 'undefined') window.Music = { play() {}, stop() {}, duck() {}, dim() {} };
 if (typeof BG === 'undefined') {
   window.BG = {
     fill(ctx, c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); },
@@ -8934,30 +9817,42 @@ if (typeof BG === 'undefined') {
 
 // ==== 99_main.js ====
 // ---------------------------------------------------------------------------
-// BOOT — ?scene=claw|slab|battle|shop jumps straight in; ?seed=123 for a fixed
-// pile; ?parts=1 starts with a bag of parts; ?party=1 with a ready creature.
+// BOOT — load the save, build the world, show the title. In a dev build (dev.html) the URL can also jump
+// straight in: ?scene=claw|slab|battle|shop, ?seed=123 for a fixed pile, ?parts=1, ?party=1, ?tokens=30.
+// Those flags, the tuning panel and window.__game do not exist in the page players get (BUILD.dev is false).
 // ---------------------------------------------------------------------------
 (function boot() {
   const start = () => {
     const Q = new URLSearchParams(location.search);
-    if (Q.get('seed')) RNG = mulberry32(+Q.get('seed'));
+    const dev = BUILD.dev;
+    if (dev && Q.get('seed')) RNG = mulberry32(+Q.get('seed'));
+    Save.load();
+    CrashLog.init();
     Engine.init();
-    Debug.build();
+    Settings.apply();
+    if (dev) Debug.build();
     if (BG.prebuild) BG.prebuild();
     Game.newGame();
     for (const k in Scenes) Engine.add(k, Scenes[k]);
-    if (Q.get('parts')) for (const t of ['skull', 'ribcage', 'bonearm', 'fleshArm', 'boneleg', 'goatleg', 'heart', 'wolfskull', 'tentacle', 'wings', 'ogrearm', 'pegleg']) Game.addPart(t);
-    if (Q.get('party')) {
-      Game.party.push(new Creature({ head: 'skull', torso: 'ribcage', armL: 'swordarm', armR: 'bonearm', legL: 'boneleg', legR: 'boneleg', heart: 'heart' }));
-      Game.party.push(new Creature({ head: 'wolfskull', torso: 'ogregut', armL: 'ogrearm', armR: 'clawarm', legL: 'goatleg', legR: 'pegleg' }));
+    let first = null;
+    if (dev) {
+      if (Q.get('parts')) for (const t of ['skull', 'ribcage', 'bonearm', 'fleshArm', 'boneleg', 'goatleg', 'heart', 'wolfskull', 'tentacle', 'wings', 'ogrearm', 'pegleg']) Game.addPart(t);
+      if (Q.get('party')) {
+        Game.party.push(new Creature({ head: 'skull', torso: 'ribcage', armL: 'swordarm', armR: 'bonearm', legL: 'boneleg', legR: 'boneleg', heart: 'heart' }));
+        Game.party.push(new Creature({ head: 'wolfskull', torso: 'ogregut', armL: 'ogrearm', armR: 'clawarm', legL: 'goatleg', legR: 'pegleg' }));
+      }
+      if (Q.get('tokens')) Game.tokens = +Q.get('tokens');
+      if (Q.get('stage')) Game.stage = +Q.get('stage');
+      first = Q.get('scene');
+      Save.enabled = !Q.get('nosave') && !first; // a jump-in URL must never overwrite a real save
     }
-    if (Q.get('tokens')) Game.tokens = +Q.get('tokens');
-    const first = Q.get('scene') || 'shop';
-    Engine.go(Scenes[first] ? first : 'shop', { skipIntro: !!Q.get('scene') }, 'cut');
+    Engine.go(first && Scenes[first] ? first : 'shop', { skipIntro: !!first }, 'cut');
+    if (!first) Overlays.title();
     const boot = document.getElementById('boot');
     if (boot) boot.remove();
+    if (window.refreshHint) window.refreshHint();
     requestAnimationFrame((n) => Engine.loop(n));
-    window.__game = { Game, Engine, CONFIG, Scenes, Telemetry, Input };
+    if (dev) window.__game = { Game, Engine, CONFIG, Scenes, Telemetry, Input, Save, Settings, Overlays, CrashLog, BUILD };
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();

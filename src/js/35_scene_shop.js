@@ -37,19 +37,27 @@ Scenes.shop = (() => {
       else if (Game.stage > 1 && !Game.seen['stage' + Game.stage]) { Game.seen['stage' + Game.stage] = 1; say(vpick(['Welcome back, champion. The machine restocked itself. Funny, that.', 'Fresh parts in the machine. Some of them are your old friends.']), 3.5); }
       else if (vchance(0.5)) say(vpick(['Welcome back.', 'Good parts make great friends.', 'The machine missed you. It told me.']), 2.4);
     }
+    if (params && params.title) { opened = false; titleT = 0; } // back to the title screen: the Reaper waits for the player again
     if (params && params.skipIntro) open();
   };
 
-  function open() {
+  // The title screen (36_menu.js) calls this when the player picks START or CONTINUE.
+  function open(resumed) {
     if (opened) return;
     opened = true;
     AudioSys.init();
     Sfx.play('coin');
-    say('Good parts make great friends.', 2.4);
-    Game.talk.say(`Here. ${Game.tokens} tokens. The first ones are always free.`, 3.2, false);
+    if (resumed) {
+      say('Welcome back. I kept your place.', 2.6);
+      Game.talk.say(`${Game.tokens} tokens. Stage ${Game.stage}. Shall we?`, 3, false);
+    } else {
+      say('Good parts make great friends.', 2.4);
+      Game.talk.say(`Here. ${Game.tokens} tokens. The first ones are always free.`, 3.2, false);
+    }
     tokenPop = 1;
     Telemetry.log('open');
   }
+  S.open = open;
 
   function goClaw() {
     if (zoom) return;
@@ -69,7 +77,6 @@ Scenes.shop = (() => {
     lean = approach(lean, Game.talk.visible() ? 1 : 0, dt * 3);
     if (!opened) {
       titleT += dt;
-      if (Input.anyPressed || Input.mouse.pressed) open();
       UI.set([]);
       return;
     }
@@ -207,15 +214,6 @@ Scenes.shop = (() => {
     if (Game.talk.visible()) Game.talk.drawBubble(ctx, REAPER_X - 70, 150, 170, REAPER_X - 8, 158, { anchorBottom: true });
     fx.draw(ctx);
     ctx.restore();
-    // title overlay
-    if (!opened) {
-      ctx.fillStyle = 'rgba(14,11,22,0.45)'; ctx.fillRect(0, 0, W, H);
-      const k = clamp(titleT / 0.8, 0, 1);
-      Font.draw(ctx, 'THE GOOD PARTS', 240, 92 - Math.round((1 - easeOutBack(k)) * 30), { scale: 4, color: '#fff1d6', outline: '#3a0c20', shadow: '#b0224a', align: 'center', alpha: k });
-      Font.draw(ctx, 'a claw machine necromancer prototype', 240, 132, { color: '#cdb892', align: 'center', alpha: k, outline: PAL.k });
-      if (Math.sin(t * 4) > -0.2) Font.draw(ctx, Input.lastDevice === 'touch' ? 'TAP TO OPEN THE SHOP' : 'CLICK OR PRESS ANY KEY', 240, 176, { color: '#ff8ac6', align: 'center', outline: PAL.k });
-      Font.draw(ctx, '← →  MOVE    SPACE  DROP    ESC  BACK    M  MUTE    F  FULLSCREEN', 240, 252, { font: 'small', color: '#7a6a9a', align: 'center' });
-    }
   };
 
   return S;

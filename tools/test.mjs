@@ -107,7 +107,7 @@ function claw() {
       const u = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
       const pool = exposedParts(sim, M);
       const target = pool[Math.floor(u() * pool.length)];
-      const r = playGrab(sim, M, { target, aimNoise: 2.5, carry, u });
+      const r = playGrab(sim, M, { target, aimNoise: 2.5, carry, u, cfg: CONFIG });
       out.push(`${carry[0]}${i}:${r.result}:${r.won.join('+') || '-'}:${r.slips}:${r.time.toFixed(2)}`);
     }
   }

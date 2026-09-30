@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 if (typeof AudioSys === 'undefined') window.AudioSys = { init() {}, toggleMute() {}, setMuted() {}, setVolumes() {}, muted: false, ctx: null };
 if (typeof Sfx === 'undefined') window.Sfx = { play() {}, motor() {}, voice() {} };
-if (typeof Music === 'undefined') window.Music = { play() {}, stop() {}, duck() {} };
+if (typeof Music === 'undefined') window.Music = { play() {}, stop() {}, duck() {}, dim() {} };
 if (typeof BG === 'undefined') {
   window.BG = {
     fill(ctx, c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); },

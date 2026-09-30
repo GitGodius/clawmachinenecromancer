@@ -25,6 +25,9 @@ Scenes.slab = (() => {
     } else if (!Game.inventory.length && !count()) say('Empty-handed? The claw awaits.', 2.5);
   };
   S.exit = function () {};
+  // Parts stitched on but not yet brought to life still belong to the player: a save counts them as bag parts.
+  S.buildTypes = () => (build ? Object.values(build).filter(Boolean).map((i) => i.type) : []);
+  S.reset = () => { build = null; life = null; selected = null; page = 0; lastStitch = null; };
 
   function stitch(item) {
     const d = PART_DEFS[item.type];
@@ -41,6 +44,7 @@ Scenes.slab = (() => {
     const pt = { head: L.neck, torso: [0, L.ty], armL: L.shL, armR: L.shR, legL: L.hipL, legR: L.hipR, heart: L.heart, back: L.back }[slot] || [0, -30];
     fx.burst(FEET_X + pt[0] * 2, FEET_Y + pt[1] * 2, 10, { speed: 50, life: 0.45, ay: 60, color: ['#9be38f', '#fff6e3', '#4fae6c'] });
     Telemetry.log('stitch', { part: item.type, slot });
+    Save.soon();
     if (vchance(0.3)) say(vpick(['Snug.', 'It fits. Mostly.', 'Needle, thread, hope.', 'Ooh, that suits them.', 'Stitch, stitch, stitch.', 'Lovely. Horrible. Lovely.']), 1.6);
     if (item.type === 'pegleg' && vchance(0.6)) say('A peg leg. Classic look. Terrible posture.', 2.2);
   }
@@ -67,6 +71,7 @@ Scenes.slab = (() => {
     const c = life.c;
     c.born = Engine.t;
     Game.party.push(c);
+    Save.soon();
     build = emptyBuild();
     life = null;
     say(vpick(['Not pretty. But it\'ll fight.', 'Look at them go. Well. Look at them.', 'It\'s alive! Ish.', 'A face only a necromancer could love.']), 3);
@@ -149,6 +154,7 @@ Scenes.slab = (() => {
             selected = null;
             Sfx.play('unstitch');
             Telemetry.c.unstitched++;
+            Save.soon();
             say(vpick([`${c.name.split(' ')[0]} is parts again. Circle of life.`, 'Back to bits. No hard feelings.']), 2.4);
           } else { selected = c; Sfx.play('ui_click'); }
         } });

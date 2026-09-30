@@ -2,8 +2,9 @@
 // Used by tools/tune.mjs, tools/test.mjs, tools/run_sim.mjs and tools/balance.mjs.
 //
 // carry styles (what a human hand does with the arrow keys while the part swings):
-//   'gentle'  eases toward the chute and stops before releasing: the careful player
-//   'jerky'   full speed, releases the moment it is roughly over the chute: the button masher
+//   'gentle'  feathers the key to hold a steady cruise, coasts in and releases when nearly still: the careful player
+//   'okay'    feathers too, but lets it run at 1.2x the steady speed: someone who half-watches the wobble
+//   'jerky'   holds the key the whole way and lets go the moment it is over the chute: the button masher
 //   'auto'    leaves it to the machine (CONFIG.carryManual = 0)
 import { clamp } from './stats.mjs';
 
@@ -21,7 +22,7 @@ export function exposedParts(sim, M) {
 }
 
 // One full grab. Returns what happened. `target` is a part from sim.parts (or null to aim at nothing).
-export function playGrab(sim, M, { target, aimNoise = 2.5, carry = 'gentle', u = Math.random, maxT = 30, hooks = {}, start } = {}) {
+export function playGrab(sim, M, { target, aimNoise = 2.5, carry = 'gentle', u = Math.random, maxT = 30, hooks = {}, start, cfg } = {}) {
   let ended = null, slips = 0, lifted = false;
   const prev = sim.onEvent;
   sim.onEvent = (t, d) => {
@@ -42,13 +43,16 @@ export function playGrab(sim, M, { target, aimNoise = 2.5, carry = 'gentle', u =
     let t = 0;
     while (!ended && t < maxT) {
       if (sim.state === 'carry') {
-        const d = M.home - sim.carX;
+        const d = M.home - sim.carX, dir = Math.sign(d), v = sim.carV * dir;
         if (carry === 'jerky') {
-          sim.input.move = Math.abs(d) < 4 ? 0 : Math.sign(d);
+          // hold the key the whole way and let go the moment it is over the chute
+          sim.input.move = Math.abs(d) < 8 ? 0 : dir;
           if (Math.abs(d) < 8) sim.press();
         } else {
-          sim.input.move = Math.abs(d) < 1.5 ? 0 : Math.sign(d) * Math.min(1, Math.abs(d) / 12);
-          if (Math.abs(d) < 2 && Math.abs(sim.carV) < 5) sim.press();
+          // feather the key to hold a steady cruise, coast in, release when nearly still
+          const cruise = cfg.swingSafe * (carry === 'okay' ? 1.2 : 0.9), brake = (v * v) / (2 * cfg.carryBrake);
+          sim.input.move = Math.abs(d) < 2 || Math.abs(d) <= brake + 2 ? 0 : v < cruise ? dir : 0;
+          if (Math.abs(d) < 8 && Math.abs(sim.carV) < 10) sim.press();
         }
       }
       sim.step(1 / 60);

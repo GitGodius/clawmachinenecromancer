@@ -1,6 +1,6 @@
 {
   "name": "the-good-parts",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Claw machine necromancer prototype - grab body parts, stitch monsters, fight.",
   "scripts": {

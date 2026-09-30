@@ -45,3 +45,11 @@ function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(RNG() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
   return arr;
 }
+
+// On/off at `hz` blinks per second, for indicators that pulse for attention. With "reduce flashing" on it
+// never goes faster than 1.5 per second (accessibility: nothing may strobe faster than 3 flashes a second).
+const blinkOn = (t, hz, duty = 0.5) => {
+  const calm = typeof Settings !== 'undefined' && Settings.v.reduceFlash;
+  const f = calm ? Math.min(hz, 1.5) : hz;
+  return (t * f) % 1 < duty;
+};

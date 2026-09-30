@@ -247,7 +247,7 @@ Scenes.battle = (() => {
 
     // HUD: stage title
     Font.draw(ctx, stageName(fightStage), 472, 7, { align: 'right', color: '#cdb892', shadow: PAL.k });
-    Font.draw(ctx, 'Stage ' + fightStage + (fightStage % 5 === 0 ? '  ·  BOSS' : ''), 472, 18, { align: 'right', color: '#a6aec2', shadow: PAL.k });
+    Font.draw(ctx, stageTitle(fightStage), 472, 18, { align: 'right', color: '#a6aec2', shadow: PAL.k });
     if (SPR.has('ico_token')) SPR.draw(ctx, 'ico_token', 12, 12);
     Font.draw(ctx, String(Game.tokens + (phase === 'fight' ? sim.goldKills : 0)), 20, 8, { color: PAL.L, shadow: PAL.k });
 
