@@ -190,8 +190,8 @@ const Engine = {
       this.shakeT -= realDt;
       const k = Math.max(0, this.shakeT / this.shakeDur);
       const m = this.shakeMag * k;
-      this.shakeX = Math.round(rand(-m, m));
-      this.shakeY = Math.round(rand(-m, m));
+      this.shakeX = Math.round(vrand(-m, m));
+      this.shakeY = Math.round(vrand(-m, m));
     } else { this.shakeX = this.shakeY = 0; }
 
     // draw
@@ -232,14 +232,14 @@ class Particles {
   }
   burst(x, y, n, opts) {
     for (let i = 0; i < n; i++) {
-      const a = opts.angle != null ? opts.angle + rand(-opts.spread || 0, opts.spread || 0) : rand(0, Math.PI * 2);
-      const sp = rand(opts.speed * 0.4, opts.speed);
+      const a = opts.angle != null ? opts.angle + vrand(-opts.spread || 0, opts.spread || 0) : vrand(0, Math.PI * 2);
+      const sp = vrand(opts.speed * 0.4, opts.speed);
       this.add(Object.assign({}, opts, {
-        x: x + rand(-(opts.jitter || 0), opts.jitter || 0), y: y + rand(-(opts.jitter || 0), opts.jitter || 0),
+        x: x + vrand(-(opts.jitter || 0), opts.jitter || 0), y: y + vrand(-(opts.jitter || 0), opts.jitter || 0),
         vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-        color: Array.isArray(opts.color) ? pick(opts.color) : opts.color,
-        life: rand((opts.life || 0.6) * 0.6, opts.life || 0.6),
-        size: opts.sizes ? pick(opts.sizes) : opts.size || 1,
+        color: Array.isArray(opts.color) ? vpick(opts.color) : opts.color,
+        life: vrand((opts.life || 0.6) * 0.6, opts.life || 0.6),
+        size: opts.sizes ? vpick(opts.sizes) : opts.size || 1,
       }));
     }
   }
@@ -437,7 +437,7 @@ class Talker {
     this.queue = [];
     this.text = text; this.shown = 0; this.t = 0; this.hold = hold;
   }
-  sayRandom(lines, hold) { this.say(pick(lines), hold); }
+  sayRandom(lines, hold) { this.say(vpick(lines), hold); }
   busy() { return this.text && this.shown < this.text.length; }
   update(dt) {
     if (!this.text) { if (this.queue.length) this.say(...this.queue.shift()); return; }

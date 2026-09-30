@@ -123,7 +123,7 @@ class ClawSim {
   // ------------------------------------------------------------ parts
   spawnPart(type, x, y, angle = 0, vel) {
     const pl = planck, V = pl.Vec2, def = PART_DEFS[type];
-    const part = { uid: _partUid++, type, def, bodies: [], won: false, removed: false, liftY0: 0, bornT: this.time, glowT: RNG() * 10 };
+    const part = { uid: _partUid++, type, def, bodies: [], won: false, removed: false, liftY0: 0, bornT: this.time, glowT: VRNG() * 10 };
     const fix = {
       density: (def.density || 1) * CONFIG.partDensity,
       friction: CONFIG.partFriction * (def.mat === 'squish' ? 0.55 : 1),

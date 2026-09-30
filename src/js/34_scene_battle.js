@@ -30,6 +30,7 @@ Scenes.battle = (() => {
   const debris = new Particles();
   let t = 0, units = [], phase = 'ready', result = null, zapCd = 0, menuSel = 0, logLines = [], resultT = 0;
   let coinsShown = 0, reward = 0, restocked = [], bolts = [], fightStage = 1;
+  let later = []; // delayed combat actions (the tail's second strike), on battle time so they work headless too
   const say = (x, h) => Game.talk.say(x, h);
   const allies = () => units.filter((u) => u.team === 'ally');
   const enemies = () => units.filter((u) => u.team === 'enemy');
@@ -41,7 +42,7 @@ Scenes.battle = (() => {
       team: 'ally', c, name: c.name.split(' ')[0], x: 120 - i * 38, y: GROUND + [0, 11, -11][i],
       hp: c.hp, maxHp: c.maxHp, atk: c.atk, def: c.def, atkTime: c.atkTime, speed: c.moveSpeed, range: c.range,
       dodge: c.dodge, crit: c.crit, traits: c.traits, cd: rand(0.1, 0.5), state: 'idle', animT: 0, flashT: 0, kx: 0,
-      stunT: 0, bleedT: 0, burnT: 0, hasteT: 0, hits: 0, revived: false, dead: false, bob: rand(0, 6),
+      stunT: 0, bleedT: 0, burnT: 0, hasteT: 0, hits: 0, revived: false, dead: false, bob: vrand(0, 6),
     };
   }
   function makeEnemy(kind, i, n) {
@@ -52,12 +53,12 @@ Scenes.battle = (() => {
       team: 'enemy', kind, K, name: K.name, x: 350 + i * 36 + (K.boss ? 20 : 0), y: GROUND + [0, 11, -11, 5, -5][i % 5],
       hp, maxHp: hp, atk: K.atk * m * CONFIG.enemyAtk, def: 0, atkTime: K.atkTime, speed: K.speed, range: K.range,
       dodge: K.dodge, crit: 0.05, traits: [], cd: rand(0.3, 0.9), state: 'idle', animT: 0, flashT: 0, kx: 0,
-      stunT: 0, bleedT: 0, burnT: 0, hasteT: 0, hits: 0, dead: false, bob: rand(0, 6),
+      stunT: 0, bleedT: 0, burnT: 0, hasteT: 0, hits: 0, dead: false, bob: vrand(0, 6),
     };
   }
 
   S.enter = function () {
-    t = 0; phase = 'ready'; result = null; zapCd = 0; menuSel = 0; logLines = []; resultT = 0; bolts = []; fightStage = Game.stage;
+    t = 0; phase = 'ready'; result = null; zapCd = 0; menuSel = 0; logLines = []; resultT = 0; bolts = []; fightStage = Game.stage; later = [];
     fx.list = []; debris.list = [];
     units = [];
     Game.party.filter((c) => c.hp > 0).slice(0, 3).forEach((c, i) => units.push(makeAlly(c, i)));
@@ -67,7 +68,7 @@ Scenes.battle = (() => {
     const boss = kinds.includes('wraith');
     say(Game.stage === 1 ? 'Your creations fight for you. Give them better parts.' :
       boss ? 'That\'s a Wraith. It owes me money. Bring friends. Three of them, ideally.' :
-      pick(['Stage ' + Game.stage + '. The shades are getting braver.', 'Back again? The graveyard remembers you.', 'Chin up, bones out.']), 3.8);
+      vpick(['Stage ' + Game.stage + '. The shades are getting braver.', 'Back again? The graveyard remembers you.', 'Chin up, bones out.']), 3.8);
     Telemetry.c.battles++;
     Telemetry.log('battle', { stage: Game.stage, party: units.filter((u) => u.team === 'ally').length, enemies: kinds.join(',') });
   };
@@ -88,7 +89,7 @@ Scenes.battle = (() => {
     Sfx.play('thunder');
     Engine.flash('#c2f5ff', 0.2);
     Engine.shake(3, 0.3);
-    bolts = alive(allies()).map((u) => ({ x: u.x, y: u.y, t: 0, seed: randInt(1, 999) }));
+    bolts = alive(allies()).map((u) => ({ x: u.x, y: u.y, t: 0, seed: vrandInt(1, 999) }));
     for (const u of alive(allies())) {
       const heal = Math.round(u.maxHp * 0.3);
       u.hp = Math.min(u.maxHp, u.hp + heal);
@@ -136,11 +137,11 @@ Scenes.battle = (() => {
     def.flashT = 0.12;
     def.kx = (def.x > att.x ? 1 : -1) * (crit ? 120 : 60);
     const col = crit ? PAL.L : isAlly ? '#fff6e3' : PAL.r;
-    fx.text(def.x + rand(-4, 4), def.y - bodyH(def) - 4, crit ? dmg + '!' : String(dmg), col, { font: crit ? 'main' : 'small', scale: crit ? 2 : 1 });
+    fx.text(def.x + vrand(-4, 4), def.y - bodyH(def) - 4, crit ? dmg + '!' : String(dmg), col, { font: crit ? 'main' : 'small', scale: crit ? 2 : 1 });
     if (def.team === 'enemy') fx.burst(def.x, def.y - bodyH(def) / 2, crit ? 12 : 6, { speed: 60, ay: -20, drag: 2, life: 0.5, color: ['#1b1526', '#33274a', '#5b4a78'], sizes: [1, 2] });
     else fx.burst(def.x, def.y - bodyH(def) / 2, crit ? 10 : 5, { speed: 70, ay: 200, life: 0.5, color: ['#fff6e3', '#cdb892', '#e8405a'], floor: def.y });
     Sfx.play(def.team === 'enemy' ? 'enemy_hit' : 'hit', { crit, intensity: crit ? 1 : 0.7 });
-    if (crit) { Engine.hitPause(0.05); Engine.shake(2.5, 0.15); if (chance(0.5)) log(`${att.name} crits for ${dmg}!`); }
+    if (crit) { Engine.hitPause(0.05); Engine.shake(2.5, 0.15); if (vchance(0.5)) log(`${att.name} crits for ${dmg}!`); }
     // traits
     if (isAlly) {
       if (att.traits.includes('bite')) { const h = Math.round(dmg * 0.3); att.hp = Math.min(att.maxHp, att.hp + h); if (h) fx.text(att.x, att.y - bodyH(att) - 10, '+' + h, '#9be38f'); }
@@ -167,7 +168,7 @@ Scenes.battle = (() => {
       Sfx.play('enemy_die');
       Engine.shake(u.K.boss ? 6 : 2, 0.3);
       if (u.K.boss) { Engine.hitPause(0.15); Engine.flash('#ff4040', 0.2); }
-      for (let i = 0; i < 24 + (u.K.boss ? 40 : 0); i++) fx.add({ x: u.x + rand(-10, 10), y: u.y - rand(0, bodyH(u)), vx: rand(-20, 20), vy: rand(-50, -10), drag: 1.5, life: rand(0.6, 1.3), color: pick(['#0e0b16', '#1b1526', '#33274a', '#ff4040']), size: pick([1, 2, 2, 3]) });
+      for (let i = 0; i < 24 + (u.K.boss ? 40 : 0); i++) fx.add({ x: u.x + vrand(-10, 10), y: u.y - vrand(0, bodyH(u)), vx: vrand(-20, 20), vy: vrand(-50, -10), drag: 1.5, life: vrand(0.6, 1.3), color: vpick(['#0e0b16', '#1b1526', '#33274a', '#ff4040']), size: vpick([1, 2, 2, 3]) });
       if (by && by.traits.includes('golden')) { Game.tokens++; fx.text(u.x, u.y - 30, '+1 TOKEN', PAL.L, { font: 'main' }); }
       if (by) log(`${by.name} dispatched a ${u.name}.`);
       if (by && by.c) by.c.kills++;
@@ -182,11 +183,11 @@ Scenes.battle = (() => {
         if (!type) continue;
         const d = PART_DEFS[type];
         const p = at[slot] || [0, -20];
-        debris.add({ kind: 'spr', spr: d.chain ? 'p_vert' : d.sprite, x: u.x + p[0], y: u.y + p[1], vx: rand(-90, 90), vy: rand(-170, -80), ay: 520, vr: rand(-10, 10), life: 3.2, floor: u.y + rand(-2, 3), bounce: 0.4, fade: true });
+        debris.add({ kind: 'spr', spr: d.chain ? 'p_vert' : d.sprite, x: u.x + p[0], y: u.y + p[1], vx: vrand(-90, 90), vy: vrand(-170, -80), ay: 520, vr: vrand(-10, 10), life: 3.2, floor: u.y + vrand(-2, 3), bounce: 0.4, fade: true });
       }
       fx.burst(u.x, u.y - 30, 16, { speed: 90, ay: 300, life: 0.8, color: ['#fff6e3', '#cdb892', '#e8405a'], floor: u.y });
       log(`${u.name} fell apart. Literally.`);
-      say(pick(['I\'ll put those back in the machine.', 'Back to the pile with you.', 'Nothing\'s wasted here.']), 2.2);
+      say(vpick(['I\'ll put those back in the machine.', 'Back to the pile with you.', 'Nothing\'s wasted here.']), 2.2);
     }
   }
 
@@ -219,7 +220,7 @@ Scenes.battle = (() => {
       Game.stage++;
       Sfx.play('victory');
       Music.duck(0.8, 2.5);
-      say(pick(['The graveyard provides.', 'Look at them. My little war crimes.', 'Victory! Mostly intact, even.']), 3);
+      say(vpick(['The graveyard provides.', 'Look at them. My little war crimes.', 'Victory! Mostly intact, even.']), 3);
     } else if (kind === 'lose') {
       reward = 1;
       Telemetry.c.defeats++;
@@ -247,14 +248,16 @@ Scenes.battle = (() => {
     const bdt = dt * CONFIG.battleSpeed;
     if (phase === 'fight') {
       zapCd = Math.max(0, zapCd - bdt);
+      for (const a of later) a.t -= bdt;
+      later = later.filter((a) => { if (a.t > 0) return true; a.fn(); return false; });
       for (const u of units) {
         if (u.dead) continue;
         u.flashT = Math.max(0, u.flashT - dt);
         u.x += u.kx * bdt; u.kx *= Math.exp(-10 * bdt);
         u.x = clamp(u.x, 20, 460);
         // status effects
-        if (u.bleedT > 0) { u.bleedT -= bdt; u.hp -= 2 * bdt; if (chance(bdt * 4)) fx.add({ x: u.x + rand(-4, 4), y: u.y - bodyH(u) / 2, vy: 30, ay: 100, life: 0.4, color: '#e8405a' }); }
-        if (u.burnT > 0) { u.burnT -= bdt; u.hp -= 3 * bdt; if (chance(bdt * 10)) fx.add({ x: u.x + rand(-6, 6), y: u.y - rand(4, bodyH(u)), vy: -30, life: 0.4, color: pick([PAL.A, PAL.L, PAL.R]) }); }
+        if (u.bleedT > 0) { u.bleedT -= bdt; u.hp -= 2 * bdt; if (vchance(bdt * 4)) fx.add({ x: u.x + vrand(-4, 4), y: u.y - bodyH(u) / 2, vy: 30, ay: 100, life: 0.4, color: '#e8405a' }); }
+        if (u.burnT > 0) { u.burnT -= bdt; u.hp -= 3 * bdt; if (vchance(bdt * 10)) fx.add({ x: u.x + vrand(-6, 6), y: u.y - vrand(4, bodyH(u)), vy: -30, life: 0.4, color: vpick([PAL.A, PAL.L, PAL.R]) }); }
         if (u.team === 'ally' && (u.traits.includes('regen') || u.traits.includes('golden'))) u.hp = Math.min(u.maxHp, u.hp + u.maxHp * (u.traits.includes('golden') ? 0.03 : 0.02) * bdt);
         if (u.hp <= 0) { kill(u, null); continue; }
         if (u.stunT > 0) { u.stunT -= bdt; u.state = 'idle'; continue; }
@@ -277,7 +280,7 @@ Scenes.battle = (() => {
               Sfx.play('zap', { intensity: 0.5, pitch: 0.7 });
             } else if (dist <= u.range + 8) {
               dealHit(u, f);
-              if (u.traits.includes('whip') && chance(0.25)) setTimeout(() => { if (!f.dead && !u.dead) dealHit(u, f, { mult: 0.6 }); }, 180);
+              if (u.traits.includes('whip') && chance(0.25)) later.push({ t: 0.18, fn: () => { if (!f.dead && !u.dead) dealHit(u, f, { mult: 0.6 }); } });
             } else Sfx.play('swing');
           }
           if (u.animT >= 1) { u.state = 'idle'; u.animT = 0; }
@@ -286,7 +289,7 @@ Scenes.battle = (() => {
           u.x += dir * u.speed * bdt * haste;
         } else {
           u.state = 'idle';
-          if (u.cd <= 0) { u.state = 'attack'; u.animT = 0; u.cd = u.atkTime; if (u.team === 'enemy' || chance(0.5)) Sfx.play('swing', { intensity: 0.4 }); }
+          if (u.cd <= 0) { u.state = 'attack'; u.animT = 0; u.cd = u.atkTime; if (u.team === 'enemy' || vchance(0.5)) Sfx.play('swing', { intensity: 0.4 }); }
         }
       }
       // keep teammates from stacking
@@ -301,7 +304,7 @@ Scenes.battle = (() => {
       // projectiles (hellfire)
       for (const p of fx.list) {
         if (p.kind !== 'proj' || p.done) continue;
-        if (chance(0.6)) fx.add({ x: p.x, y: p.y + rand(-2, 2), vx: -p.vx * 0.05, vy: rand(-10, 10), life: 0.25, color: pick([PAL.A, PAL.L, PAL.R]) });
+        if (vchance(0.6)) fx.add({ x: p.x, y: p.y + vrand(-2, 2), vx: -p.vx * 0.05, vy: vrand(-10, 10), life: 0.25, color: vpick([PAL.A, PAL.L, PAL.R]) });
         if (p.target.dead) { p.life = 0; continue; }
         if (Math.abs(p.x - p.target.x) < 8) { p.done = true; p.life = 0; dealHit(p.from, p.target, { mult: 1.6, fire: true }); fx.burst(p.x, p.y, 10, { speed: 50, life: 0.4, color: [PAL.A, PAL.L] }); }
       }
@@ -374,11 +377,11 @@ Scenes.battle = (() => {
     for (const u of order) {
       if (u.team === 'ally') {
         drawCreature(ctx, u.c.slots, u.x, u.y, { t: t + u.bob, anim: phase === 'fight' ? u.state : 'idle', animT: u.animT, flash: u.flashT > 0, eyes: u.hasteT > 0 ? '#c2f5ff' : '#9be38f', lookX: 1 });
-        if (u.hasteT > 0 && chance(0.3)) fx.add({ x: u.x - 10, y: u.y - rand(5, 40), vx: -60, life: 0.2, color: '#c2f5ff' });
+        if (u.hasteT > 0 && vchance(0.3)) fx.add({ x: u.x - 10, y: u.y - vrand(5, 40), vx: -60, life: 0.2, color: '#c2f5ff' });
       } else drawEnemy(ctx, u);
     }
     for (const u of order) if (phase !== 'done' || u.team === 'ally') drawBar(ctx, u);
-    for (const b of bolts) Draw.bolt(ctx, b.x + rand(-20, 20), 0, b.x, b.y - 30, '#e7f7ff', 9, b.seed + Math.floor(b.t * 30));
+    for (const b of bolts) Draw.bolt(ctx, b.x + vrand(-20, 20), 0, b.x, b.y - 30, '#e7f7ff', 9, b.seed + Math.floor(b.t * 30));
     fx.draw(ctx);
     // projectiles
     for (const p of fx.list) if (p.kind === 'proj') { Draw.glow(ctx, p.x, p.y, 10, '#ffb070', 0.5); Draw.rect(ctx, p.x - 2, p.y - 2, 4, 4, PAL.L); Draw.rect(ctx, p.x - 1, p.y - 1, 2, 2, '#fff'); }

@@ -82,7 +82,7 @@ class Creature {
     else if ((S.legL === 'pegleg') !== (S.legR === 'pegleg') && S.legL && S.legR) title = 'the Lopsided';
     else if (count((d) => d.mat === 'bone') >= 4) title = 'the Rattly';
     else if (!S.heart && t.length >= 5) title = 'the Heartless';
-    return pick(CREATURE_NAMES) + ' ' + (title || pick(TITLE_FALLBACK));
+    return vpick(CREATURE_NAMES) + ' ' + (title || vpick(TITLE_FALLBACK));
   }
 }
 
