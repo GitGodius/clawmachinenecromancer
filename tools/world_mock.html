@@ -1,0 +1,113 @@
+<!doctype html><html><head><meta charset="utf-8"><title>World mock</title>
+<!-- True-size readability check for src/js/06_sprites_world.js: a 480x270 canvas
+     (the game's resolution) scaled 3x with nearest-neighbour.
+     ?t=<ms>   freeze animation at that time (for screenshots)
+     ?s=<n>    display scale (default 3) -->
+<style>html,body{margin:0;background:#07050b}canvas{display:block;image-rendering:pixelated}</style></head>
+<body><canvas id="c" width="480" height="270"></canvas>
+<script src="../src/js/03_palette.js"></script>
+<script src="../src/js/04_sprites_core.js"></script>
+<script src="../src/js/06_sprites_world.js"></script>
+<script>
+const Q = new URLSearchParams(location.search);
+const SCALE = +(Q.get('s') || 3);
+const FIXED_T = Q.get('t') != null ? +Q.get('t') : null;
+const cv = document.getElementById('c');
+cv.style.width = 480 * SCALE + 'px'; cv.style.height = 270 * SCALE + 'px';
+const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+const has = (n) => SPR.has(n);
+const D = (n, x, y, o) => { if (has(n)) SPR.draw(g, n, x, y, o); };
+const R = (c, x, y, w, h) => { g.fillStyle = PAL[c] || c; g.fillRect(x, y, w, h); };
+const pick = (names, t, ms) => { const ok = names.filter(has); return ok.length ? ok[Math.floor(t / ms) % ok.length] : null; };
+
+const COUNTER = 170;   // counter top line in the shop
+
+function shop(t) {
+  // back wall: dark planks
+  R('K', 0, 0, 240, 270);
+  for (let x = 0; x < 240; x += 16) { R('1', x, 0, 15, COUNTER); R('K', x + 15, 0, 1, COUNTER); }
+  R('U', 0, 0, 240, 6); R('u', 0, 6, 240, 1);
+  // bunting
+  for (let i = 0; i < 12; i++) D(i % 2 ? 'bunting_b' : 'bunting_a', 14 + i * 19, 7 + (i % 3 === 1 ? 1 : 0));
+  // shelves
+  R('u', 20, 70, 90, 3); R('U', 20, 73, 90, 1);
+  R('u', 20, 110, 90, 3); R('U', 20, 113, 90, 1);
+  const jars = ['jar_eye', 'jar_brain', 'potion_red', 'jar_green', 'bottle_tall', 'skull_small'];
+  jars.forEach((n, i) => D(n, 30 + i * 14, 70));
+  ['jar_finger', 'books', 'potion_purple', 'skull_small', 'jar_eye'].forEach((n, i) => D(n, 30 + i * 16, 110));
+  // lantern hanging
+  R('k', 190, 7, 1, 30); D('lantern', 190, 37);
+  // reaper
+  const rt = t % 6000;
+  let rn = 'reaper_idle';
+  if (rt > 1000 && rt < 2600) rn = Math.floor(t / 140) % 2 ? 'reaper_talk' : 'reaper_idle';
+  if (rt > 3000 && rt < 3130) rn = 'reaper_blink';
+  if (rt > 4200 && rt < 5200) rn = 'reaper_lean';
+  if (!has(rn)) rn = 'reaper_idle';
+  D(rn, 140, COUNTER + 6);
+  // counter
+  R('t', 60, COUNTER, 180, 1); R('T', 60, COUNTER + 1, 180, 2); R('u', 60, COUNTER + 3, 180, 1);
+  R('u', 60, COUNTER + 4, 180, 46); R('U', 60, COUNTER + 4, 180, 1);
+  for (let x = 66; x < 240; x += 30) R('U', x, COUNTER + 8, 1, 40);
+  R('k', 59, COUNTER, 1, 50);
+  // candle + flame
+  D('candle', 88, COUNTER);
+  if (has('candle')) { const s = SPR.get('candle'); const w = s.pts.wick || [s.ax, 0]; D(pick(['flame_0', 'flame_1', 'flame_2'], t, 120), 88 - s.ax + w[0], COUNTER - s.ay + w[1]); }
+  // cat + tail
+  if (has('cat_sit')) {
+    const cs = SPR.get('cat_sit'); const tb = cs.pts.tail || [cs.w - 1, cs.h - 2];
+    D(pick(['cat_tail0', 'cat_tail1', 'cat_tail2', 'cat_tail1'], t, 260), 206 - cs.ax + tb[0], COUNTER - cs.ay + tb[1]);
+    D((t % 4000) < 150 ? 'cat_blink' : 'cat_sit', 206, COUNTER);
+  }
+  // speech portrait
+  if (has('reaper_face')) {
+    R('W', 8, 186, 120, 24); R('k', 8, 186, 120, 1); R('k', 8, 209, 120, 1); R('k', 8, 186, 1, 24); R('k', 127, 186, 1, 24);
+    D((t % 400) < 200 ? 'reaper_face' : 'reaper_face_talk', 20, 198);
+  }
+}
+
+function graveyard(t) {
+  R('1', 240, 0, 240, 270);
+  R('2', 240, 120, 240, 150);
+  // moon
+  g.fillStyle = '#9e4a6a'; g.beginPath(); g.arc(410, 40, 16, 0, 7); g.fill();
+  // far silhouettes
+  R('K', 240, 150, 240, 40);
+  const GROUND = 205;
+  R('3', 240, GROUND, 240, 1); R('2', 240, GROUND + 1, 240, 65);
+  D('dead_tree', 272, GROUND);
+  for (let x = 240; x < 480; x += 16) if (has('fence')) D('fence', x + 8, GROUND - 22);
+  D('tomb_a', 300, GROUND); D('tomb_b', 318, GROUND); D('tomb_c', 454, GROUND); D('grave_mound', 300, GROUND + 1);
+  D('crow', 262, GROUND - 38);
+  D(pick(['crow_fly0', 'crow_fly1'], t, 160), 340 + (t / 30) % 140, 30);
+  // enemies
+  const bob = (p) => Math.round(Math.sin(t / 300 + p) * 1.5);
+  const sa = (t % 3000) > 2400;
+  D(sa ? 'shade_atk' : pick(['shade_0', 'shade_1'], t, 300), 356, GROUND - 2 + bob(0));
+  D(pick(['wisp_0', 'wisp_1'], t, 150), 392, GROUND - 16 + bob(1));
+  const wa = (t % 4000) > 3200;
+  D(wa ? 'wraith_atk' : pick(['wraith_0', 'wraith_1'], t, 400), 440, GROUND - 3 + bob(2));
+  // a friendly monster stand-in on the left
+  R('W', 256, GROUND - 16, 6, 16);
+}
+
+function ui(t) {
+  R('k', 0, 222, 480, 48); R('3', 0, 222, 480, 1);
+  const icons = ['ico_token', 'ico_token_s', 'ico_heart', 'ico_sword', 'ico_boot', 'ico_shield', 'ico_bolt', 'ico_skull', 'ico_star', 'ico_lock'];
+  icons.forEach((n, i) => D(n, 12 + i * 14, 236));
+  ['btn_a', 'btn_b', 'key_left', 'key_right'].forEach((n, i) => D(n, 170 + i * 16, 236));
+  // same icons on a light panel
+  R('W', 240, 228, 150, 16);
+  icons.forEach((n, i) => D(n, 248 + i * 14, 236));
+  R('2', 400, 228, 70, 16);
+  ['btn_a', 'btn_b', 'key_left', 'key_right'].forEach((n, i) => D(n, 408 + i * 16, 236));
+}
+
+function frame(now) {
+  const t = FIXED_T != null ? FIXED_T : now;
+  g.clearRect(0, 0, 480, 270);
+  shop(t); graveyard(t); ui(t);
+  if (FIXED_T == null) requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>

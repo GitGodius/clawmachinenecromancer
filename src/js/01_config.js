@@ -1,0 +1,57 @@
+// ---------------------------------------------------------------------------
+// TUNABLES — everything worth tweaking lives here. The debug panel (press `)
+// builds sliders from CONFIG_META; "Copy values" dumps JSON you can paste back.
+// [group, key, default, min, max, step, label]
+// ---------------------------------------------------------------------------
+const CONFIG_META = [
+  ['Claw', 'clawMoveSpeed', 70, 10, 200, 2, 'Move speed (px/s)'],
+  ['Claw', 'clawAccel', 200, 50, 1500, 10, 'Move acceleration'],
+  ['Claw', 'dropSpeed', 55, 10, 200, 1, 'Drop speed'],
+  ['Claw', 'liftSpeed', 34, 5, 200, 1, 'Lift speed'],
+  ['Claw', 'closeTorque', 150, 0, 500, 5, 'Closing torque (push into pile)'],
+  ['Claw', 'gripTorque', 60, 0, 300, 2, 'Hold torque after lift'],
+  ['Claw', 'closeSpeed', 3.2, 0.5, 12, 0.1, 'Close speed (rad/s)'],
+  ['Claw', 'closeTime', 0.7, 0.1, 2, 0.05, 'Close time (s)'],
+  ['Claw', 'closeFriction', 0.08, 0, 1.5, 0.02, 'Prong friction while closing'],
+  ['Claw', 'prongFriction', 1.0, 0, 3, 0.05, 'Prong friction while holding'],
+  ['Claw', 'grabChance', 0.9, 0, 1, 0.02, 'Grab chance (part in claw, centered)'],
+  ['Claw', 'slipBase', 0.05, 0, 1, 0.01, 'Slip chance /s while carrying'],
+  ['Claw', 'swingSlip', 1.6, 0, 5, 0.05, 'Extra slip from swinging it around'],
+  ['Claw', 'swingSafe', 30, 0, 120, 1, 'Swing speed that is still safe (px/s)'],
+  ['Claw', 'topSlip', 0.15, 0, 1, 0.01, 'Slip chance on the jolt at the top'],
+  ['Claw', 'twitchSlip', 0.4, 0, 1, 0.05, 'Slip chance when a held part twitches'],
+  ['Claw', 'gripFade', 0.8, 0, 3, 0.05, 'Seconds to fade close→hold torque'],
+  ['Claw', 'gripSpring', 6, 1, 20, 0.5, 'Grip springiness (Hz)'],
+  ['Claw', 'gripAssist', 0.3, 0, 1, 0.05, 'Held parts weigh less'],
+  ['Claw', 'hubMass', 3, 0.5, 10, 0.25, 'Claw head mass'],
+  ['Claw', 'swayDamping', 0.35, 0, 5, 0.05, 'Sway damping'],
+  ['Claw', 'clawStiffness', 90, 0, 400, 5, 'Keep-upright stiffness'],
+  ['Claw', 'carryManual', 1, 0, 1, 1, 'Steer carry manually (0 = auto return)'],
+  ['Claw', 'carryTime', 8, 0, 30, 1, 'Carry timer s (0 = off)'],
+  ['Claw', 'aimTime', 0, 0, 30, 1, 'Aim timer s (0 = off)'],
+  ['Pile', 'partCount', 22, 5, 40, 1, 'Parts in machine (refill)'],
+  ['Pile', 'gravity', 30, 5, 80, 1, 'Gravity'],
+  ['Pile', 'partFriction', 0.55, 0, 1.5, 0.05, 'Part friction'],
+  ['Pile', 'partDensity', 0.6, 0.1, 3, 0.05, 'Part weight ×'],
+  ['Pile', 'partRestitution', 0.12, 0, 0.8, 0.02, 'Part bounciness'],
+  ['Pile', 'twitchRate', 0.45, 0, 4, 0.05, 'Living-part twitches /s'],
+  ['Pile', 'twitchForce', 1, 0, 4, 0.1, 'Twitch strength'],
+  ['Pile', 'rareBoost', 1, 0, 5, 0.1, 'Rare odds ×'],
+  ['Economy', 'startTokens', 6, 1, 40, 1, 'Starting tokens'],
+  ['Economy', 'winTokens', 3, 0, 12, 1, 'Tokens per battle won (+stage)'],
+  ['Economy', 'restockParts', 3, 0, 10, 1, 'Parts restocked per battle'],
+  ['Economy', 'pityTokens', 3, 0, 10, 1, 'Pity tokens when broke'],
+  ['Battle', 'enemyHp', 1, 0.2, 3, 0.05, 'Enemy HP ×'],
+  ['Battle', 'enemyAtk', 1, 0.2, 3, 0.05, 'Enemy ATK ×'],
+  ['Battle', 'allyAtk', 1, 0.2, 3, 0.05, 'Creature ATK ×'],
+  ['Battle', 'battleSpeed', 1, 0.25, 3, 0.05, 'Battle speed ×'],
+  ['Battle', 'zapCooldown', 10, 2, 40, 1, 'Zap cooldown (s)'],
+  ['Juice', 'shake', 1, 0, 3, 0.1, 'Screen shake ×'],
+  ['Juice', 'hitPause', 1, 0, 3, 0.1, 'Hit-pause ×'],
+  ['Juice', 'slowmo', 1, 0, 1, 1, 'Slow-mo on near wins'],
+  ['Juice', 'dropGuide', 1, 0, 1, 1, 'Show drop guide'],
+  ['Juice', 'physDebug', 0, 0, 1, 1, 'Draw physics shapes'],
+];
+const CONFIG = {};
+for (const m of CONFIG_META) CONFIG[m[1]] = m[2];
+const CONFIG_DEFAULTS = Object.assign({}, CONFIG);

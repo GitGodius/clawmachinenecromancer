@@ -1,0 +1,123 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Backgrounds</title>
+<!--
+  Background preview.  Query options:
+    ?guides=1          outline reserved UI rects + anchor lines
+    ?only=lab          show one background (graveyard | lab | shop | dither)
+    ?z=3               zoom (default 2)
+    ?t=12.5            freeze time at t seconds (for deterministic screenshots)
+    ?layer=back        shop layer (back | front | all)
+    ?fade=8            draw BG.dither at this level over every background
+    ?opts={"surge":1}  extra opts JSON passed to every background call
+    ?dither=1          also show the dither-overlay demo
+-->
+<style>
+  body { background: #0e0b16; color: #ecdcbc; font: 12px monospace; margin: 8px; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; margin: 0 0 10px; }
+  h2 { font: bold 12px monospace; margin: 0 0 3px; color: #cdb892; }
+</style></head><body>
+<script src="../src/js/03_palette.js"></script>
+<script src="../src/js/04_sprites_core.js"></script>
+<script src="../src/js/21_backgrounds.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+const Z = +(q.get('z') || 2);
+const GUIDES = q.get('guides') === '1';
+const ONLY = q.get('only');
+const FIXT = q.has('t') ? +q.get('t') : null;
+const LAYER = q.get('layer') || 'all';
+const FADE = q.has('fade') ? +q.get('fade') : null;
+const OPTS = q.has('opts') ? JSON.parse(q.get('opts')) : {};
+
+// reserved rects [x0, y0, x1, y1] and horizontal anchor lines per scene
+const GUIDE = {
+  graveyard: {
+    rects: [[8, 204, 110, 262, 'menu'], [118, 222, 472, 262, 'text box'], [300, 0, 480, 30, 'title'], [40, 150, 440, 232, 'lane (keep clear)']],
+    lines: [[214, 'ground y=214']],
+    marks: [[300, 58, 'moon']],
+  },
+  lab: {
+    rects: [[0, 0, 122, 270, 'panel'], [342, 0, 480, 270, 'panel'], [124, 236, 338, 262, 'dialogue'], [160, 50, 320, 208, 'creature'], [165, 203, 315, 241, 'slab']],
+    lines: [[208, 'slab top y=208']],
+    marks: [[240, 28, 'lamp x=240']],
+  },
+  shop: {
+    rects: [[10, 0, 190, 270, 'claw machine'], [220, 96, 380, 140, 'bubble'], [250, 100, 350, 196, 'reaper'], [404, 44, 470, 116, 'poster'], [398, 204, 474, 258, 'menu signs'], [200, 28, 390, 110, 'shelves']],
+    lines: [[196, 'counter y=196'], [250, 'floor y=250']],
+    marks: [[360, 40, 'lantern x=360'], [300, 150, 'reaper x=300']],
+  },
+};
+
+function drawGuides(g, name) {
+  const G = GUIDE[name];
+  if (!G) return;
+  g.save();
+  g.lineWidth = 1;
+  g.font = '7px monospace';
+  for (const [x0, y0, x1, y1, label] of G.rects) {
+    g.strokeStyle = 'rgba(111,211,255,0.85)';
+    g.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1);
+    g.fillStyle = 'rgba(111,211,255,0.9)';
+    g.fillText(label, x0 + 2, y0 + 8);
+  }
+  for (const [y, label] of G.lines) {
+    g.strokeStyle = 'rgba(255,64,64,0.9)';
+    g.beginPath(); g.moveTo(0, y + 0.5); g.lineTo(480, y + 0.5); g.stroke();
+    g.fillStyle = 'rgba(255,125,138,1)';
+    g.fillText(label, 2, y - 2);
+  }
+  for (const [x, y, label] of G.marks) {
+    g.strokeStyle = 'rgba(246,198,75,0.95)';
+    g.beginPath(); g.moveTo(x + 0.5, y - 6); g.lineTo(x + 0.5, y + 6); g.moveTo(x - 6, y + 0.5); g.lineTo(x + 6, y + 0.5); g.stroke();
+    g.fillStyle = 'rgba(246,198,75,1)';
+    g.fillText(label, x + 4, y - 3);
+  }
+  g.restore();
+}
+
+const scenes = [
+  { name: 'graveyard', draw: (g, t) => BG.graveyard(g, t, OPTS) },
+  { name: 'lab', draw: (g, t) => BG.lab(g, t, OPTS) },
+  { name: 'shop', draw: (g, t) => BG.shop(g, t, Object.assign({ layer: LAYER }, OPTS)) },
+  { name: 'dither', draw: (g, t) => {
+      BG.shop(g, t);
+      const lv = Math.round(8 + 8 * Math.sin(t * 1.5));
+      BG.dither(g, lv);
+      for (let i = 0; i <= 16; i++) { g.fillStyle = '#7a6a9a'; g.fillRect(8 + i * 27, 236, 24, 24); }
+      g.save(); g.beginPath();
+      for (let i = 0; i <= 16; i++) g.rect(8 + i * 27, 236, 24, 24);
+      g.clip();
+      for (let i = 0; i <= 16; i++) { g.save(); g.beginPath(); g.rect(8 + i * 27, 236, 24, 24); g.clip(); BG.dither(g, i, PAL.k); g.restore(); }
+      g.restore();
+      g.fillStyle = '#ecdcbc'; g.font = '8px monospace'; g.fillText('level ' + lv, 8, 230);
+    } },
+];
+
+const items = [];
+const t0 = performance.now();
+for (const s of scenes) {
+  if (ONLY && s.name !== ONLY) continue;
+  if (!ONLY && s.name === 'dither' && !q.has('dither')) continue;
+  const h = document.createElement('h2'); h.textContent = s.name;
+  const c = document.createElement('canvas'); c.width = 480; c.height = 270;
+  c.style.width = 480 * Z + 'px'; c.style.height = 270 * Z + 'px';
+  document.body.append(h, c);
+  const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+  items.push({ s, g });
+}
+const tb = performance.now();
+BG.prebuild();
+console.log('prebuild ms', Math.round(performance.now() - tb));
+
+function frame() {
+  const t = FIXT != null ? FIXT : (performance.now() - t0) / 1000;
+  for (const { s, g } of items) {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = '#ff00ff'; g.fillRect(0, 0, 480, 270); // exposes any unpainted pixels
+    s.draw(g, t);
+    if (FADE != null) BG.dither(g, FADE);
+    if (GUIDES) drawGuides(g, s.name);
+  }
+  if (FIXT == null) requestAnimationFrame(frame);
+}
+frame();
+</script></body></html>

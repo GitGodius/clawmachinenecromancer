@@ -1,0 +1,15 @@
+{
+  "name": "the-good-parts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claw machine necromancer prototype - grab body parts, stitch monsters, fight.",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "tune": "node tools/tune.mjs",
+    "shots": "node tools/shots.mjs"
+  },
+  "devDependencies": {
+    "planck": "1.5.0",
+    "playwright-core": "1.63.0"
+  }
+}

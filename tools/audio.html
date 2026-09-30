@@ -1,0 +1,257 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Audio bench</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#1b1526;--panel:#261d35;--edge:#45365f;--text:#ecdcbc;--dim:#a08962;--hot:#e8405a;--ok:#93c47d;--gold:#f6c64b}
+body{background:var(--bg);color:var(--text);font:12px/1.4 monospace;margin:10px}
+h1{font-size:15px;margin:0 0 6px;color:var(--gold)} h2{font-size:12px;margin:0 0 4px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+section{background:var(--panel);border:2px solid var(--edge);padding:6px 8px;margin:0 0 8px}
+button{font:inherit;color:var(--text);background:#33274a;border:2px solid var(--edge);padding:3px 7px;margin:2px;cursor:pointer}
+button:hover{border-color:var(--gold)} button.on{background:var(--hot);border-color:var(--hot);color:#fff}
+label{display:inline-block;margin:2px 10px 2px 0} input[type=range]{vertical-align:middle;width:110px}
+.row{display:flex;flex-wrap:wrap;gap:8px} .grp{flex:1 1 260px}
+#stats{white-space:pre;color:var(--dim)} #typed{min-height:1.4em;color:var(--text);background:#0e0b16;padding:4px 6px;margin-top:4px}
+#specs{display:flex;flex-wrap:wrap;gap:6px} .spec{font-size:10px;color:var(--dim)} .spec canvas{display:block;image-rendering:pixelated;border:1px solid var(--edge)}
+.warn{color:var(--hot)}
+</style></head>
+<body>
+<h1>The Good Parts — audio bench</h1>
+<section>
+  <button id="init">Init audio</button><button id="mute">Mute</button>
+  <label>master <input id="vm" type="range" min="0" max="1" step=".01" value=".8"></label>
+  <label>music <input id="vmu" type="range" min="0" max="1" step=".01" value=".45"></label>
+  <label>sfx <input id="vs" type="range" min="0" max="1" step=".01" value=".8"></label>
+  <span id="stats"></span>
+</section>
+<section>
+  <h2>Sfx options</h2>
+  <label>intensity <input id="oi" type="range" min="0" max="1" step=".05" value=".7"> <b id="oiv">.70</b></label>
+  <label>pitch <input id="op" type="range" min=".5" max="2" step=".05" value="1"> <b id="opv">1.00</b></label>
+  <label>pan <input id="opn" type="range" min="-1" max="1" step=".1" value="0"> <b id="opnv">0</b></label>
+  <label><input id="hov" type="checkbox"> ui_hover on button hover</label>
+  <div class="row" id="sfx"></div>
+</section>
+<section class="row">
+  <div class="grp"><h2>Music</h2><div id="music"></div>
+    <button id="duck">duck .7 for 2s</button> <span id="track"></span></div>
+  <div class="grp"><h2>Claw motor (Sfx.motor each frame)</h2>
+    <label>level <input id="ml" type="range" min="0" max="1" step=".01" value="0"></label>
+    <label>pitch <input id="mp" type="range" min="0" max="1" step=".01" value=".3"></label>
+    <button id="demo">claw run demo</button></div>
+  <div class="grp"><h2>Dialogue (Sfx.voice)</h2>
+    <label>pitch <input id="vp" type="range" min=".3" max="2" step=".05" value=".6"> <b id="vpv">.60</b></label>
+    <button id="say">Reaper says…</button><div id="typed"></div></div>
+</section>
+<section>
+  <h2>Offline analysis (full mixer chain, master .8)</h2>
+  <button id="ana">Analyze all</button> <span class="spec">peak dBFS / loudest 50ms RMS, 250Hz-highpassed (≈ small speakers) / length — spectrogram 60Hz–16kHz (log). Console: <code>analyzeAll(false).then(table)</code>, <code>big('claw', 8)</code></span>
+  <div id="specs"></div>
+</section>
+<script>
+// Count nodes that are connected and never disconnected (leak check). Installed before any audio node exists.
+const LIVE = new Set();
+if (typeof AudioNode !== 'undefined') {
+  const oc = AudioNode.prototype.connect, od = AudioNode.prototype.disconnect;
+  AudioNode.prototype.connect = function (...a) { LIVE.add(this); return oc.apply(this, a); };
+  AudioNode.prototype.disconnect = function (...a) { if (!a.length) LIVE.delete(this); return od.apply(this, a); };
+}
+</script>
+<script src="../src/js/08_audio.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const GROUPS = {
+  'UI': ['ui_hover', 'ui_click', 'ui_back', 'ui_deny', 'page', 'transition', 'error', 'coin'],
+  'Claw': ['claw_drop', 'claw_land', 'claw_close', 'claw_open', 'claw_top', 'grab', 'slip', 'miss'],
+  'Parts': [['bump', { material: 'bone' }, 'bump bone'], ['bump', { material: 'flesh' }, 'bump flesh'], ['bump', { material: 'squish' }, 'bump squish'],
+            ['bump', { material: 'metal' }, 'bump metal'], 'chute', 'restock', 'twitch', 'heartbeat'],
+  'Prizes': ['win_common', 'win_uncommon', 'win_rare', 'win_legendary', 'coins_count'],
+  'Slab': ['stitch', 'unstitch', 'zap', 'thunder', 'alive'],
+  'Battle': ['swing', 'hit', ['hit', { crit: true }, 'hit crit'], 'enemy_hit', 'enemy_die', 'creature_die', 'victory', 'defeat'],
+  'Cat': ['meow', 'purr'],
+};
+const listed = new Set(Object.values(GROUPS).flat().map((x) => (Array.isArray(x) ? x[0] : x)));
+const missing = Sfx.names.filter((n) => !listed.has(n));
+if (missing.length) GROUPS.Other = missing;
+// every playable item: [name, opts, label]
+const ITEMS = Object.values(GROUPS).flat().map((x) => (Array.isArray(x) ? x : [x, {}, x]));
+const TRACKS = ['shop', 'claw', 'slab', 'battle'];
+const opts = () => ({ intensity: +$('oi').value, pitch: +$('op').value, pan: +$('opn').value });
+
+function button(parent, label, fn) {
+  const b = document.createElement('button'); b.textContent = label; b.onclick = fn;
+  b.onmouseenter = () => { if ($('hov').checked) Sfx.play('ui_hover'); };
+  parent.appendChild(b); return b;
+}
+for (const [g, list] of Object.entries(GROUPS)) {
+  const d = document.createElement('div'); d.className = 'grp';
+  d.innerHTML = '<h2>' + g + '</h2>'; $('sfx').appendChild(d);
+  for (const x of list) { const [n, o, l] = Array.isArray(x) ? x : [x, {}, x]; button(d, l, () => Sfx.play(n, Object.assign(opts(), o))); }
+}
+for (const t of TRACKS) button($('music'), t, () => Music.play(t));
+button($('music'), 'stop', () => Music.stop());
+$('duck').onclick = () => Music.duck(0.7, 2);
+
+// first gesture anywhere starts audio, exactly like the game does
+addEventListener('pointerdown', () => AudioSys.init(), { capture: true });
+addEventListener('keydown', () => AudioSys.init(), { capture: true });
+$('init').onclick = () => AudioSys.init();
+$('mute').onclick = () => { AudioSys.toggleMute(); };
+const vols = () => AudioSys.setVolumes({ master: +$('vm').value, music: +$('vmu').value, sfx: +$('vs').value });
+for (const id of ['vm', 'vmu', 'vs']) $(id).oninput = vols;
+for (const [id, out, f] of [['oi', 'oiv', 2], ['op', 'opv', 2], ['opn', 'opnv', 1], ['vp', 'vpv', 2]]) $(id).oninput = () => { $(out).textContent = (+$(id).value).toFixed(f); };
+
+// motor: driven every frame like the game loop, by the sliders or by the demo script
+let demoMotor = null;
+(function frame() {
+  const m = demoMotor || [+$('ml').value, +$('mp').value];
+  Sfx.motor(m[0], m[1]);
+  $('mute').classList.toggle('on', AudioSys.muted);
+  $('track').textContent = 'track: ' + Music.track;
+  requestAnimationFrame(frame);
+})();
+setInterval(() => {
+  const c = AudioSys.ctx;
+  $('stats').textContent = c ? '  ctx ' + c.state + ' @' + c.sampleRate + 'Hz  t=' + c.currentTime.toFixed(1) + '  connected nodes: ' + LIVE.size : '  (not initialised — click anything)';
+}, 250);
+
+// scripted claw run: coin, move, drop, land, close, grab, rise, top, open, chute, prize
+$('demo').onclick = () => {
+  const steps = [
+    [0, () => Sfx.play('coin')], [500, () => { demoMotor = [0.55, 0.25]; }], [1700, () => { demoMotor = [0, 0.25]; Sfx.play('claw_drop'); }],
+    [1750, () => { demoMotor = [0.45, 0.5]; }], [2700, () => { demoMotor = [0, 0.5]; Sfx.play('claw_land', { intensity: 0.8 }); }],
+    [3000, () => Sfx.play('claw_close')], [3350, () => Sfx.play('grab')], [3500, () => { demoMotor = [0.7, 0.85]; }],
+    [4000, () => Sfx.play('twitch')], [4600, () => { demoMotor = [0, 0.85]; Sfx.play('claw_top'); }], [4900, () => { demoMotor = [0.55, 0.3]; }],
+    [5800, () => { demoMotor = [0, 0.3]; Sfx.play('claw_open'); }], [6000, () => Sfx.play('chute')], [6600, () => Sfx.play('win_rare')],
+    [8200, () => { demoMotor = null; }],
+  ];
+  AudioSys.init();
+  for (const [ms, fn] of steps) setTimeout(fn, ms);
+};
+
+// typewriter dialogue
+let typing = null;
+$('say').onclick = () => {
+  const line = 'Good parts make great friends. Not pretty... but it\'ll fight.';
+  clearInterval(typing); $('typed').textContent = ''; let i = 0;
+  typing = setInterval(() => {
+    const ch = line[i++]; $('typed').textContent += ch;
+    if (/[a-z]/i.test(ch)) Sfx.voice(+$('vp').value);
+    if (i >= line.length) clearInterval(typing);
+  }, 45);
+};
+
+// ---- offline analysis -------------------------------------------------------
+const db = (x) => (x > 0 ? 20 * Math.log10(x) : -Infinity);
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit;
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang), h = len >> 1;
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < h; k++) {
+        const a = i + k, b = a + h, xr = re[b] * cr - im[b] * ci, xi = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi; re[a] += xr; im[a] += xi;
+        const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+      }
+    }
+  }
+}
+function heat(x) { // 0..1 -> night purple .. pink .. gold
+  const s = [[14, 11, 22], [69, 54, 95], [232, 64, 90], [246, 198, 75], [255, 246, 227]];
+  const f = Math.max(0, Math.min(0.9999, x)) * (s.length - 1), i = f | 0, k = f - i;
+  return s[i].map((c, j) => c + (s[i + 1][j] - c) * k);
+}
+function draw(buf, label, info, W = 260, H = 96, f0 = 60, f1 = 16000, N = 1024) {
+  const WH = 18, c = document.createElement('canvas');
+  c.width = W; c.height = H + WH;
+  const g = c.getContext('2d'), img = g.createImageData(W, H + WH), sr = buf.sampleRate;
+  const L = buf.getChannelData(0), Rr = buf.getChannelData(1), n = buf.length, hop = n / W;
+  const re = new Float32Array(N), im = new Float32Array(N), win = new Float32Array(N).map((_, i) => 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N));
+  for (let x = 0; x < W; x++) {
+    const s0 = (x * hop) | 0;
+    let pk = 0; for (let i = s0; i < Math.min(n, s0 + hop); i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(Rr[i]));
+    const hgt = Math.round(Math.min(1, pk) * WH);
+    for (let y = 0; y < WH; y++) { const o = (y * W + x) * 4, on = WH - y <= hgt; img.data.set(on ? (pk >= 0.99 ? [255, 64, 64, 255] : [147, 196, 125, 255]) : [14, 11, 22, 255], o); }
+    for (let i = 0; i < N; i++) { const j = s0 + i - N / 2; re[i] = j >= 0 && j < n ? (L[j] + Rr[j]) * 0.5 * win[i] : 0; im[i] = 0; }
+    fft(re, im);
+    for (let y = 0; y < H; y++) {
+      const f = f0 * Math.pow(f1 / f0, 1 - y / (H - 1)), bin = Math.min(N / 2 - 1, Math.round(f / sr * N));
+      const mag = Math.hypot(re[bin], im[bin]) / (N / 4), v = (db(mag) + 100) / 90, [r, gg, b] = heat(v), o = ((y + WH) * W + x) * 4;
+      img.data[o] = r; img.data[o + 1] = gg; img.data[o + 2] = b; img.data[o + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const d = document.createElement('div'); d.className = 'spec';
+  d.appendChild(c); d.appendChild(document.createTextNode(label + '  ' + info)); $('specs').appendChild(d);
+}
+// 2nd-order highpass (RBJ) — a crude stand-in for how small speakers / ears weight the lows
+function highpass(x, sr, f0) {
+  const w = 2 * Math.PI * f0 / sr, al = Math.sin(w) / (2 * Math.SQRT1_2), c = Math.cos(w), a0 = 1 + al;
+  const b0 = (1 + c) / 2 / a0, b1 = -(1 + c) / a0, b2 = b0, a1 = -2 * c / a0, a2 = (1 - al) / a0, y = new Float32Array(x.length);
+  for (let i = 0, x1 = 0, x2 = 0, y1 = 0, y2 = 0; i < x.length; i++) { const v = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = x[i]; y2 = y1; y1 = v; y[i] = v; }
+  return y;
+}
+function maxWin(x, w) { let s = 0, best = 0; for (let i = 0; i < x.length; i++) { s += x[i] * x[i]; if (i >= w) s -= x[i - w] * x[i - w]; if (s > best) best = s; } return Math.sqrt(best / w); }
+const PRE = 0.3; // pre-roll so the compressor has settled
+async function measure(label, secs, fn, show) {
+  const full = await AudioSys._render(secs, fn, PRE);
+  if (!full) return { label, error: 'no OfflineAudioContext' };
+  const sr = full.sampleRate, s0 = Math.round(PRE * sr), n = full.length - s0, w = Math.round(sr * 0.05);
+  const L = full.getChannelData(0).subarray(s0), Rr = full.getChannelData(1).subarray(s0);
+  const buf = { sampleRate: sr, length: n, getChannelData: (c) => (c ? Rr : L) };
+  const mono = new Float32Array(n);
+  let peak = 0, last = 0, clip = 0, bad = 0, sum = 0;
+  for (let i = 0; i < n; i++) {
+    const a = L[i], b = Rr[i];
+    if (!isFinite(a) || !isFinite(b)) { bad++; continue; }
+    const m = Math.max(Math.abs(a), Math.abs(b));
+    if (m > peak) peak = m; if (m > 0.001) last = i; if (m >= 0.999) clip++;
+    sum += (a * a + b * b) / 2; mono[i] = (a + b) / 2;
+  }
+  const r = { label, peak: +db(peak).toFixed(1), loud50: +db(maxWin(mono, w)).toFixed(1), loudW: +db(maxWin(highpass(mono, sr, 250), w)).toFixed(1),
+    rms: +db(Math.sqrt(sum / Math.max(1, last))).toFixed(1), rmsW: 0, len: +(last / sr).toFixed(2), clip, bad };
+  if (secs > 4) { const h = highpass(mono, sr, 250); let e = 0; for (let i = 0; i < n; i++) e += h[i] * h[i]; r.rmsW = +db(Math.sqrt(e / n)).toFixed(1); }
+  if (show) draw(buf, label, r.peak + ' pk / ' + r.loudW + ' dBw / ' + r.len + 's' + (r.clip ? ' CLIP ' + r.clip : ''));
+  return r;
+}
+const LONG = new Set(['transition', 'coin', 'slip', 'grab', 'miss', 'chute', 'restock', 'win_common', 'win_uncommon', 'win_rare', 'win_legendary', 'thunder', 'alive', 'hit crit', 'enemy_die', 'creature_die', 'victory', 'defeat', 'meow', 'purr', 'heartbeat', 'claw_land', 'claw_top', 'zap']);
+async function analyzeAll(show = true, trackSecs = 16, only) {
+  $('specs').textContent = '';
+  const out = [], want = (l) => !only || only.includes(l);
+  for (const [n, o, l] of ITEMS) if (want(l)) out.push(await measure(l, LONG.has(l) ? 3 : 0.8, () => Sfx.play(n, Object.assign({ intensity: 0.7 }, o)), show));
+  if (want('bump i=1')) out.push(await measure('bump i=1', 0.5, () => Sfx.play('bump', { material: 'bone', intensity: 1 }), show));
+  if (want('bump i=.1')) out.push(await measure('bump i=.1', 0.5, () => Sfx.play('bump', { material: 'bone', intensity: 0.1 }), show));
+  if (want('motor')) out.push(await measure('motor', 1, () => { Sfx.motor(1, 1); }, show));
+  if (want('motor low')) out.push(await measure('motor low', 1, () => { Sfx.motor(0.5, 0.1); }, show));
+  if (want('voice')) out.push(await measure('voice', 0.3, () => Sfx.voice(0.6), show));
+  for (const t of TRACKS) if (want('music ' + t)) out.push(await measure('music ' + t, trackSecs, () => Music._fill(t, trackSecs), show));
+  return out;
+}
+const table = (rows) => rows.map((x) => [x.label.padEnd(14), 'pk', String(x.peak).padStart(6), ' L50', String(x.loud50).padStart(6), ' LW', String(x.loudW).padStart(6), ' rms', String(x.rms).padStart(6), ' rmsW', String(x.rmsW).padStart(6), ' len', x.len, x.clip ? ' CLIP ' + x.clip : '', x.bad ? ' NaN ' + x.bad : ''].join(' ')).join('\n');
+$('ana').onclick = () => analyzeAll(true);
+// Large "piano roll" view of one render: e.g. big('claw', 8) for music, big('slip', 1.5, 'sfx')
+async function big(name, secs, kind = 'music', W = 1080, H = 300, f0 = 80, f1 = 5000, opts = {}) {
+  const full = await AudioSys._render(secs, () => (kind === 'music' ? Music._fill(name, secs) : Sfx.play(name, opts)), PRE);
+  const sr = full.sampleRate, s0 = Math.round(PRE * sr), L = full.getChannelData(0).subarray(s0), Rr = full.getChannelData(1).subarray(s0);
+  draw({ sampleRate: sr, length: L.length, getChannelData: (c) => (c ? Rr : L) }, name, secs + 's ' + f0 + '-' + f1 + 'Hz', W, H, f0, f1, 4096);
+}
+
+// headless smoke test: trigger every sound, variant, track and helper on the live context
+async function runAll() {
+  AudioSys.init();
+  const t0 = performance.now();
+  for (const [n, o] of ITEMS) Sfx.play(n, Object.assign(opts(), o));
+  Sfx.play('bump', { material: 'glass', intensity: 5, pitch: -1, pan: 9 }); // silly inputs must not throw
+  for (let k = 0; k < 40; k++) Sfx.play('bump', { intensity: Math.random() }); // rapid-fire: throttled
+  for (let k = 0; k < 10; k++) { Sfx.voice(0.6); Sfx.motor(k / 10, k / 10); }
+  for (const t of TRACKS) Music.play(t);
+  Music.duck(0.5, 0.5); AudioSys.toggleMute(); AudioSys.toggleMute(); AudioSys.setVolumes({ music: 0.4 });
+  await new Promise((r) => setTimeout(r, 1500));
+  for (const t of TRACKS) { Music.play(t); await new Promise((r) => setTimeout(r, 400)); }
+  Music.stop(); Sfx.motor(0, 0);
+  return { state: AudioSys.ctx && AudioSys.ctx.state, ms: Math.round(performance.now() - t0), nodes: LIVE.size, track: Music.track };
+}
+</script></body></html>

@@ -1,0 +1,113 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Font preview</title>
+<style>
+html,body{margin:0;background:#120e1b}
+body{padding:10px}
+canvas{display:block;width:1440px;height:810px;image-rendering:pixelated;background:#1b1526}
+</style></head>
+<body>
+<canvas id="c" width="480" height="270"></canvas>
+<script src="../src/js/07_font.js"></script>
+<script>
+// Preview of both bitmap fonts at 1x on the game's 480x270 canvas (CSS-scaled
+// with nearest-neighbour). ?z=N sets the zoom (default 3).
+// Screenshot: node tools/shot.mjs tools/font.html out.png 1500 860 300
+const Z = +(new URLSearchParams(location.search).get('z') || 3);
+const cv = document.getElementById('c');
+cv.style.width = 480 * Z + 'px';
+cv.style.height = 270 * Z + 'px';
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const C = {
+  bg: '#1b1526', panel: '#261d35', edge: '#45365f', dim: '#7a6a9a', lilac: '#b8a8d8', text: '#ecdcbc',
+  white: '#fff6e3', ink: '#0e0b16', gold: '#f6c64b', red: '#e8405a', cyan: '#6fd3ff', green: '#93c47d',
+  pink: '#e7a6f0', grey: '#a6aec2', blood: '#6d1438', flesh: '#fbd0b4', paper: '#f1e3c6', paperEdge: '#6f5c42',
+  paperInk: '#33274a',
+};
+ctx.fillStyle = C.bg;
+ctx.fillRect(0, 0, 480, 270);
+
+const T = (text, x, y, o = {}) => Font.draw(ctx, text, x, y, Object.assign({ color: C.text }, o));
+const S = (text, x, y, o = {}) => T(text, x, y, Object.assign({ font: 'small', color: C.dim }, o));
+const box = (x, y, w, h, fill = C.panel, edge = C.edge) => {
+  ctx.fillStyle = edge; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = fill; ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+};
+
+// --- full character sets ----------------------------------------------------
+const mainSet = Font.chars('main');
+let y = 3;
+T(mainSet.replace(/[^A-Z]/g, '') + '  ' + mainSet.replace(/[^0-9]/g, ''), 4, y); y += 11;
+T(mainSet.replace(/[^a-z]/g, ''), 4, y); y += 11;
+T(mainSet.replace(/[A-Za-z0-9]/g, ''), 4, y); y += 12;
+T(Font.chars('small'), 4, y, { font: 'small', color: C.lilac }); y += 9;
+ctx.fillStyle = C.edge; ctx.fillRect(4, y, 472, 1);
+
+// --- sample lines (left column) ---------------------------------------------
+y += 5;
+const L = 6;
+T('THE GOOD PARTS', L, y, { color: C.white }); y += 11;
+T('COLLECT · REANIMATE · CONQUER', L, y); y += 11;
+T('Good parts make great friends.', L, y); y += 11;
+{
+  let x = L;
+  x += T('Skull ', x, y);
+  x += T('(Common)', x, y, { color: C.dim });
+  x += T('   Left Arm ', x, y);
+  T('(Rare)', x, y, { color: C.cyan });
+}
+y += 11;
+T('3', L + T('TOKENS ', L, y, { color: C.gold }), y, { color: C.white }); y += 11;
+T('Not pretty. But it\'ll fight.', L, y); y += 11;
+T('Graveyard of Second Chances — Stage 2', L, y, { color: C.grey }); y += 11;
+{ // '▶ Fight   Abilities   Retreat' chained in three colours
+  let x = L;
+  x += T('▶ ', x, y, { color: C.gold });
+  x += T('Fight   ', x, y, { color: C.white });
+  T('Abilities   Retreat', x, y, { color: C.dim });
+}
+y += 11;
+T('HP 42  ATK 9  SPD 3', L, y); y += 11;
+{
+  let x = L;
+  x += T('+12  ', x, y, { color: C.green, shadow: C.ink });
+  x += T('CRIT!  ', x, y, { color: C.gold, shadow: C.ink });
+  T('MISS', x, y, { color: C.grey, shadow: C.ink });
+}
+y += 11;
+T('jumpy quizzical gravy', L, y); y += 11;
+T('← → ↑ ↓  ◀ ▶  ♥ ★ ×3 • …  0O 1lI|', L, y, { color: C.pink });
+const leftBottom = y + 11;
+
+// --- right column -------------------------------------------------------------
+const RX = 314, RW = 150;
+let ry = 56;
+const para = 'The claw giveth. Stitch a skull to a ribcage, add two mismatched arms, and — with a little lightning — you have a friend. Good parts make great friends!';
+{ // drawWrapped in a 150px box
+  const h = Font.drawWrapped(null, para, 0, 0, RW);
+  box(RX - 5, ry - 4, RW + 10, h + 6);
+  Font.drawWrapped(ctx, para, RX, ry, RW, { color: C.text });
+  ry += h + 7;
+}
+{ // typewriter: first 58 characters, wrapped on the full text so words never jump
+  box(RX - 5, ry - 4, RW + 10, 2 * 11 + 6, C.paper, C.paperEdge);
+  Font.drawWrapped(ctx, para, RX, ry, RW, { color: C.paperInk, maxChars: 58 });
+  S('drawWrapped · maxChars 58', RX + RW + 5, ry + 2 * 11 + 5, { align: 'right' });
+  ry += 2 * 11 + 16;
+}
+box(RX - 5, ry - 3, RW + 10, 11);
+S('HP 12/40  +7  x3  LV 2', RX, ry, { color: C.white });
+S('♥ 3/3', RX + RW, ry, { color: C.red, align: 'right' });
+
+// --- scaled titles ------------------------------------------------------------
+const by = Math.max(leftBottom, ry + 12) + 6;
+T('THE GOOD PARTS', L + 3, by + 3, { scale: 3, color: C.flesh, outline: C.blood, shadow: C.ink });
+T('GRAB SOME FATE', 474, by + 5, { scale: 2, color: C.pink, shadow: C.blood, align: 'right' });
+T('BRING TO LIFE', 240, by + 36, { scale: 2, color: C.white, outline: C.ink, align: 'center' });
+// drop-shadow offset comparison: (0,1) is the default
+T('shadow 0,1', 474, by + 27, { color: C.white, shadow: C.red, align: 'right' });
+T('shadow 1,1', 474, by + 42, { color: C.white, shadow: C.red, shadowOffset: [1, 1], align: 'right' });
+S('scale 3 outline+shadow', L + 3, by + 32);
+S('scale 2 outline', 240, by + 55, { align: 'center' });
+</script>
+</body></html>

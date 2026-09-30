@@ -1,0 +1,54 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Claw physics filmstrip</title>
+<style>body{background:#111;margin:0;color:#ccc;font:11px monospace}canvas{image-rendering:pixelated}</style></head><body>
+<canvas id="c"></canvas>
+<script src="../vendor/planck.min.js"></script>
+<script src="../src/js/01_config.js"></script><script src="../src/js/02_util.js"></script>
+<script src="../src/js/03_palette.js"></script><script src="../src/js/04_sprites_core.js"></script>
+<script src="../src/js/05_sprites_parts.js"></script><script src="../src/js/10_parts.js"></script>
+<script src="../src/js/11_clawsim.js"></script>
+<script>
+// ?seed=1001&x=110&every=12&n=16&cfg={"gripTorque":40}&sprites=1
+const Q = new URLSearchParams(location.search);
+Object.assign(CONFIG, JSON.parse(Q.get('cfg') || '{}'));
+RNG = mulberry32(+(Q.get('seed') || 1001));
+const log = [];
+const sim = new ClawSim({ onEvent: (t, d) => { if (t !== 'bump' && t !== 'clank') log.push(frame + ':' + t + (d.result ? '=' + d.result : '') + (d.part ? '(' + d.part.type + ')' : '')); } });
+let frame = 0;
+sim.fillPile(CONFIG.partCount);
+const tx = Q.get('x') ? +Q.get('x') : sim.partPos(sim.parts[0])[0];
+sim.teleportClaw(tx);
+for (let i = 0; i < 30; i++) sim.step(1 / 60);
+sim.startDrop();
+const every = +(Q.get('every') || 12), N = +(Q.get('n') || 16), cols = 4, S = +(Q.get('s') || 4), skip = +(Q.get('skip') || 0);
+const W = 184, H = 136;
+const c = document.getElementById('c'); c.width = cols * W * S / 2; c.height = Math.ceil(N / cols) * (H * S / 2 + 12);
+const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+const col = (u) => u === 'claw' ? '#ff5577' : '#8fd';
+function snap(k) {
+  const ox = (k % cols) * W * S / 2, oy = Math.floor(k / cols) * (H * S / 2 + 12);
+  g.save(); g.translate(ox, oy + 12); g.scale(S / 2, S / 2);
+  g.fillStyle = '#1b1526'; g.fillRect(0, 0, W, H);
+  if (Q.get('sprites')) {
+    for (const p of sim.parts) for (const b of p.bodies) { const q = b.getPosition(); const s = SPR.get(p.def.sprite); g.save(); g.translate(q.x * PPM, q.y * PPM); g.rotate(b.getAngle()); g.drawImage(s.c, -s.w / 2, -s.h / 2); g.restore(); }
+  }
+  for (const s of sim.debugShapes()) {
+    g.strokeStyle = s.stat ? '#556' : '#9cf'; g.lineWidth = 1;
+    g.beginPath();
+    if (s.type === 'circle') g.arc(s.x, s.y, s.r, 0, 7); else { s.pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); }
+    g.stroke();
+  }
+  const P = sim.clawPose();
+  g.strokeStyle = '#fc6'; g.beginPath(); g.moveTo(P.carX, P.carY); g.lineTo(P.ropeX, P.ropeY); g.stroke();
+  for (const p of sim.held) { const [x, y] = sim.partPos(p); g.fillStyle = '#ff0'; g.fillRect(x - 2, y - 2, 4, 4); }
+  g.restore();
+  g.fillStyle = '#ccc'; g.fillText('f' + frame + ' ' + sim.state + ' held:' + sim.held.size + ' jL ' + sim.jL.getJointAngle().toFixed(2), ox + 2, oy + 9);
+}
+let k = 0;
+while (k < N) {
+  if (sim.state === 'carry') { const d = MACHINE.home - sim.carX; sim.input.move = Math.abs(d) < 1.5 ? 0 : Math.sign(d) * Math.min(1, Math.abs(d) / 12); if (Math.abs(d) < 2 && Math.abs(sim.carV) < 5) sim.press(); }
+  if (frame >= skip && (frame - skip) % every === 0) snap(k++);
+  sim.step(1 / 60); frame++;
+}
+document.title = log.join(' ');
+window.__log = log;
+</script></body></html>
