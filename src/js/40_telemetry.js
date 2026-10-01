@@ -10,7 +10,7 @@ const Telemetry = {
   cur: null, curT: 0,
   c: {
     grabs: 0, wins: 0, slips: 0, misses: 0, doubles: 0, freebies: 0, nearMiss: 0, sets: 0, homecomings: 0, speedToggles: 0, fastSecs: 0,
-    gripSolid: 0, gripOk: 0, gripLoose: 0, slipping: 0, saves: 0, // the soul grip's catches, and strained carries that slid vs held on
+    gripSolid: 0, gripOk: 0, gripLoose: 0, clipped: 0, slipping: 0, saves: 0, // the soul grip's catches (and closes that only clipped a part), strained carries that slid vs held on
     retryFast: 0, retrySlow: 0, quitAfterFail: 0,
     bySlipWhy: {}, wonRarity: { common: 0, uncommon: 0, rare: 0, legendary: 0 },
     creatures: 0, unstitched: 0, battles: 0, victories: 0, defeats: 0, retreats: 0, zaps: 0,
@@ -75,7 +75,7 @@ const Telemetry = {
       `grabs ${c.grabs}   wins ${c.wins} (${pct(c.wins, c.grabs)})   slips ${c.slips}   misses ${c.misses}   doubles ${c.doubles}   free chute drops ${c.freebies}`,
       `won by rarity: ${Object.entries(c.wonRarity).map(([k, v]) => k + ' ' + v).join(', ')}`,
       `near misses (slipped within a claw-length of the chute): ${c.nearMiss}`,
-      `grip when it closed: solid ${c.gripSolid}, ok ${c.gripOk}, loose ${c.gripLoose}   carries that started slipping ${c.slipping}, held on ${c.saves}`,
+      `grip when it closed: solid ${c.gripSolid}, ok ${c.gripOk}, loose ${c.gripLoose}, only clipped a part ${c.clipped}   carries that started slipping ${c.slipping}, held on ${c.saves}`,
       `slip causes: ${Object.entries(c.bySlipWhy).map(([k, v]) => k + ' ' + v).join(', ') || '-'}`,
       `after a failed grab: retried within 6s ${c.retryFast}, retried later ${c.retrySlow}, left the machine ${c.quitAfterFail}   (one-more-try rate ${pct(c.retryFast, fails)})`,
       `creatures stitched ${c.creatures}   unstitched ${c.unstitched}   sets completed ${c.sets}   remains won back ${c.homecomings}`,

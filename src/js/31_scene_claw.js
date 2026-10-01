@@ -10,6 +10,7 @@ Scenes.claw = (() => {
   const fxW = new Particles(); // world space (in the buffer, 2x on screen)
   const fxS = new Particles(); // screen space (1x)
   let t = 0, winFx = 0, bagBump = 0, tokenBump = 0, noTokenT = 0, idleT = 0, movedOnce = false, chuteWarnT = 0, missShown = false, slipTalked = false, slipHintT = 0;
+  let turnNear = false; // this turn the claw closed on a part without catching it (only clipped it)
   let flying = [];
   let slowmoDone = new Set();
   let lastBumpSfx = 0;
@@ -325,7 +326,7 @@ Scenes.claw = (() => {
         case 'drop':
           missShown = false;
           Sfx.play('claw_drop');
-          reachSfx = false; slipTalked = false;
+          reachSfx = false; slipTalked = false; turnNear = false;
           if (d.iron) { ironFlash = 0.6; fxW.burst(hx, hy + 14, 10, { speed: 34, life: 0.5, color: ['#fff1a6', '#f6c64b'] }); Engine.flash('#f6c64b', 0.12); }
           if (vchance(0.35)) say(vpick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
           break;
@@ -377,6 +378,7 @@ Scenes.claw = (() => {
           break;
         case 'lift': {
           showCatch();
+          if (!d.grips.length && sim.parts.some((p) => !p.won && sim.touching(p, 0.3))) { turnNear = true; Telemetry.c.clipped++; }
           if (d.grips.length) {
             const best = d.grips.slice().sort((a, b) => RARITY[b.def.rarity].order - RARITY[a.def.rarity].order)[0];
             Sfx.play('grab');
@@ -472,7 +474,8 @@ Scenes.claw = (() => {
           }
           if (d.result === 'miss' && !missShown) {
             Sfx.play('miss');
-            if (!Game.talk.visible() || vchance(0.5)) say(vpick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
+            if (turnNear) say(vpick(['Just clipped it.', 'Only got a corner of it.', 'So close. Centre the claw on it.']), 2.2);
+            else if (!Game.talk.visible() || vchance(0.5)) say(vpick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
           }
           if (d.won.length > 1) say('Two for one! The machine likes you.', 2.4);
           topUp();
@@ -726,6 +729,10 @@ Scenes.claw = (() => {
       for (let y = top; y < hitY - 2; y += 4) g.fillRect(Math.round(P.carX), Math.round(y), 1, 2);
       g.fillStyle = 'rgba(231,166,240,0.7)';
       g.fillRect(Math.round(P.carX) - 2, Math.round(hitY) - 1, 5, 1);
+      // brackets as wide as the closed claw's mouth (elbow to elbow): what lands between them can end up in the claw
+      const cx = Math.round(P.carX), hy = Math.round(hitY), cw = Math.round(-(CLAW_GEO.pivotL[0] + CLAW_GEO.inner[1][0]));
+      g.fillStyle = 'rgba(231,166,240,0.45)';
+      for (const s of [-1, 1]) { g.fillRect(cx + s * cw, hy - 3, 1, 4); g.fillRect(cx + s * cw - (s > 0 ? 1 : 0), hy + 1, 2, 1); }
     }
 
     // parts
