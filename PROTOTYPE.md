@@ -21,6 +21,7 @@ Open `index.html` in any modern browser. It's one self-contained file and works 
 |---|---|
 | Shop (hub) | Click the signs: **COLLECT** (claw), **COMBINE** (slab), **COMMAND** (graveyard). Keyboard: ↑↓ and Space. |
 | Claw | **← →** move (or **hold the mouse or a finger on the glass** to steer toward the pointer) · **Space/Enter/Z** drop (press again mid-drop to stop early) · steer to the chute · **Space** releases · **Esc/X** back. There are on-screen buttons for mouse and touch, and a gamepad works too (d-pad, A, B). |
+| The Rig (claw) | **Q / E** nudge the glass · **1** quake · **2** iron grip (press again to take it back) · **3** order (then pick a slot with **1-6** or the mouse) · **4** redo after a failed grab. Gamepad: LB / RB nudge, X quake, Y iron grip. Hover a lever for its cost and effect. See §10. |
 | Slab | Click a part to stitch it on. Click a slot to take it off. **BRING TO LIFE** when you're ready. You can have up to 3 creatures; click a portrait twice to unstitch it. |
 | Graveyard | **FIGHT**, then **ZAP** (heals 30% and hastes, on a cooldown). **RETREAT** keeps survivors but earns no reward. |
 | Anywhere | **M** mutes · **F** goes fullscreen · **`** (backquote) or the ⚙ button opens the tuning panel · **P** opens the playtest report. |
@@ -34,6 +35,7 @@ Handy URL flags for testing:
 - `?party=1` gives you two ready creatures.
 - `?tokens=30` sets your tokens.
 - `?seed=7` makes the pile the same every time.
+- `?luck=8` sets your Luck. `?rig=0` turns the Rig off entirely (the original claw).
 
 ## 3. Scope (kept deliberately small)
 
@@ -41,6 +43,7 @@ Handy URL flags for testing:
 - 24 part types filling 8 attachment points (head, torso, 2 arms, 2 legs, heart, back). There are 4 rarities and 15 traits, such as Wolf Skull *Bite*, Tentacle *Reach*, Black Heart *Undying* and Heart of Gold *+1 token per kill*.
 - Any combination of parts is a valid creature. No legs means it crawls, no arms means it bites, no torso means it's mostly stitches. Names come from the parts ("Barnaby No-Legs", "Gus the Tentacular").
 - **No save system, on purpose.** Refreshing starts a new run. No meta-progression and no shop upgrades.
+- **The Rig** (§10) is the one layer added on top of the claw: a Luck meter and five levers that bend the claw's luck. `?rig=0` removes it, so the original question can still be tested.
 
 ## 4. How the claw works (the part that has to feel good)
 
@@ -65,6 +68,7 @@ Handy URL flags for testing:
 - **Playtest report** (the **P** key). It logs grabs, wins, slips (with the reason), misses and doubles. It also counts **one-more-try retries**, meaning the player drops again within 6 seconds of a fail, versus leaving the machine after a fail. Plus creatures made, battles, stages reached, and time spent per scene. Copy it after watching someone play.
 - **`tools/tune.mjs`** runs the *real* claw simulation headless in Node, with a bot that aims with human-like noise. Example: `node tools/tune.mjs 300 '{"gripAssist":0.2}' gripTorque=40,60,80` sweeps any setting.
 - **`tools/battle_sim.mjs`** runs the real battle code headless against random parties to check the difficulty curve.
+- **`tools/rig_check.mjs`** runs the Rig's physics and rules headless and asserts on them (quake shuffle quality and safety, exact rewind, Iron Grip odds, the odds badge, Luck economy, TILT, a random-action fuzz). Run it after any change to `11_clawsim.js`, `12_clawrig.js` or `29_rig.js`.
 - **`tools/physdebug.html`** draws a grab as a filmstrip of physics shapes. That's how the grip problems in §6 were found.
 
 ## 6. What I tested and what happened
@@ -117,6 +121,7 @@ Watch for:
 - **Attachment.** Do they read their creature's name out loud? Do they rebuild or unstitch? Do they react when a creature falls apart?
 - **Where the time goes.** Check the report's time per scene. If the slab and graveyard feel like chores between grabs, that's useful information too.
 - **The ending.** Do they ask to keep going after the Stage 5 Wraith, or after losing?
+- **The Rig.** Do they find the Luck meter and try a lever within a few grabs? Do they reach for Redo after every miss (which would kill the tension of a token)? Is TILT a fair warning or a trap? Do they aim at the green-badged part? For an A/B, run the same kind of tester on `?rig=0` and compare the report's one-more-try rate and grabs per session. The report's "THE RIG" lines show lever use, Luck flow and the win rate of grabs made after a lever versus plain grabs.
 
 Log each session with this template:
 
@@ -151,9 +156,33 @@ Plain JavaScript files with no framework. `node tools/build.mjs` joins `src/js/*
 | `08_audio.js` | all sound effects and 4 music loops, synthesized with WebAudio (no audio files) |
 | `10_parts.js` | the part list, traits and rarity |
 | `11_clawsim.js` | the machine: physics, claw state machine, grip and slip model (runs headless) |
+| `12_clawrig.js` | the Rig's physics, mixed into the sim: quake, nudge, chute lid, drop lock, odds preview, turn recording and rewind (runs headless) |
 | `20_engine.js` | canvas, input, scenes, shake, hit-pause, slow-mo, particles, UI |
 | `21_backgrounds.js` | shop, lab and graveyard backgrounds |
+| `29_rig.js` | the Rig's rules: Luck, costs, TILT heat, `Rig.use()` (runs headless) |
 | `30_game.js` `31`–`35` scenes | game state, claw, creatures and rig, slab, battle, shop |
 | `40_telemetry.js` `41_debug.js` | playtest report and tuning panel |
+
+## 10. The Rig: the RNG manipulation layer
+
+**Why.** The claw is the purest luck machine there is, and the open problem in §6 and §8 is that slips feel "rigged". A luck game stays fun while the player can *push* the luck, so the claw gets a layer for that: bad luck becomes a resource, and the resource buys levers.
+
+**What.** A **Luck** meter (8 horseshoes) fills from misses (+1), slips (+2) and battles (+1). Five levers spend it, each bending a different random decision:
+
+| Lever | Cost | Re-rolls | How |
+|---|---|---|---|
+| **Quake** | 3 | the layout | About 1.8 s of shaped velocity shocks to every part: a P-wave, a rumble of coherent slosh, an aftershock. Drops lock until the pile settles. |
+| **Nudge ◀ ▶** | free | the layout, locally | A sideways bump with a hop, strongest under the claw. The fourth quick nudge trips **TILT** (claw locks ~3 s, -1 Luck). |
+| **Iron Grip** | 2 | grip and slip | Next drop only: hold chance x1.4, slip odds cut to 12%. Does not fix aim. |
+| **Order** | 4 | composition | Pick a slot; one part of that slot drops in at a random spot. Rarity is still rolled. |
+| **Redo** | 3 | the outcome | After a miss or slip, rewinds the world to the moment before the drop (every part and the claw are recorded ~30x/s), refunds the token, and rolls again. A failed Iron Grip drop comes back armed. |
+
+A **Lens** shows the odds: the estimated hold chance of the part under the claw on the drop guide, and the real roll when the claw closes. It uses the same function as the dice.
+
+**Safety rails.** From the first shake or nudge until the claw starts carrying, an invisible wall (parts only, the claw ignores it) stops loose parts spilling into the chute: without it 8 of 40 quakes spilled a part, and a part thrown at the chute mid-drop got in 29 times in 30; with it, none. Redo is cancelled by anything that changes the world. Luck is capped at 8. With no lever used, every grab result is bit-identical to the pre-Rig claw (`tools/tune.mjs` output diffed seed for seed).
+
+**Tuned by measurement, not by feel.** Every number is in the tuning panel's **Rig** group. They were set by running the real sim headless (see `tools/rig_check.mjs`), so they are defensible but unproven with people. The things only a human can answer are listed in [docs/RNG_LAYER.md](docs/RNG_LAYER.md) §12, with the kill signals.
+
+Full plan, design rationale and backlog (Magnet, Levitate, Hold, Scry): [docs/RNG_LAYER.md](docs/RNG_LAYER.md).
 
 This is prototype code. When the question has an answer, throw it away and keep the notes.

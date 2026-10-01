@@ -207,6 +207,7 @@ Scenes.battle = (() => {
     Game.party = Game.party.filter((c) => c.hp > 0);
     reward = 0;
     restocked = [];
+    let luck = 0; // Luck banked from the result (the Rig)
     if (kind === 'win') {
       reward = CONFIG.winTokens + Game.stage;
       if (survivors.some((u) => u.traits.includes('golden'))) reward += 1;
@@ -217,11 +218,13 @@ Scenes.battle = (() => {
       Telemetry.c.bestStage = Math.max(Telemetry.c.bestStage, Game.stage);
       Game.bestStage = Math.max(Game.bestStage, Game.stage);
       Game.stage++;
+      luck = Rig.gain(CONFIG.luckBattle, 'battle');
       Sfx.play('victory');
       Music.duck(0.8, 2.5);
       say(pick(['The graveyard provides.', 'Look at them. My little war crimes.', 'Victory! Mostly intact, even.']), 3);
     } else if (kind === 'lose') {
       reward = 1;
+      luck = Rig.gain(CONFIG.luckDefeat, 'defeat');
       Telemetry.c.defeats++;
       Sfx.play('defeat');
       say('Back to the pile they go. Nothing\'s wasted here. Give them better parts.', 4);
@@ -232,7 +235,7 @@ Scenes.battle = (() => {
     Game.tokens += reward;
     coinsShown = 0;
     Game.restock([...restocked, ...deadParts]);
-    result = { kind, reward, restocked, deadParts, lost: deadAllies.map((u) => u.name) };
+    result = { kind, reward, restocked, deadParts, lost: deadAllies.map((u) => u.name), luck };
     Telemetry.log('battleEnd', { kind, stage: Game.stage, reward, lost: deadAllies.length });
   }
 
@@ -420,6 +423,7 @@ Scenes.battle = (() => {
     }
     const back = r.restocked.length + r.deadParts.length;
     if (back) Font.draw(ctx, `${back} part${back > 1 ? 's' : ''} dropped into the claw machine`, 126, 247, { color: '#7a6a9a' });
+    if (r.luck) Font.draw(ctx, '+' + r.luck + ' LUCK', 462, 230, { align: 'right', color: '#f6c64b' });
     if (!r.reward && !back) Font.draw(ctx, 'No reward. No shame. Well, some shame.', 126, 234, { color: '#7a6a9a' });
   }
 

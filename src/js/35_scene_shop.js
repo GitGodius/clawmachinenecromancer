@@ -19,6 +19,12 @@ Scenes.shop = (() => {
     'Every part in there was someone\'s favourite part once.',
     'Give them better parts. They\'ll give you better days.',
   ];
+  // only while the Rig is on (?rig=0 is the original game)
+  const RIG_LINES = [
+    'There\'s a panel on the side of the machine. I didn\'t put it there. Flip the switches.',
+    'Bad luck isn\'t wasted here. I bank it. Ask me how I know.',
+  ];
+  const idleLine = () => pick(Rig.on ? IDLE_LINES.concat(RIG_LINES) : IDLE_LINES);
 
   function hint() {
     if (Game.tokens > 0 && !Game.inventory.length && !Game.party.length) return 'collect';
@@ -80,7 +86,7 @@ Scenes.shop = (() => {
       return;
     }
     chatT -= dt;
-    if (chatT < 0 && !Game.talk.visible()) { chatT = rand(14, 22); say(pick(IDLE_LINES), 3.2); }
+    if (chatT < 0 && !Game.talk.visible()) { chatT = rand(14, 22); say(idleLine(), 3.2); }
     const h = hint();
     const signs = [
       { id: 'collect', label: 'COLLECT', y: 205, onClick: goClaw, tip: [{ t: 'The claw machine', c: '#ff8ac6' }, { t: `1 token per grab · you have ${Game.tokens}`, c: '#ecdcbc' }] },
@@ -91,7 +97,7 @@ Scenes.shop = (() => {
     ].map((b) => Object.assign({ x: 398, w: 76, h: 16, style: 'wood', kind: 'sign', pulse: h === b.id }, b));
     signs.push({ id: 'machine', x: MX, y: MY, w: MW, h: 214, label: '', kind: 'hot', silent: true, onClick: goClaw, tip: 'Play the claw machine' });
     signs.push({ id: 'cat', x: 424, y: 176, w: 24, h: 20, label: '', kind: 'hot', silent: true, onClick: () => { catMood = 1.5; Sfx.play('meow'); say(pick(['The cat is not for sale.', 'He bites. Affectionately.', 'That\'s Mr. Whiskers. He\'s been dead for years. Don\'t tell him.']), 2.4); } });
-    signs.push({ id: 'reaper', x: REAPER_X - 22, y: 150, w: 44, h: 46, label: '', kind: 'hot', silent: true, onClick: () => { say(pick(IDLE_LINES), 3); chatT = 18; } });
+    signs.push({ id: 'reaper', x: REAPER_X - 22, y: 150, w: 44, h: 46, label: '', kind: 'hot', silent: true, onClick: () => { say(idleLine(), 3); chatT = 18; } });
     S.signs = signs;
     UI.set(signs);
     const sg = signs.filter((b) => b.kind === 'sign');
@@ -198,11 +204,16 @@ Scenes.shop = (() => {
       if (S.sel != null && (S.signs || []).filter((q) => q.kind === 'sign')[S.sel] === b) { Draw.frame(ctx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, '#fff6e3'); Font.draw(ctx, '▶', b.x - 8, b.y + 4, { color: '#fff6e3' }); }
     }
     // HUD
-    Draw.panel(ctx, 206, 4, Game.bestStage ? 108 : 70, 16, 'dark');
+    const hudLuck = Rig.on;
+    Draw.panel(ctx, 206, 4, (hudLuck ? 104 : 70) + (Game.bestStage ? 38 : 0), 16, 'dark');
     if (SPR.has('ico_token')) SPR.draw(ctx, 'ico_token', 216, 12);
     Font.draw(ctx, String(Game.tokens), 224, 8 - Math.round(tokenPop * 3), { color: PAL.L });
     Font.draw(ctx, 'PARTY ' + Game.party.length, 270, 9, { font: 'small', color: '#a6aec2', align: 'right' });
-    if (Game.bestStage) Font.draw(ctx, 'BEST ' + Game.bestStage, 308, 9, { font: 'small', color: '#9be38f', align: 'right' });
+    if (hudLuck) {
+      SPR.has('ico_luck_s') && SPR.draw(ctx, 'ico_luck_s', 283, 12);
+      Font.draw(ctx, String(Rig.luck), 290, 8, { color: '#f6c64b' });
+    }
+    if (Game.bestStage) Font.draw(ctx, 'BEST ' + Game.bestStage, hudLuck ? 346 : 308, 9, { font: 'small', color: '#9be38f', align: 'right' });
     // speech bubble
     if (Game.talk.visible()) Game.talk.drawBubble(ctx, REAPER_X - 70, 150, 170, REAPER_X - 8, 158, { anchorBottom: true });
     fx.draw(ctx);
@@ -214,7 +225,7 @@ Scenes.shop = (() => {
       Font.draw(ctx, 'THE GOOD PARTS', 240, 92 - Math.round((1 - easeOutBack(k)) * 30), { scale: 4, color: '#fff1d6', outline: '#3a0c20', shadow: '#b0224a', align: 'center', alpha: k });
       Font.draw(ctx, 'a claw machine necromancer prototype', 240, 132, { color: '#cdb892', align: 'center', alpha: k, outline: PAL.k });
       if (Math.sin(t * 4) > -0.2) Font.draw(ctx, Input.lastDevice === 'touch' ? 'TAP TO OPEN THE SHOP' : 'CLICK OR PRESS ANY KEY', 240, 176, { color: '#ff8ac6', align: 'center', outline: PAL.k });
-      Font.draw(ctx, '← →  MOVE    SPACE  DROP    ESC  BACK    M  MUTE    F  FULLSCREEN', 240, 252, { font: 'small', color: '#7a6a9a', align: 'center' });
+      Font.draw(ctx, '← →  MOVE    SPACE  DROP    ' + (Rig.on ? 'Q E  NUDGE    1-4  RIG    ' : '') + 'ESC  BACK    M  MUTE    F  FULLSCREEN', 240, 252, { font: 'small', color: '#7a6a9a', align: 'center' });
     }
   };
 

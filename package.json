@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "tune": "node tools/tune.mjs",
+    "rigcheck": "node tools/rig_check.mjs",
     "shots": "node tools/shots.mjs"
   },
   "devDependencies": {

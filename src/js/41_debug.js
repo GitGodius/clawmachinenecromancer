@@ -17,6 +17,9 @@ const Debug = {
       <div class="dbg-btns">
         <button data-act="tokens">+5 tokens</button><button data-act="refill">Refill machine</button><button data-act="rare">Drop a legendary in</button>
         <button data-act="parts">+6 random parts</button><button data-act="win">Win battle</button><button data-act="stage">Stage +1</button>
+      </div>
+      <div class="dbg-btns">
+        <button data-act="luck">+5 luck</button><button data-act="quake">Quake now</button><button data-act="free">Free levers</button>
       </div>`;
     for (const g in groups) {
       html += `<details ${g === 'Claw' ? 'open' : ''}><summary>${g}</summary>`;
@@ -40,6 +43,7 @@ const Debug = {
     const tog = document.getElementById('dbgToggle');
     if (tog) tog.addEventListener('click', () => this.toggle());
     window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return; // Ctrl+F (find), Ctrl+P (print), Cmd+M (minimize) are not ours
       if (e.code === 'Backquote') { this.toggle(); e.preventDefault(); }
       if (e.code === 'KeyP' && !(e.target && e.target.tagName === 'INPUT')) this.showReport();
       if (e.code === 'KeyM') AudioSys.toggleMute();
@@ -65,6 +69,9 @@ const Debug = {
     if (act === 'parts') for (let i = 0; i < 6; i++) Game.addPart(randomPartType());
     if (act === 'win' && Engine.sceneName === 'battle') Scenes.battle.cheatWin();
     if (act === 'stage') Game.stage++;
+    if (act === 'luck') Rig.luck = Math.min(CONFIG.luckMax, Rig.luck + 5);
+    if (act === 'quake') Game.sim.quake();
+    if (act === 'free') { CONFIG.rigFree = CONFIG.rigFree ? 0 : 1; this.sync(); btn.textContent = CONFIG.rigFree ? 'Free levers: ON' : 'Free levers'; }
   },
   // clipboard blocked (embedded page)? show the text selected, ready for Ctrl+C
   showText(txt) {
