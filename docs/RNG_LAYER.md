@@ -22,9 +22,11 @@ A pure-luck loop has three weaknesses:
 
 The layer fixes each one without removing the randomness. It gives luck a **price**, a **memory** and a **steering wheel**.
 
+> **Since the soul grip** (the physical grab from PR #3), the grab itself rolls nothing: what the prongs close around is what you get. The luck left in the claw is the pile (what lies where, what the machine holds), the living parts that twitch, and your own hands on the carry. The levers below bend exactly those, and the Lens became a forecast of the physics instead of a peek at the dice.
+
 ## 2. Design principles
 
-1. **Every random decision in the claw loop gets a lever.** Layout, composition, grip, slip, and the final outcome.
+1. **Every source of luck in the claw loop gets a lever.** Layout, composition, grip, slip, and the final outcome.
 2. **Information before manipulation.** You cannot bend odds you cannot see, so the Lens shows them.
 3. **Cost or risk on every lever.** A free lever must be able to bite back (TILT). A safe lever must cost Luck.
 4. **Bad luck is the fuel.** Misses and slips fill the Luck meter. Being unlucky builds the means to fight back, which is also soft pity.
@@ -106,7 +108,8 @@ The classic arcade trick, and the pinball one. A sideways bump with a little hop
 
 Arms the **next drop** with a necromantic grip. Press again before dropping to disarm and get the Luck back.
 
-- **What it re-rolls:** *grip and slip.* Hold chance ×1.4 (still capped at 98%); swing, jolt and twitch slip odds are cut to 12% of normal for that grab.
+- **What it bends:** *grip and slip.* For that one drop the soul grip binds catches half as good as it normally needs (`ironCatch`), holds 1.6x harder (`ironBoost`), the soul hook pulls 1.6x harder and reaches 30% further, and a rough carry strains it about a third as much (`ironSlip` 0.35).
+- **Measured** (`tools/rig_check.mjs`, the same 100 seeded drops with and without it): grabs won 60% → 81%, grabs that lost a grip on the way 65% → 15%.
 - **Does not** fix your aim, and does not stop a part that is physically wedged in the pile from tearing free. It turns "it had it, then dropped it" into a rare event, not into a certainty.
 - **Feedback:** gold aura and status light on the claw; the Lens shows the boosted odds before you drop.
 - **With Redo:** if the armed drop fails and you Redo it, the Iron Grip is armed again. The rewind puts the world back exactly as it was before the drop, and the Luck for the grip was already spent.
@@ -120,9 +123,9 @@ Opens a small menu of the six slots (head, torso, arm, leg, heart, back) with ho
 
 ### 5.5 REDO — turn back time &nbsp;`[4]` &nbsp;3 Luck
 
-After a **missed or slipped** grab, rewinds the world to the moment before the drop and refunds the token. The last few seconds play backwards: parts slide home, the claw climbs back, the pile is exactly as you left it, and then the dice are rolled again.
+After a **missed or slipped** grab, rewinds the world to the moment before the drop and refunds the token. The last few seconds play backwards: parts slide home, the claw climbs back, the pile is exactly as you left it, and you get another go.
 
-- **What it re-rolls:** *the outcome.* Same pile, same claw position, fresh dice. A physical miss stays a physical miss, so you may want to adjust your aim.
+- **What it re-rolls:** *the outcome.* Same pile, same claw position, token back. Nothing about the grab is rolled, so the same drop does much the same thing (only the living parts' twitches differ): move your aim, arm Iron Grip, or carry more gently this time.
 - **Physics:** the sim records every part and the claw about 30 times a second during a turn. Rewinding replays those frames in reverse by setting body transforms directly, with no physics stepping, so it is exact. Angles are restored *raw*: planck's `setTransform()` wraps a body's angle into (-π, π], but a revolute joint measures its angle from the raw difference of its two bodies, so a wrapped restore left a bone tail that lay across the ±π seam with its joints off by 2π and the limit solver thrashing it. (Found in review and reproduced; `tools/rig_check.mjs` forces that case.)
 - **Limits:** one rewind per failed grab. It is lost the moment anything changes the world (a new drop, a quake, a nudge, an order, a restock) or a part fell out of the machine. The Luck you earned from the failure is kept, so a failure can pay for its own undo.
 
@@ -130,10 +133,10 @@ After a **missed or slipped** grab, rewinds the world to the moment before the d
 
 Not a lever: the information layer.
 
-- **Before you drop:** a badge on the drop guide reads `HOLD 54%  SKULL`: the chance this drop holds *something*, and the part under the claw. Green from 52%, yellow from 33%, red below. Armed Iron Grip shows in the number.
-- **After the claw closes:** the actual roll for the part that really is in the claw is shown (`WOLF SKULL 76%  HELD!` or `NO GRIP`), so a failure is a visible dice roll, not a mystery.
+- **Before you drop:** a badge on the drop guide reads `HOLD 77%  SKULL`: the chance this drop comes up holding *something*, and the part under the claw. Green from 52%, yellow from 33%, red below. Armed Iron Grip shows in the number.
+- **After the claw closes:** what the claw really caught and how firmly (`WOLF SKULL  GRIP 76%`, `NO GRIP: BY THE TIPS` or `NOTHING IN THE CLAW`). Nothing is rolled, so this is a reading, not a roll: the catch quality is the hold that the carry meter then measures your handling against.
 
-The number comes from the **same function** the sim uses to roll the grab, times a measured calibration of 0.75. The calibration matters: the claw shoves the pile as it lands, so what ends up in its cavity is often not what sat under it (the part under the claw is the one held only about 44% of the time). Uncalibrated, a green "79%" badge held 59% of the time, and a badge that over-promises feels rigged, which is the opposite of the point. Measured over 700 drops each, the real hold rate is 0.73x the raw number without Iron Grip and 0.79x with it, steady across every odds bin. `tools/rig_check.mjs` guards it (badge 54% vs 56% held over 240 drops). If the grab model in `tryGrab()` is retuned, re-measure `RIGSIM.lensShift`.
+The badge is a forecast of the physics (`ClawSim.chanceFor`): size (a big torso barely fits the mouth), how far off-centre the part is, slime and Iron Grip, times a measured calibration (`RIGSIM.lensShift` 0.85). On the soul grip about 77% of drops from rest come up holding something, and none of those factors moves that much: the soul hook forgives a few px of aim, and when the part under the claw won't fit, a neighbour often does. So the badge mostly reads 65-83%, "how good is this drop", not a verdict. The calibration matters: a badge that over-promises feels rigged, which is the opposite of the point (the first, uncalibrated badge on the dice grab showed a green 79% that held 59% of the time). Measured over 300 drops each: badge 77% vs held 77% plain, 83% vs 82% with Iron Grip. `tools/rig_check.mjs` guards it (badge 77% vs held 75% over 240 drops) and checks that the grab rolls no dice. If the grab changes (`ClawSim.scanGrips`, the soul hook, the prongs), re-measure `lensShift` and `lensIron`.
 
 ## 6. Keeping it honest
 
@@ -145,7 +148,7 @@ The number comes from the **same function** the sim uses to roll the grab, times
 | Luck hoarding | Cap of 8. |
 | Spamming the free lever | TILT: heat, lockout, Luck penalty. |
 | Unsafe state after a rewind | Redo is invalidated by anything that changes the world. Any part removed or added since the drop cancels it. The restore is exact, raw angles and joint angles included (§5.5). |
-| Changing the tuned claw | The layer adds hooks, not new rolls. With no lever used, the grab roll, slip roll and physics are unchanged (checked by `tools/rig_check.mjs` against the same seeded runs as `tools/tune.mjs`). |
+| Changing the tuned claw | The layer adds hooks, not rolls. With no lever used, the claw's physics are unchanged (`tools/rig_check.mjs`: identical results with the turn recorder stubbed out), and the grab itself rolls no dice (another random stream from the moment of the drop gives the very same catch). |
 
 ## 7. Architecture and integration
 
@@ -154,9 +157,9 @@ src/js/
   01_config.js    + "Rig" group of tunables (all costs, powers, economy)
   08_audio.js     + quake, nudge, tilt, luck_gain, luck_spend, grip_arm, order, rewind, roll_ok, roll_no
   06_sprites_world.js  + icons: luck pip (full/empty/mini), quake, nudge L/R, grip, order bell, redo
-  11_clawsim.js   hooks only: drop lock, turn recording, shared grab-chance function,
-                  Iron Grip in tryGrab / updateGrips / rollSlip, 'rewind' state, roll event
-  12_clawrig.js   ClawSim mixin: quake, nudge, chute seal, lock, predict (lens), record + rewind
+  11_clawsim.js   hooks only: drop lock, turn recording, Iron Grip in scanGrips / setGripStrength /
+                  soulHook / the carry strain, 'rewind' state
+  12_clawrig.js   ClawSim mixin: quake, nudge, chute seal, lock, chanceFor + predict (lens), record + rewind
   20_engine.js    + input actions (Q/E, 1-4, pad X/Y/LB/RB)
   src/artifact.html + the new keys in the hint line
   29_rig.js       Rig: Luck, costs, heat/TILT, can()/use(), redo offer, economy hooks, telemetry
@@ -170,7 +173,7 @@ src/js/
 tools/rig_check.mjs   headless verification of the above
 ```
 
-**Event flow.** The scene asks `Rig.use(name)`. `Rig` checks the rules, spends Luck, calls the sim (`sim.quake()`, `sim.nudge()`, ...), logs telemetry, and emits `'used'`. The sim emits physical events (`quake`, `quakePulse`, `nudge`, `seal`, `roll`, `rewind`, ...). The scene turns those into sound, shake, particles and Reaper lines. Rules live in `Rig`, physics in the sim, presentation in the scene, so each can be tested alone.
+**Event flow.** The scene asks `Rig.use(name)`. `Rig` checks the rules, spends Luck, calls the sim (`sim.quake()`, `sim.nudge()`, ...), logs telemetry, and emits `'used'`. The sim emits physical events (`quake`, `quakePulse`, `nudge`, `seal`, `bind`, `slipping`, `rewind`, ...). The scene turns those into sound, shake, particles and Reaper lines. Rules live in `Rig`, physics in the sim, presentation in the scene, so each can be tested alone.
 
 **Headless-safe.** `12_clawrig.js` has no DOM. `tools/tune.mjs` and `tools/battle_sim.mjs` load it.
 
@@ -208,13 +211,13 @@ Every number is in the **Rig** group of the tuning panel (`` ` ``): costs, Luck 
 
 `node tools/rig_check.mjs` runs the real sim headless and checks:
 
-- **Quake quality:** average part displacement (about 15 px), how many parts change what sits on top of them (about 59%), how high parts heave (average 26 px, worst about 41 px), and when the drop unlocks (about 3.1 s after the quake starts).
+- **Quake quality:** average part displacement (about 18 px), how many parts change what sits on top of them (about 58%), how high parts heave (average 24 px, worst about 46 px), and when the drop unlocks (about 3.0 s after the quake starts).
 - **Quake safety:** no part lost, no part won, no NaN, claw intact, across many seeds.
-- **Chute seal:** with the seal, zero spills; without it, spills do occur (8 in 40 quakes), so the seal is doing real work. The lid stays up through the drop, close and lift, is down while the claw carries and when the turn is over, and a part thrown at the chute mid-drop never gets in (29 of 30 do without the lid).
-- **Nudge:** shoves the right way (about 14 px), hardest near the claw, no spills, no NaN.
+- **Chute seal:** with the seal, zero spills; without it, spills do occur (14 in 40 quakes), so the seal is doing real work. The lid stays up through the drop, close and lift, is down while the claw carries and when the turn is over (also when the claw comes up empty and lets go at once), and a part thrown at the chute mid-drop never gets in (40 of 40 do without the lid).
+- **Nudge:** shoves the right way (about 10-13 px), hardest near the claw, no spills, no NaN.
 - **Redo:** after a failed grab, every part and the claw are restored to the recorded pre-drop state, exactly: positions, raw angles (no modulo 2π; comparing modulo hid a real bug), every revolute joint angle, the joint count. A bone tail is forced to lie across the ±π seam, and the same check is shown to fail (joint error 2π) with the old wrapped restore. Iron Grip comes back with the rewind, and only when it was armed.
-- **Iron Grip:** win rate 59% → 68%, and the share of grabs that lose their grip 31% → 8%.
-- **Lens:** the badge equals the sim's own chance function times the measured shift, the revealed roll matches the grab info, and the badge is calibrated (54% shown vs 56% actually held; green and yellow badges hold about equally often, so read it as "how good is this drop overall", not as a sharp discriminator).
+- **Iron Grip:** win rate 60% → 81%, and the share of grabs that lose a grip on the way 65% → 15%.
+- **Lens:** the badge equals the Lens model times the measured shift, Iron Grip always raises it, the grab rolls no dice (a different random stream from the moment of the drop gives the very same catch), and the badge is calibrated (77% shown vs 75% actually held over 240 drops; nearly every badge is green on the soul grip, so read it as "how good is this drop overall", not as a sharp discriminator).
 - **Economy and rules:** Luck gains, cap, spending, refunds (also in the stats: a taken-back Iron Grip is not counted as spent), costs, TILT (the fourth quick nudge), Order delivery by slot, `rigOn=0`, `rigFree=1`.
 - **Hooks are invisible:** the same seeded grabs with the recording hooks stubbed out give identical results. And `VERBOSE=1 node tools/tune.mjs 80` before and after the layer was added produced bit-identical results for all 80 seeds.
 - **Fuzz:** hundreds of random lever pulls, drops, releases and steps keep every invariant.

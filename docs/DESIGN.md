@@ -31,9 +31,9 @@ The rules never destroy a part. A creature that dies falls apart into the machin
 
 Winning a part is decided in two places: where you drop the claw, and how you steer once it has something. The second one is the one you can get good at.
 
-- **Forbids:** a claw that carries for you by default; slip odds that ignore how you steer.
+- **Forbids:** a claw that carries for you by default; a grip that ignores how you steer.
 - **Allows:** an opt-in **auto-carry assist**, which takes the carry off your hands at a steady, unhurried speed. It removes the skill, not the aim. A careful player who takes the quick steady line does slightly better than the assist, and a masher does worse. A longer or unlimited carry timer, and tap-to-toggle steering, are also allowed.
-- **Tested by:** the carry itself. The carriage has momentum (hold a direction to speed up, ease off to steady it), a held part sways more the faster you go, and a slip opens the jaws. A meter says STEADY, SWAYING or SLIPPING! so the cause is never a mystery.
+- **Tested by:** the carry itself. The carriage has momentum (hold a direction to speed up, ease off to steady it). Racing past a steady speed, and lurching (hard starts and stops), strains the grip; a grip strained past how well it was caught frays, then tears, and the jaws sag open. Ease off and a fraying grip re-seats. A meter under the part says STEADY, STRAINED or SLIPPING! so the cause is never a mystery. The grab itself rolls nothing (what the prongs close around is what you get), so the carry is the one place where luck gives way to hands.
 - **Check:** `node tools/balance.mjs`: a careful carrier must win at least 8 points more grabs than a masher (measured: see BALANCE.md), and the assist must land between them.
 - **How it was found:** the first bots showed no gap at all (careful 51.6%, masher 55.3%). See BALANCE.md.
 

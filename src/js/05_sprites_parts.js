@@ -675,6 +675,9 @@ const CLAW_GEO = {
     [[1.8, 0.85], [-1.8, -0.85], [-8.8, 14.2], [-5.2, 15.9]],
     [[-5.5, 13.6], [-8.5, 16.4], [4.9, 30.0], [7.1, 28.0]],
   ],
+  // inner face of the left prong (by the pivot, the elbow, the hook tip). With the right prong's
+  // mirror image it outlines the cavity the claw really closes around (ClawSim.cavity).
+  inner: [[1.8, 0.85], [-4.6, 14.6], [7.1, 28.0]],
 };
 (() => {
   // prong sprite: grid offset so the pivot lands at (OX, OY)

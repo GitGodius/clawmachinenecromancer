@@ -60,7 +60,7 @@ if (typeof AudioNode !== 'undefined') {
 const $ = (id) => document.getElementById(id);
 const GROUPS = {
   'UI': ['ui_hover', 'ui_click', 'ui_back', 'ui_deny', 'page', 'transition', 'error', 'coin'],
-  'Claw': ['claw_drop', 'claw_land', 'claw_close', 'claw_open', 'claw_top', 'grab', 'slip', 'miss'],
+  'Claw': ['claw_drop', 'claw_land', 'claw_close', 'claw_open', 'claw_top', 'grab', 'slip', 'miss', 'soul_reach', 'soul_bind', ['soul_bind', { intensity: 0.2 }, 'soul_bind weak'], 'soul_snap'],
   'Parts': [['bump', { material: 'bone' }, 'bump bone'], ['bump', { material: 'flesh' }, 'bump flesh'], ['bump', { material: 'squish' }, 'bump squish'],
             ['bump', { material: 'metal' }, 'bump metal'], 'chute', 'restock', 'twitch', 'heartbeat'],
   'Prizes': ['win_common', 'win_uncommon', 'win_rare', 'win_legendary', 'coins_count'],
@@ -118,7 +118,8 @@ $('demo').onclick = () => {
   const steps = [
     [0, () => Sfx.play('coin')], [500, () => { demoMotor = [0.55, 0.25]; }], [1700, () => { demoMotor = [0, 0.25]; Sfx.play('claw_drop'); }],
     [1750, () => { demoMotor = [0.45, 0.5]; }], [2700, () => { demoMotor = [0, 0.5]; Sfx.play('claw_land', { intensity: 0.8 }); }],
-    [3000, () => Sfx.play('claw_close')], [3350, () => Sfx.play('grab')], [3500, () => { demoMotor = [0.7, 0.85]; }],
+    [2750, () => { Sfx.play('claw_open', { pitch: 1.3, intensity: 0.4 }); Sfx.play('soul_reach'); }],
+    [3000, () => Sfx.play('claw_close')], [3250, () => Sfx.play('soul_bind', { intensity: 0.9 })], [3350, () => Sfx.play('grab')], [3500, () => { demoMotor = [0.7, 0.85]; }],
     [4000, () => Sfx.play('twitch')], [4600, () => { demoMotor = [0, 0.85]; Sfx.play('claw_top'); }], [4900, () => { demoMotor = [0.55, 0.3]; }],
     [5800, () => { demoMotor = [0, 0.3]; Sfx.play('claw_open'); }], [6000, () => Sfx.play('chute')], [6600, () => Sfx.play('win_rare')],
     [8200, () => { demoMotor = null; }],

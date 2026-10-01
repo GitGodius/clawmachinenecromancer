@@ -14,10 +14,10 @@ import { median } from './stats.mjs';
 // carry: gentle | jerky | auto (the assist). p is the grab win chance the no-physics model uses for this
 // profile; tools/balance.mjs measures the real value with tools/tune.mjs and keeps p honest.
 export const PROFILES = {
-  careful: { aimNoise: 1.5, carry: 'gentle', smartTarget: true, p: 0.44 },
-  average: { aimNoise: 3, carry: 'okay', smartTarget: true, p: 0.4 },
-  masher: { aimNoise: 5, carry: 'jerky', smartTarget: false, p: 0.33 },
-  assisted: { aimNoise: 5, carry: 'auto', smartTarget: false, p: 0.45 },
+  careful: { aimNoise: 1.5, carry: 'gentle', smartTarget: true, p: 0.69 },
+  average: { aimNoise: 3, carry: 'okay', smartTarget: true, p: 0.69 },
+  masher: { aimNoise: 5, carry: 'jerky', smartTarget: false, p: 0.56 },
+  assisted: { aimNoise: 5, carry: 'auto', smartTarget: false, p: 0.7 },
 };
 
 const SLOT_KEYS = { head: ['head'], torso: ['torso'], arm: ['armR', 'armL'], leg: ['legR', 'legL'], heart: ['heart'], back: ['back'] };

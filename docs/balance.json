@@ -1,33 +1,44 @@
 {
- "fingerprint": "8fb3626fdf0a",
+ "fingerprint": "128480ce45f3",
  "numbers": {
   "config": {
    "clawMoveSpeed": 70,
    "clawAccel": 200,
    "dropSpeed": 55,
    "liftSpeed": 34,
-   "closeTorque": 150,
+   "clawGuide": 1.6,
+   "dropOpen": 0.3,
+   "clawOpen": 0.85,
+   "closeCarry": 0.5,
+   "closeTorque": 400,
    "gripTorque": 60,
    "closeSpeed": 3.2,
    "closeTime": 0.7,
    "closeFriction": 0.08,
    "prongFriction": 1,
-   "grabChance": 0.9,
-   "slipBase": 0.02,
-   "swingSlip": 1,
+   "shellFriction": 0.15,
+   "hubMass": 3,
+   "swayDamping": 0.35,
+   "clawStiffness": 90,
+   "gripStrength": 4,
+   "gripMin": 0.15,
+   "gripDepth": 5,
+   "gripSlack": 1.5,
+   "hookPull": 2,
+   "hookReach": 14,
+   "gripAssist": 0.3,
+   "topJolt": 30,
+   "twitchHeld": 1.8,
    "swingSafe": 28,
    "carryAccel": 60,
    "carryBrake": 30,
    "assistSpeed": 0.6,
-   "topSlip": 0.12,
-   "twitchSlip": 0.4,
+   "strainLurch": 1,
+   "strainSpeed": 2.5,
+   "strainDecay": 0.6,
+   "frayRate": 2.5,
+   "frayHeal": 1.2,
    "slipOpen": 0.5,
-   "gripFade": 0.8,
-   "gripSpring": 6,
-   "gripAssist": 0.3,
-   "hubMass": 3,
-   "swayDamping": 0.35,
-   "clawStiffness": 90,
    "partCount": 22,
    "gravity": 30,
    "partFriction": 0.55,
@@ -64,8 +75,9 @@
    "heatDecay": 0.45,
    "tiltLock": 3.2,
    "tiltPenalty": 1,
-   "ironBoost": 1.4,
-   "ironSlip": 0.12,
+   "ironBoost": 1.6,
+   "ironCatch": 0.5,
+   "ironSlip": 0.35,
    "redoSpeed": 3.5,
    "enemyGrowth": 0.14,
    "enemyHp": 1,
@@ -674,63 +686,63 @@
  "econ": {
   "careful": {
    "runs": 200,
-   "finished": 98,
-   "in30": 91,
-   "in60": 97,
-   "in90": 98,
-   "medianMin": 23,
-   "reachedBoss1": 99,
+   "finished": 100,
+   "in30": 100,
+   "in60": 100,
+   "in90": 100,
+   "medianMin": 19,
+   "reachedBoss1": 100,
    "medianCleared": 15,
-   "grabs": 75.9,
-   "fightsLost": 2.8,
-   "retreats": 2.1,
+   "grabs": 48.4,
+   "fightsLost": 0.1,
+   "retreats": 0.1,
    "lostParts": 0,
-   "tokensPerMin": 7.99
+   "tokensPerMin": 10.93
   },
   "average": {
    "runs": 200,
-   "finished": 97,
-   "in30": 80,
-   "in60": 97,
-   "in90": 97,
-   "medianMin": 25,
-   "reachedBoss1": 98,
+   "finished": 100,
+   "in30": 100,
+   "in60": 100,
+   "in90": 100,
+   "medianMin": 19,
+   "reachedBoss1": 100,
    "medianCleared": 15,
-   "grabs": 83.8,
-   "fightsLost": 2.9,
-   "retreats": 2.1,
+   "grabs": 48.4,
+   "fightsLost": 0.1,
+   "retreats": 0.1,
    "lostParts": 0,
-   "tokensPerMin": 7.54
+   "tokensPerMin": 10.93
   },
   "masher": {
    "runs": 200,
-   "finished": 53,
-   "in30": 21,
-   "in60": 51,
-   "in90": 53,
-   "medianMin": 32,
-   "reachedBoss1": 75,
+   "finished": 88,
+   "in30": 64,
+   "in60": 88,
+   "in90": 88,
+   "medianMin": 23,
+   "reachedBoss1": 97,
    "medianCleared": 15,
-   "grabs": 125.8,
-   "fightsLost": 33.9,
-   "retreats": 25.7,
+   "grabs": 88.7,
+   "fightsLost": 9.1,
+   "retreats": 7.7,
    "lostParts": 0,
-   "tokensPerMin": 3.28
+   "tokensPerMin": 6.24
   },
   "assisted": {
    "runs": 200,
-   "finished": 74,
-   "in30": 48,
-   "in60": 73,
-   "in90": 74,
-   "medianMin": 26,
-   "reachedBoss1": 89,
+   "finished": 97,
+   "in30": 81,
+   "in60": 95,
+   "in90": 97,
+   "medianMin": 21,
+   "reachedBoss1": 100,
    "medianCleared": 15,
-   "grabs": 103.6,
-   "fightsLost": 19.2,
-   "retreats": 14.5,
+   "grabs": 74.2,
+   "fightsLost": 3.2,
+   "retreats": 2.7,
    "lostParts": 0,
-   "tokensPerMin": 4.59
+   "tokensPerMin": 7.91
   },
   "farm15": {
    "runs": 200,
@@ -741,11 +753,11 @@
    "medianMin": 0,
    "reachedBoss1": 0,
    "medianCleared": 0,
-   "grabs": 74.1,
+   "grabs": 42.6,
    "fightsLost": 60,
    "retreats": 60,
    "lostParts": 0,
-   "tokensPerMin": 3.64
+   "tokensPerMin": 4.51
   },
   "farm50": {
    "runs": 200,
@@ -756,107 +768,107 @@
    "medianMin": 0,
    "reachedBoss1": 0,
    "medianCleared": 0,
-   "grabs": 74.1,
-   "fightsLost": 60.9,
-   "retreats": 60.8,
+   "grabs": 42.7,
+   "fightsLost": 60.4,
+   "retreats": 60.3,
    "lostParts": 0,
-   "tokensPerMin": 5.62
+   "tokensPerMin": 6.49
   }
  },
  "claw": {
   "careful": {
    "profile": "careful",
    "trials": 300,
-   "win": 42,
-   "lifted": 51,
-   "kept": 82,
-   "seconds": 7.8
+   "win": 68,
+   "lifted": 72,
+   "kept": 95,
+   "seconds": 6.8
   },
   "average": {
    "profile": "average",
    "trials": 300,
-   "win": 36,
-   "lifted": 53,
-   "kept": 68,
-   "seconds": 7.2
+   "win": 69,
+   "lifted": 73,
+   "kept": 95,
+   "seconds": 6.4
   },
   "masher": {
    "profile": "masher",
    "trials": 300,
-   "win": 33,
-   "lifted": 55,
-   "kept": 61,
-   "seconds": 5.9
+   "win": 57,
+   "lifted": 74,
+   "kept": 77,
+   "seconds": 5.4
   },
   "assisted": {
    "profile": "assisted",
    "trials": 300,
-   "win": 45,
-   "lifted": 55,
-   "kept": 82,
-   "seconds": 9.5
+   "win": 70,
+   "lifted": 74,
+   "kept": 95,
+   "seconds": 8.2
   }
  },
  "econPhysics": {
   "careful": {
    "runs": 12,
    "finished": 92,
-   "in30": 42,
-   "in60": 75,
-   "in90": 83,
-   "medianMin": 32,
+   "in30": 92,
+   "in60": 92,
+   "in90": 92,
+   "medianMin": 22,
    "reachedBoss1": 92,
    "medianCleared": 15,
-   "grabs": 104.2,
-   "fightsLost": 13.1,
-   "retreats": 9,
+   "grabs": 71.8,
+   "fightsLost": 5.2,
+   "retreats": 0.4,
    "lostParts": 0,
-   "tokensPerMin": 4.92
+   "tokensPerMin": 7.56
   },
   "average": {
    "runs": 12,
    "finished": 92,
-   "in30": 33,
+   "in30": 83,
    "in60": 92,
    "in90": 92,
-   "medianMin": 31,
+   "medianMin": 22,
    "reachedBoss1": 92,
    "medianCleared": 15,
-   "grabs": 106.8,
-   "fightsLost": 7.3,
-   "retreats": 5.4,
+   "grabs": 82.2,
+   "fightsLost": 6.2,
+   "retreats": 3.9,
    "lostParts": 0,
-   "tokensPerMin": 5.43
+   "tokensPerMin": 6.92
   },
   "masher": {
    "runs": 12,
-   "finished": 67,
-   "in30": 17,
-   "in60": 58,
-   "in90": 67,
-   "medianMin": 43,
-   "reachedBoss1": 75,
+   "finished": 92,
+   "in30": 92,
+   "in60": 92,
+   "in90": 92,
+   "medianMin": 20,
+   "reachedBoss1": 100,
    "medianCleared": 15,
-   "grabs": 156.3,
-   "fightsLost": 27.5,
-   "retreats": 21.5,
+   "grabs": 73.8,
+   "fightsLost": 6.8,
+   "retreats": 6.4,
    "lostParts": 0,
-   "tokensPerMin": 3.7
+   "tokensPerMin": 7.76
   },
   "assisted": {
    "runs": 12,
-   "finished": 50,
-   "in30": 33,
-   "in60": 50,
-   "in90": 50,
-   "medianMin": 28,
-   "reachedBoss1": 58,
+   "finished": 92,
+   "in30": 75,
+   "in60": 92,
+   "in90": 92,
+   "medianMin": 18,
+   "reachedBoss1": 100,
    "medianCleared": 15,
-   "grabs": 111.8,
-   "fightsLost": 36.4,
-   "retreats": 30.7,
+   "grabs": 68.8,
+   "fightsLost": 6.6,
+   "retreats": 5.9,
    "lostParts": 0,
-   "tokensPerMin": 2.96
+   "tokensPerMin": 7.61
   }
  },
  "version": "0.9.0",
@@ -865,42 +877,42 @@
   {
    "name": "The carry is a skill: a careful carrier wins at least 8 points more grabs than a masher",
    "ok": true,
-   "detail": "careful 42% vs masher 33% (gap 9)"
+   "detail": "careful 68% vs masher 57% (gap 11)"
   },
   {
    "name": "The assist is a fair helper: better than mashing, no better than careful play",
    "ok": true,
-   "detail": "masher 33% < assisted 45% <= careful 42% (+5 noise)"
+   "detail": "masher 57% < assisted 70% <= careful 68% (+5 noise)"
   },
   {
    "name": "A careful player finishes a run (95% or more)",
    "ok": true,
-   "detail": "98%"
+   "detail": "100%"
   },
   {
    "name": "An average player finishes a run (90% or more)",
    "ok": true,
-   "detail": "97%"
+   "detail": "100%"
   },
   {
    "name": "A masher can still finish (40% or more), an assisted player too",
    "ok": true,
-   "detail": "masher 53%, assisted 74%"
+   "detail": "masher 88%, assisted 97%"
   },
   {
    "name": "A run takes 18 to 35 minutes for careful and average players (bot time, faster than a human)",
    "ok": true,
-   "detail": "careful 23 min, average 25 min"
+   "detail": "careful 19 min, average 19 min"
   },
   {
    "name": "No early wall: 95% of average players clear the first boss",
    "ok": true,
-   "detail": "98%"
+   "detail": "100%"
   },
   {
    "name": "Farming cannot beat playing: retreating at the first scratch earns less per minute than honest play",
    "ok": true,
-   "detail": "honest 7.54/min, farm15 3.64, farm50 5.62"
+   "detail": "honest 10.93/min, farm15 4.51, farm50 6.49"
   },
   {
    "name": "Nothing is wasted: no part physically leaves the machine in a real-physics run",

@@ -8,8 +8,8 @@
 //   seal      the chute lid stays up through a drop and comes down when the claw starts carrying;
 //             a part thrown at the chute mid-drop cannot get in (and does get in without the lid)
 //   nudge     pushes the right way, hardest under the claw, never spills
-//   lens      the odds badge uses the exact function the dice use
-//   iron      Iron Grip raises the win rate and cuts slips
+//   lens      the odds badge is the Lens model, it is calibrated against real drops, and the grab rolls no dice
+//   iron      Iron Grip raises the win rate and cuts lost grips
 //   redo      a rewind restores every part and the claw to the recorded pre-drop state: positions, RAW
 //             angles and every revolute joint angle (a bone tail across the +-PI seam is forced, and the
 //             same check is shown to fail with the old wrapped restore), and Iron Grip comes back
@@ -240,7 +240,7 @@ section('chute seal');
 // ------------------------------------------------------------------ LENS
 section('lens (odds badge)');
 {
-  let n = 0, mismatch = 0, ironLess = 0, rollMismatch = 0, rolls = 0;
+  let n = 0, mismatch = 0, ironLess = 0;
   for (let s = 0; s < Math.min(SEEDS, 25); s++) {
     const sim = newSim(3000 + s);
     const rng = mulberry32(s + 77);
@@ -249,21 +249,33 @@ section('lens (odds badge)');
       const a = sim.predict();
       if (!a || !a.part) continue;
       n++;
-      if (Math.abs(a.chance - sim.chanceFor(a.part, a.lx, 1, false) * RIGSIM.lensShift) > 1e-12) mismatch++;
+      if (Math.abs(a.chance - clamp(sim.chanceFor(a.part, a.lx, false) * RIGSIM.lensShift, 0, 0.98)) > 1e-12) mismatch++;
       sim.iron = true; const b = sim.predict(); sim.iron = false;
       if (!(b.chance >= a.chance - 1e-12) || (a.chance < 0.98 && b.chance <= a.chance)) ironLess++;
     }
-    // the dice must roll with the chance the grab info reports
-    const t = runTurn(sim, aimAtRandomPart(sim, rng));
-    const roll = sim.ev.filter(([k]) => k === 'roll').pop();
-    if (roll && roll[1].rolls.length && sim.grabInfo && sim.grabInfo.cand.length) {
-      rolls++;
-      if (Math.abs(roll[1].rolls[0].chance - sim.grabInfo.cand[0].chance) > 1e-12) rollMismatch++;
-    }
   }
-  check('badge chance = the sim\'s own chance function x the measured shift', n > 20 && mismatch === 0, `${n} predictions, ${mismatch} mismatches`);
+  check('badge chance = the Lens model x the measured shift', n > 20 && mismatch === 0, `${n} predictions, ${mismatch} mismatches`);
   check('Iron Grip raises the predicted chance', ironLess === 0, `${ironLess} violations`);
-  check('the revealed roll uses the same chance as the dice', rolls > 5 && rollMismatch === 0, `${rolls} rolls, ${rollMismatch} mismatches`);
+}
+
+{ // nothing about the grab is rolled: with twitching switched off, a different random stream from the moment of the
+  // drop gives the very same catch (only the pile and the claw decide)
+  let tried = 0, differ = 0;
+  for (let s = 0; s < Math.min(SEEDS, 20); s++) {
+    const catches = [];
+    for (const stream of [1, 2]) {
+      const sim = newSim(31000 + s);
+      CONFIG.twitchRate = 0;
+      const rng = mulberry32(s + 5);
+      let caught = null;
+      sim.onEvent = (t, d) => { sim.ev.push([t, d]); if (t === 'lift') caught = d.grips.map((p) => sim.parts.indexOf(p)).join(','); };
+      runTurn(sim, aimAtRandomPart(sim, rng), { prep: () => setRNG(mulberry32(stream * 7777 + s)) });
+      catches.push(caught);
+    }
+    tried++;
+    if (catches[0] !== catches[1]) differ++;
+  }
+  check('the grab rolls no dice: another random stream, the same catch', tried >= 10 && differ === 0, `${tried} drops, ${differ} differed`);
 }
 
 { // the badge must be honest on average: a failed "green" drop should not feel rigged
@@ -272,14 +284,14 @@ section('lens (odds badge)');
   for (let s = 0; s < N; s++) {
     const sim = newSim(20000 + s), rng = mulberry32(s * 3 + 1);
     runTurn(sim, aimAtRandomPart(sim, rng));
-    const pr = sim.pred, roll = sim.ev.filter(([k]) => k === 'roll').pop();
-    if (!pr || !pr.part || !roll) continue;
-    rows.push({ pred: pr.chance, hit: roll[1].rolls.length > 0 && roll[1].rolls[0].hit });
+    const pr = sim.pred;
+    if (!pr || !pr.part) continue;
+    rows.push({ pred: pr.chance, hit: sim.ev.some(([k]) => k === 'top') }); // the claw came up holding something
   }
   const held = avg(rows.map((r) => +r.hit)), pred = avg(rows.map((r) => r.pred));
   const green = rows.filter((r) => r.pred >= 0.52), yellow = rows.filter((r) => r.pred >= 0.33 && r.pred < 0.52);
   check('calibration: the badge matches how often drops really hold', Math.abs(pred - held) <= 0.08, `badge ${(100 * pred).toFixed(0)}% vs held ${(100 * held).toFixed(0)}% over ${rows.length} drops`);
-  check('calibration: green badges hold at least as often as yellow', avg(green.map((r) => +r.hit)) >= avg(yellow.map((r) => +r.hit)), `green ${(100 * avg(green.map((r) => +r.hit))).toFixed(0)}% (n=${green.length}), yellow ${(100 * avg(yellow.map((r) => +r.hit))).toFixed(0)}% (n=${yellow.length})`);
+  check('calibration: green badges hold at least as often as yellow', !yellow.length || avg(green.map((r) => +r.hit)) >= avg(yellow.map((r) => +r.hit)), `green ${(100 * avg(green.map((r) => +r.hit))).toFixed(0)}% (n=${green.length}), yellow ${(100 * avg(yellow.map((r) => +r.hit))).toFixed(0)}% (n=${yellow.length})`);
 }
 
 // ------------------------------------------------------------------ IRON GRIP
@@ -416,7 +428,7 @@ section('redo (rewind)');
 // ------------------------------------------------------------------ HOOKS are invisible
 section('hooks do not disturb the original claw');
 {
-  const run = () => { const out = []; for (let s = 0; s < 25; s++) { const sim = newSim(6000 + s); const rng = mulberry32(s); const t = runTurn(sim, aimAtRandomPart(sim, rng)); out.push(t ? t.result + ':' + t.won.map((p) => p.type).join(',') + ':' + sim.grabInfo?.cand.map((c) => c.chance.toFixed(6)).join('/') : 'none'); } return out.join('|'); };
+  const run = () => { const out = []; for (let s = 0; s < 25; s++) { const sim = newSim(6000 + s); const rng = mulberry32(s); const t = runTurn(sim, aimAtRandomPart(sim, rng)); const lift = sim.ev.find(([k]) => k === 'lift'); out.push(t ? t.result + ':' + t.won.map((p) => p.type).join(',') + ':' + (lift ? lift[1].grips.map((p) => p.type).join('/') : '-') + ':' + sim.time.toFixed(4) : 'none'); } return out.join('|'); };
   const a = run();
   const keep = [ClawSim.prototype.beginRecord, ClawSim.prototype.recordStep, ClawSim.prototype.endRecord];
   ClawSim.prototype.beginRecord = function () {}; ClawSim.prototype.recordStep = function () {}; ClawSim.prototype.endRecord = function () {};
@@ -526,7 +538,7 @@ section(`fuzz (${SEEDS * 10} random lever pulls)`);
       else Rig.use(n, ORDER_SLOTS[Math.floor(rng() * 6)]);
       if (Rig.luck < 0 || Rig.luck > CONFIG.luckMax) bad = `luck ${Rig.luck} after ${n}`;
       else if (!finite(sim)) bad = `non-finite body after ${n}`;
-      else if (!['idle', 'drop', 'close', 'lift', 'carry', 'return', 'release', 'rewind'].includes(sim.state)) bad = `bad state ${sim.state}`;
+      else if (!['idle', 'drop', 'spread', 'close', 'lift', 'carry', 'return', 'release', 'rewind'].includes(sim.state)) bad = `bad state ${sim.state}`;
       else if (sim.state === 'carry' && rng() < 0.3) sim.press();
       if (sim.parts.length > 90) bad = `parts ballooned to ${sim.parts.length}`;
     }

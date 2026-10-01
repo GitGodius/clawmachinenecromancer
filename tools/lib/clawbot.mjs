@@ -24,22 +24,33 @@ export function exposedParts(sim, M) {
 }
 
 // One full grab. Returns what happened. `target` is a part from sim.parts (or null to aim at nothing).
-export function playGrab(sim, M, { target, aimNoise = 2.5, carry = 'gentle', u = Math.random, maxT = 30, hooks = {}, start, cfg } = {}) {
+// approach: false = the claw is placed over the aim point and given time to settle (aim skill only);
+//           true  = it drives there from the chute at full speed and drops the instant it arrives, swinging and all,
+//                   like an eager human (what a drop on the move does to the landing)
+export function playGrab(sim, M, { target, aimNoise = 2.5, carry = 'gentle', u = Math.random, maxT = 30, hooks = {}, start, cfg, approach = false } = {}) {
   let ended = null, slips = 0, lifted = false, nervT = 0, nervMove = 0;
   const prev = sim.onEvent;
   sim.onEvent = (t, d) => {
     if (t === 'turnEnd') ended = d;
     if (t === 'slip') slips++;
-    if (t === 'lift' && d.grips.length) lifted = true;
+    if (t === 'top') lifted = true; // came up holding something (gripped, caged or hooked)
     if (hooks.onEvent) hooks.onEvent(t, d);
     prev(t, d);
   };
   try {
     if (target) {
       const [tx] = sim.partPos(target);
-      sim.teleportClaw(clamp(tx + gaussian(u) * aimNoise, M.carMin, M.carMax));
-    }
-    for (let i = 0; i < 30; i++) sim.step(1 / 60);
+      const aim = clamp(tx + gaussian(u) * aimNoise, M.carMin, M.carMax);
+      if (approach) {
+        sim.teleportClaw(M.home);
+        for (let i = 0; i < 30; i++) sim.step(1 / 60);
+        for (let i = 0; i < 600 && Math.abs(sim.carX - aim) >= 1.5; i++) { sim.input.move = Math.sign(aim - sim.carX); sim.step(1 / 60); }
+        sim.input.move = 0;
+      } else {
+        sim.teleportClaw(aim);
+        for (let i = 0; i < 30; i++) sim.step(1 / 60);
+      }
+    } else for (let i = 0; i < 30; i++) sim.step(1 / 60);
     if (start) start(); else sim.startDrop();
     if (sim.state === 'idle') return { result: 'refused', won: [], wonParts: [], slips, lifted, time: 0 };
     let t = 0;

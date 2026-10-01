@@ -20,12 +20,11 @@ const RIGSIM = {
   bump: { up: 85, side: 30, spin: 2.6, every: 0.42 },
   after: { up: 80, side: 40, spin: 2.6 },
   nudge: { side: 185, up: 100, spin: 4.4 }, // one bump, at full strength under the claw (see nudge())
-  // The Lens shows chanceFor() x this. The claw shoves the pile as it lands, so what ends up in its
-  // cavity is often not exactly what sat under it, and a drop holds something ~0.75x as often as the
-  // raw number says. Measured over 700 drops each: 0.73x plain, 0.79x with Iron Grip, steady across
-  // every odds bin. (Uncalibrated, green "79%" badges held only 59% of the time and felt rigged.)
-  // Re-measure it (tools/rig_check.mjs "calibration") if the grab model in tryGrab() changes.
-  lensShift: 0.75,
+  // The Lens shows chanceFor() x this, measured so the badge matches how often drops really come up holding
+  // something (tools/rig_check.mjs "calibration"; uncalibrated green badges once held only 59% of the time and
+  // felt rigged). Re-measure both if the grab changes (ClawSim.scanGrips, the soul hook, the prongs).
+  lensShift: 0.85, // soul grip: badges averaged 0.91 raw while 77% of drops came up holding (300 drops)
+  lensIron: 1.07, // Iron Grip reaches harder and binds weaker catches: how much more often an armed drop holds something
   steady: 0.55, // fraction of speed kept when the shaking stops (the machine "steadies")
   damp: 3, // linear damping on loose parts while shaking: reins in how high a shaken pile heaves
   dropRest: 14, // px/s: a quake unlocks the drop once every part is slower than this
@@ -216,10 +215,25 @@ Object.assign(ClawSim.prototype, {
   },
 
   // ------------------------------------------------------------ LENS
-  // What would a drop right here hold? Finds the first part under the claw's axis and scores it with
-  // the same chanceFor() the real grab uses, scaled by the measured lensShift. The chance is for
-  // holding SOMETHING: which part ends up in the claw depends on how the pile shifts as it lands
-  // (the part under the claw is the one held only about 44% of the time).
+  // The grab rolls nothing (ClawSim.scanGrips: what the prongs close around is what you get), so the Lens is a
+  // forecast of the physics, not a peek at dice: how likely a drop right here comes up holding SOMETHING, for part
+  // p whose centre is lx px off the claw's axis. Size (a big torso barely fits the mouth), how far off centre (the
+  // soul hook forgives a few px), slime and Iron Grip; scaled by the measured lensShift. tools/rig_check.mjs
+  // ("calibration") checks it against real drops, so a green badge means what it says.
+  // Measured on the soul grip: a drop comes up holding something about 77% of the time, and none of these moves it
+  // much (the soul hook forgives a few px of aim, and when the part under the claw won't fit, a neighbour often
+  // does), so the badge reads "how good is this drop overall", not a sharp verdict.
+  chanceFor(p, lx, iron = false) {
+    const s = SPR.get(p.def.sprite);
+    const dim = p.def.chain ? 16 : Math.max(s.w, s.h);
+    const size = dim <= 20 ? 1 : dim <= 26 ? 0.96 : 0.93;
+    const center = 1 - 0.12 * Math.min(1, Math.abs(lx) / 10);
+    const wet = 0.55 + 0.45 * (p.def.grip || 1); // hearts and eyeballs are slippery
+    return size * center * wet * (iron ? RIGSIM.lensIron : 1); // predict() scales by lensShift, then caps at 98%
+  },
+
+  // What would a drop right here hold? Finds the first part under the claw's axis and scores it with chanceFor().
+  // The chance is for holding SOMETHING: which part ends up in the claw depends on how the pile shifts as it lands.
   predict() {
     if (this.state !== 'idle') return null;
     const pl = planck, V = pl.Vec2, M = MACHINE;
@@ -236,7 +250,7 @@ Object.assign(ClawSim.prototype, {
     if (!p || p.won) return { part: null, y: best.y };
     let lx = Infinity; // the body nearest the claw's axis (a bone tail is six bodies), as tryGrab() scores it
     for (const b of p.bodies) { const d = b.getPosition().x * PPM - this.carX; if (Math.abs(d) < Math.abs(lx)) lx = d; }
-    return { part: p, y: best.y, lx, chance: this.chanceFor(p, lx, 1, this.iron) * RIGSIM.lensShift };
+    return { part: p, y: best.y, lx, chance: clamp(this.chanceFor(p, lx, this.iron) * RIGSIM.lensShift, 0, 0.98) };
   },
 
   // ------------------------------------------------------------ recording (for REDO)

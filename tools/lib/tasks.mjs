@@ -106,7 +106,7 @@ export function runs({ profile, seeds, fast, config, patch }) {
 export function fingerprint() {
   const g = game();
   const CONFIG = g.get('CONFIG'), META = g.get('CONFIG_META');
-  const settingsBacked = new Set(['shake', 'hitPause', 'slowmo', 'dropGuide', 'carryManual', 'carryTime']); // player settings, not balance
+  const settingsBacked = new Set(['shake', 'hitPause', 'slowmo', 'dropGuide', 'carryManual', 'carryTime', 'physDebug']); // player settings and dev views, not balance
   const balance = {};
   for (const m of META) if (!settingsBacked.has(m[1])) balance[m[1]] = CONFIG[m[1]];
   const data = {

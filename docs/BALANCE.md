@@ -16,14 +16,14 @@ The blocks between `BEGIN` and `END` markers are generated. Do not edit them; ch
 <!-- BEGIN targets -->
 |  | Target | Measured |
 |---|---:|---:|
-| ✅ | The carry is a skill: a careful carrier wins at least 8 points more grabs than a masher | careful 42% vs masher 33% (gap 9) |
-| ✅ | The assist is a fair helper: better than mashing, no better than careful play | masher 33% < assisted 45% <= careful 42% (+5 noise) |
-| ✅ | A careful player finishes a run (95% or more) | 98% |
-| ✅ | An average player finishes a run (90% or more) | 97% |
-| ✅ | A masher can still finish (40% or more), an assisted player too | masher 53%, assisted 74% |
-| ✅ | A run takes 18 to 35 minutes for careful and average players (bot time, faster than a human) | careful 23 min, average 25 min |
-| ✅ | No early wall: 95% of average players clear the first boss | 98% |
-| ✅ | Farming cannot beat playing: retreating at the first scratch earns less per minute than honest play | honest 7.54/min, farm15 3.64, farm50 5.62 |
+| ✅ | The carry is a skill: a careful carrier wins at least 8 points more grabs than a masher | careful 68% vs masher 57% (gap 11) |
+| ✅ | The assist is a fair helper: better than mashing, no better than careful play | masher 57% < assisted 70% <= careful 68% (+5 noise) |
+| ✅ | A careful player finishes a run (95% or more) | 100% |
+| ✅ | An average player finishes a run (90% or more) | 100% |
+| ✅ | A masher can still finish (40% or more), an assisted player too | masher 88%, assisted 97% |
+| ✅ | A run takes 18 to 35 minutes for careful and average players (bot time, faster than a human) | careful 19 min, average 19 min |
+| ✅ | No early wall: 95% of average players clear the first boss | 100% |
+| ✅ | Farming cannot beat playing: retreating at the first scratch earns less per minute than honest play | honest 10.93/min, farm15 4.51, farm50 6.49 |
 | ✅ | Nothing is wasted: no part physically leaves the machine in a real-physics run | careful 0, average 0, masher 0, assisted 0 |
 | ✅ | Build for the graveyard (1): at final-stage strength the best build is not the same against every enemy | wisps  x4: tank; shades x3: tank; wraith x1: bruiser |
 | ✅ | Build for the graveyard (2): a specialised build can be unable to beat an enemy at all (under 25%) | skirmish vs shades x3 2%; skirmish vs wraith x1 18% |
@@ -40,11 +40,12 @@ The blocks between `BEGIN` and `END` markers are generated. Do not edit them; ch
 | Enemy growth per stage | +14% HP and ATK |
 | Wisp / Shade / Wraith HP | 10 / 24 / 50 |
 | Shade armour | 3 |
-| Grab: carry momentum / steady speed / carry slip | 60 px/s² / 28 px/s / +1 per s per 30 px/s over |
-| Grab: base slip / top jolt / twitch | 0.02/s / 0.12 / 0.4 |
+| Carry: momentum / steady speed | 60 px/s² / 28 px/s |
+| Carry: strain per full-speed lurch / per s over steady / calms over | 1 / 2.5 / 0.6 s |
+| Grip: strength / soul hook / fray rate / re-seat rate | 4x a skull / 2x gravity / 2.5/s / 1.2/s |
 | Assist speed | 60% of steady |
 | Stages | 15, bosses every 5th |
-| Fingerprint of all balance numbers | `8fb3626fdf0a` |
+| Fingerprint of all balance numbers | `128480ce45f3` |
 <!-- END numbers -->
 
 ## Evidence
@@ -54,10 +55,10 @@ The blocks between `BEGIN` and `END` markers are generated. Do not edit them; ch
 <!-- BEGIN claw -->
 | Player | Aim error | Carry | Grabs won | Kept once lifted |
 |---|---:|---:|---:|---:|
-| careful | 1.5 px | gentle | 42% | 82% |
-| average | 3 px | okay | 36% | 68% |
-| masher | 5 px | jerky | 33% | 61% |
-| assisted | 5 px | auto | 45% | 82% |
+| careful | 1.5 px | gentle | 68% | 95% |
+| average | 3 px | okay | 69% | 95% |
+| masher | 5 px | jerky | 57% | 77% |
+| assisted | 5 px | auto | 70% | 95% |
 
 300 grabs each on fresh piles, real physics.
 <!-- END claw -->
@@ -101,12 +102,12 @@ Three copies of one build against one enemy type at stage 15 strength, each buil
 <!-- BEGIN econ -->
 | Player | Finish | ≤30 min | ≤60 min | ≤90 min | Median (min) | Past boss 1 | Grabs | Fights lost | Retreats | Tokens/min |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| careful | 98% | 91% | 97% | 98% | 23 | 99% | 75.9 | 2.8 | 2.1 | 7.99 |
-| average | 97% | 80% | 97% | 97% | 25 | 98% | 83.8 | 2.9 | 2.1 | 7.54 |
-| masher | 53% | 21% | 51% | 53% | 32 | 75% | 125.8 | 33.9 | 25.7 | 3.28 |
-| assisted | 74% | 48% | 73% | 74% | 26 | 89% | 103.6 | 19.2 | 14.5 | 4.59 |
-| farm15 | 0% | 0% | 0% | 0% | - | 0% | 74.1 | 60 | 60 | 3.64 |
-| farm50 | 0% | 0% | 0% | 0% | - | 0% | 74.1 | 60.9 | 60.8 | 5.62 |
+| careful | 100% | 100% | 100% | 100% | 19 | 100% | 48.4 | 0.1 | 0.1 | 10.93 |
+| average | 100% | 100% | 100% | 100% | 19 | 100% | 48.4 | 0.1 | 0.1 | 10.93 |
+| masher | 88% | 64% | 88% | 88% | 23 | 97% | 88.7 | 9.1 | 7.7 | 6.24 |
+| assisted | 97% | 81% | 95% | 97% | 21 | 100% | 74.2 | 3.2 | 2.7 | 7.91 |
+| farm15 | 0% | 0% | 0% | 0% | - | 0% | 42.6 | 60 | 60 | 4.51 |
+| farm50 | 0% | 0% | 0% | 0% | - | 0% | 42.7 | 60.4 | 60.3 | 6.49 |
 
 200 runs each with the no-physics grab model (grab odds from the claw table).
 <!-- END econ -->
@@ -116,10 +117,10 @@ Three copies of one build against one enemy type at stage 15 strength, each buil
 <!-- BEGIN econPhysics -->
 | Player | Finish | Median (min) | Past boss 1 | Grabs | Fights lost | Parts lost from machine |
 |---|---:|---:|---:|---:|---:|---:|
-| careful | 92% | 32 | 92% | 104.2 | 13.1 | 0 |
-| average | 92% | 31 | 92% | 106.8 | 7.3 | 0 |
-| masher | 67% | 43 | 75% | 156.3 | 27.5 | 0 |
-| assisted | 50% | 28 | 58% | 111.8 | 36.4 | 0 |
+| careful | 92% | 22 | 92% | 71.8 | 5.2 | 0 |
+| average | 92% | 22 | 92% | 82.2 | 6.2 | 0 |
+| masher | 92% | 20 | 100% | 73.8 | 6.8 | 0 |
+| assisted | 92% | 18 | 100% | 68.8 | 6.6 | 0 |
 
 12 runs each with the real claw. Small samples: read these as "the model is not lying", not as precise rates.
 <!-- END econPhysics -->
@@ -145,13 +146,15 @@ Kept so nobody re-runs the same experiments. Numbers in this section are from th
 
 **6. Pillar 4 failed its own test, and the fix moved the whole economy.** "Build for the graveyard" says no single build should be best against everything. The first matchup table had a hand-made "balanced" build topping every column. That was unfair (it simply had better parts), so the builds were rebuilt on an equal budget of rarity, and then the *tank* topped every column, in every one of 96 combinations of Shade armour, Shade HP, Wisp attack, Wisp speed and ogre-gut health that were tried. The damage model was the cause: a creature's arms were added into one hit, so armour of 2 shaved a quarter off an 8-damage hit and health decided everything. Making each arm its own strike (armour is taken off each one) gave armour teeth: at stage 15 strength a build of small hits wins 0% against Shades. A second search (72 combinations, at the strength where builds actually fail) never gave the Wisp column to a specialist, so the pillar is worded to what the evidence supports: specialised builds are punished and the boss rewards burst over bulk, but bulk is still the best answer to Wisps and Shades. Wisps got faster and harder and the ogre gut lost 8 health. That made the game harder overall (careful 88%, average 85%, masher 20% finishing, and a farm adversary out-earning honest play at 118%). The first fix, softer enemies, undid the identity (growth 0.12 with a lighter boss let the small-hit build beat Shades 54% of the time and cut the bruiser's edge on the Wraith to 5 points). So the identity was held up instead, with armour 3 on Shades and on the Wraith, and the economy was bought back with income: win pay 3 to 4, starting purse 6 to 7, partial pay 0.7, and a lighter Wraith (50 health). The two lessons: **growth per stage trades identity for economy, income does not**; and the bots' finish rates were noisy enough at 60 runs (plus or minus 4 points) that a candidate had to pass with margin in a second sample before it was chosen.
 
+**7. The grab became physical, and the carry needed a new spine.** The soul grip replaced the dice: what the prongs close around is what you get. On the same 1000 seeded piles it won 74% of grabs against the dice grab's 52%, the exact target 50% against 25%, and lost a centred catch 8% of the time against 37%. But it had no carry skill at all (careful minus masher: +0.5 points), because a part locked in the cage rides out any carry. Rolled slips would have contradicted "nothing is rolled", so the carry was rebuilt on the physics: lurches and speed past the steady speed build strain, a grip whose catch can't take the strain frays (the part visibly slides and the meter says so), easing off re-seats it, and a grip frayed through tears and the jaws sag. Sweeping `strainSpeed`: 1 gave a gap of 1 point, 2 gave 5 to 9, 2.5 gives 11 to 13 without moving careful, average or the assist (68-70%), and 3 gave 17 with the masher at 51%, too harsh for a first build. The soul grip also pays out about 1.6 times the parts per token, so runs got shorter and easier: in the fast model careful went from 23 to 19 minutes and from 2.8 to 0.1 fights lost; with real physics from 32 to 22 minutes and from 13.1 to 5.2 fights lost, still 92% finishing. Cutting income (win pay 3, a starting purse of 5, or both) or raising enemy growth to 0.16 barely moved the careful and average rows (at most 0.6 fights lost): with a claw this reliable their party is limited by its slots, not by tokens, and those knobs mostly punish the masher. So the economy was left as it was. If humans find the battles too easy, retune the economy; don't make the claw worse.
+
 ## Retuning guide
 
 | To change | Turn | Watch |
 |---|---|---|
 | How hard the run is overall | `enemyGrowth` | finish rate for masher and assisted; it is the strongest lever |
 | How much a lost fight hurts | `partialPay`, `ladderMax` | the farm rows in *Whole runs* must stay under honest play |
-| How much the carry matters | `swingSlip`, `swingSafe`, `carryAccel` | the careful-minus-masher gap in *The claw* |
+| How much the carry matters | `strainSpeed`, `strainLurch`, `swingSafe`, `frayRate`, `carryAccel` | the careful-minus-masher gap in *The claw*; careful and the assist must not move |
 | The assist | `assistSpeed` | assisted must stay between masher and careful |
 | Who beats whom | `ENEMY_KINDS` (armour, HP, speed) | *Who asks what*: no row may win every column |
 | Pace | `winTokens`, `startTokens`, `restockParts` | median minutes and the "past boss 1" column |

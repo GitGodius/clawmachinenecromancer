@@ -20,11 +20,11 @@ const RIG_TRICKS = {
   nudgeR: { name: 'Nudge right', label: 'NUDGE', cost: null, color: '#ecdcbc',
     tip: ['Bump the glass to the right.', 'Loosens the pile around the claw.', 'Nudge too fast and it TILTs.'] },
   grip: { name: 'Iron Grip', label: 'GRIP', cost: 'costGrip', color: '#f6c64b',
-    tip: ['Hex the claw for the next drop.', 'Stronger hold, far fewer slips.', 'Press again to take it back.'] },
+    tip: ['Hex the claw for the next drop.', 'It catches more, holds harder and', 'shrugs off a rough carry.', 'Press again to take it back.'] },
   order: { name: 'Special Order', label: 'ORDER', cost: 'costOrder', color: '#6fd3ff',
     tip: ['Pick a slot. The Reaper drops', 'one in from the back room.', 'Rarity is still the luck of the draw.'] },
   redo: { name: 'Redo', label: 'REDO', cost: 'costRedo', color: '#e7a6f0',
-    tip: ['Turn back time after a missed or', 'slipped grab: same pile, token back,', 'fresh dice.'] },
+    tip: ['Turn back time after a missed or', 'slipped grab: same pile, token back,', 'another go at it.'] },
 };
 
 const Rig = {

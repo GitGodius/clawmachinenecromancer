@@ -17,8 +17,8 @@ Default controls (every key can be rebound in Settings; `P` opens the pause menu
 
 | | |
 |---|---|
-| **Claw** | `←` `→` steer · `Space` drop, and again to let go over the chute · `Esc` back. Holding the mouse or a finger on the glass steers toward it. A drop over the chute is refused (no token spent), and a drop on the move stops and settles first, so the claw lands where the guide was. |
-| **Carrying** | Hold a direction to speed up, ease off to steady it. **Fast carries sway, and a swinging part slips.** The meter shows it. |
+| **Claw** | `←` `→` steer · `Space` drop, and again to let go over the chute · `Esc` back. Holding the mouse or a finger on the glass steers toward it. A drop over the chute is refused (no token spent), and a drop on the move stops and settles first, so the claw lands where the guide was. **What the prongs close around is what you get:** nothing about a grab is rolled, and the violet outline shows the part the claw will reach for. |
+| **Carrying** | Hold a direction to speed up, ease off to steady it. **Racing at full speed or stopping hard strains the grip: it frays, then tears.** Ease off and a fraying grip re-seats. The meter under the part says how firm the catch is and how hard you are pushing it (STEADY, STRAINED, SLIPPING!). |
 | **The Rig** | `Q` `E` nudge the glass · `1` quake · `2` iron grip · `3` order · `4` redo, or click the panel beside the glass. Gamepad: LB / RB nudge, X quake, Y iron grip. |
 | **Slab** | Click a part to stitch it on, click a slot to take it off, or use the arrow keys and `Space`. **BRING TO LIFE** when ready. Tooltips show set progress and whose remains a part is. |
 | **Graveyard** | **FIGHT**, then **ZAP** (heal and haste, on a cooldown) or **RETREAT** (keeps everyone standing, pays for the damage you did). **SPEED** x1/x2 is remembered. The panel at the top shows exactly what winning pays. |
@@ -36,11 +36,11 @@ The claw is a luck machine, and the Reaper admits it's rigged. So the machine no
 |---|---|---|---|
 | **Quake** | 1 | 3 | An earthquake. The pile churns into a new layout. |
 | **Nudge ◀ ▶** | Q E | free | Bump the glass. Do it too fast and the machine **TILT**s. |
-| **Iron Grip** | 2 | 2 | The next drop holds harder and slips far less. |
+| **Iron Grip** | 2 | 2 | The next drop catches more, holds harder and shrugs off a rough carry. |
 | **Order** | 3 | 4 | Pick a slot; the Reaper drops one in from the back room. |
-| **Redo** | 4 | 3 | After a miss or slip, turn back time: same pile, token back, fresh dice. |
+| **Redo** | 4 | 3 | After a miss or slip, turn back time: same pile, token back, another go. |
 
-A **Lens** shows the odds: a badge on the drop guide before you drop, and the actual roll when the claw closes. In `dev.html`, `?rig=0` gives the original claw, to compare. The full plan, numbers and safety rails are in [docs/RNG_LAYER.md](docs/RNG_LAYER.md).
+A **Lens** shows the odds: a badge on the drop guide before you drop (calibrated against real drops, so 77% means about 77%), and what the claw really caught, and how firmly, when it closes. In `dev.html`, `?rig=0` gives the original claw, to compare. The full plan, numbers and safety rails are in [docs/RNG_LAYER.md](docs/RNG_LAYER.md).
 
 ## The docs
 
@@ -72,7 +72,7 @@ DSF=2 node tools/play.mjs "dev.html?scene=claw" out '[{"hold":"ArrowLeft","ms":8
 | `tools/test.mjs` | Regression tests. `--update` rewrites `tools/golden.json` (the diff in git is the record of what a rebalance moved) |
 | `tools/balance.mjs` | Measure everything, rewrite `docs/BALANCE.md`. `--quick` skips real physics; `--check` is CI |
 | `tools/run_sim.mjs` | Whole runs played by bots (careful, average, masher, assisted) with real physics or the fast model (`--fast`) |
-| `tools/tune.mjs` | The claw tuner: grab odds by carry style, sweeps of any CONFIG value |
+| `tools/tune.mjs` | The claw tuner: grab odds by carry style, what the claw really held, why grips were lost, sweeps of any CONFIG value |
 | `tools/rig_check.mjs` | The Rig, headless: quakes, nudges, the chute lid, rewind, the Luck economy, a fuzz |
 | `tools/matchups.mjs` | Which build beats which enemy |
 | `tools/battle_sim.mjs` | Win rate of party shapes by stage |
