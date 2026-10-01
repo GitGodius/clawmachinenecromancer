@@ -81,13 +81,14 @@ Handy URL flags for testing:
   - **jolt:** the bounce when the winch hits its stop
   - **twitch:** a living part fights the grip (hands, tentacles, hearts and tails twitch in the pile too)
   - **swing:** a hard swing
+  - **strain:** a rough carry frayed the grip until it tore (the integrated build: the carry meter warns first, and easing off re-seats it)
 
   The prongs have grippy pads inside and smooth metal outside, so parts slide off the outside instead of riding along on a prong. A part pinched by just the prong tips can still come along. The Reaper calls it out, and it usually falls.
 - **Juice.** The key feedback, in the order it happens:
   - **Machine noise:** the motor hum's pitch follows the carriage speed and the load.
   - **Aim:** the drop guide runs straight down to the part the soul hook will reach for and outlines it in violet.
   - **Landing:** a thunk, dust and a small screen shake. The prongs spread with a ghostly whistle, and a violet tendril reaches from the claw's heart to the part as it's drawn up. The prongs ratchet shut and the winch spins up.
-  - **Bind:** a shimmer and a flare where the grip takes hold. Its colour says how firm the catch is: green is firm, amber is loose, and flickering red means it's sliding out. The prongs glow and spectral threads run from them into the part. The part's name and rarity are labelled with five pips of grip; no pips means it's only riding on the prongs.
+  - **Bind:** a shimmer and a flare where the grip takes hold. Its colour says how firm the catch is: green is firm, amber is loose, and flickering red means it's sliding out. The prongs glow and spectral threads run from them into the part. The part's name and rarity are labelled, with the carry meter under them: how firm the catch is against how hard you are carrying it, in words (STEADY, STRAINED, SLIPPING!). NO GRIP means it's only riding on the prongs.
   - **Snap:** when a grip tears, you get a crack of sparks and a falling whine, and the Reaper says why.
   - **Win:** the chute catch hit-pauses, the bulbs chase, and the prize flies into your bag. Rare catches get slow-mo; legendaries get a gold flash.
   - **Life in the pile:** eyeballs follow the claw, hearts pulse, and legendaries sparkle.

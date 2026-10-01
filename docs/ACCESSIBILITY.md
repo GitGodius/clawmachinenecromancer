@@ -21,7 +21,7 @@ Designed in from the start of this pass, not bolted on: **nothing important is c
 |---|---|
 | Rarity is stars as well as colour | ★ uncommon, ★★ rare, ★★★ legendary on parts in the bag and slab. In the machine the glow pulses faster the rarer the part. |
 | Whose health bar is whose | ♥ marks yours, × marks theirs. A hurt bar is dashed, and your creatures show their health as a number. |
-| The carry meter says it in words | STEADY / SWAYING / SLIPPING!, with a bar that is solid, dotted or striped. Colour is a bonus. |
+| The carry meter says it in words | STEADY / STRAINED / SLIPPING!, with a bar that is solid, dotted or striped. Colour is a bonus. |
 | Out of tokens | The button says NO TOKENS; the counter is not only red. |
 | Carry timer | A bar and, in the last three seconds, a number. |
 | Reduce flashing | Settings > Reduce flashing. No full-screen flashes, and every blinking light and chase runs at 1.5 per second or slower. Checked by a lint (see below). |

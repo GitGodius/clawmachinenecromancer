@@ -2,6 +2,40 @@
 
 Player-facing changes first. The version in the corner of the title screen matches the heading here.
 
+## 0.10.0: everything, together
+
+The four open lines of work (the Rig, the soul grip, the polish pass, and the grab-loop and monster fixes) fitted into one build. Same caveat as 0.9.0: checked by bots and a headless browser, not yet on real hardware.
+
+### The claw is honest now
+- **What the prongs close around is what you get.** Nothing about a grab is rolled any more. The claw comes down in a narrow pose so its tips land on the part under the guide, spreads, clamps and locks, and a soul hook drags the part under its centre line up into its mouth (outlined in violet before you drop). A part that is inside the claw when it closes is won about 90% of the time (it was about half), the part you aimed at about half the time (it was a quarter), and parts no longer hang on from outside the claw.
+- **A drop on the move stops and settles first**, so the claw lands where the guide was. A drop over the chute is refused and costs nothing.
+- **An empty claw lets go at the top** instead of making you steer air to the chute.
+- "SO CLOSE!" when a part slips within a claw-length of the chute, and "Just clipped it." when the claw closes on a part without catching it.
+
+### The carry is still the skill
+- Racing at full speed or stopping hard strains the grip. A grip strained past how well it was caught frays and slides; ease off and it re-seats ("Phew."); keep yanking and it tears and the jaws sag open. This replaces 0.9.0's sway-and-roll slips.
+- One carry meter under the part, in words: STEADY, STRAINED, SLIPPING!.
+- Bots: a careful carry wins about 69% of grabs, a masher about 56%, and the auto-carry assist lands with the careful player.
+
+### The Rig: rig the machine back
+- A maintenance panel beside the glass. Bad luck fills a **LUCK** meter (a miss +1, a slip +2, a battle won +1), and Luck buys levers: **Quake** (3) reshuffles the pile, **Nudge** (free, but a fourth quick one TILTs the machine), **Iron Grip** (2) makes the next drop catch more and shrug off a rough carry, **Order** (4) has the Reaper drop in a part for the slot you pick, **Redo** (3) turns back time after a failed grab.
+- The **Lens**: a badge on the drop guide with the chance this drop comes up holding something, calibrated against real drops (77% means about 77%), and a reading of what the claw really caught when it closes.
+- The Rig's keys can be rebound like the others, and your Luck is saved with the run. Full plan and safety rails: [docs/RNG_LAYER.md](docs/RNG_LAYER.md).
+
+### Monsters and fights
+- **Part sets**: matching parts give a creature a bonus. Tooltips show set progress.
+- **Remains keep their names**: a creature that dies falls apart into the machine, and its parts still say whose they were.
+- The **IF YOU WIN** panel shows the prize the next fight restocks into the machine.
+- Battle **SPEED x1/x2** (remembered), a readable log, and callouts for bleed, burn and whip hits.
+- A bigger, hunched Reaper.
+
+### Balance
+- The soul grip pays out about 1.6 times the parts per token, so runs are shorter: about 22 minutes for a careful bot with the real claw (it was 32), still finishing 92% of the time. All 12 balance targets hold. [docs/BALANCE.md](docs/BALANCE.md) says what was tried and why the economy was left alone for now.
+
+### For developers
+- `tools/rig_check.mjs` covers the Rig on the soul grip, including a check that the grab rolls no dice. `tools/tune.mjs` also reports what the claw really held and why grips were lost.
+- [docs/claw-feel.md](docs/claw-feel.md) is kept as the record of the other grab fix, whose strain-against-hold plan the carry is built on.
+
 ## 0.9.0: the polish pass
 
 Not yet 1.0: everything below was checked with bots and a headless browser with software rendering. It has not been run on real graphics cards or inside the real itch.io frame. See [docs/RELEASE.md](docs/RELEASE.md) for the checklist that closes that gap.

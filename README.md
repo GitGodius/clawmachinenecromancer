@@ -10,7 +10,7 @@ A hooded Reaper runs a claw machine full of body parts. Grab parts with a physic
 
 ## Play
 
-- **Easiest:** open `index.html`. One self-contained file (about 760 KB) that works offline with no server. Your run is saved in the browser and comes back after a refresh.
+- **Easiest:** open `index.html`. One self-contained file (about 880 KB) that works offline with no server. Your run is saved in the browser and comes back after a refresh.
 - **Development:** open `dev.html`. It loads `src/js/*.js` directly (edit, refresh) and has the tuning panel and cheats. The page players get has neither.
 
 Default controls (every key can be rebound in Settings; `P` opens the pause menu):
