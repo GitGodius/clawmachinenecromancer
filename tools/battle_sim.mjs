@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const planck = require('planck');
+let planck; try { planck = require('planck'); } catch (e) { planck = require('../vendor/planck.min.js'); } // npm copy, else the vendored one
 const dir = new URL('../src/js/', import.meta.url);
 const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js') && !['99_main.js', '41_debug.js'].includes(f)).sort();
 const src = files.map((f) => fs.readFileSync(new URL(f, dir), 'utf8')).join('\n') +

@@ -9,13 +9,14 @@ Scenes.claw = (() => {
   let buf, g, glassBG, frameImg;
   const fxW = new Particles(); // world space (in the buffer, 2x on screen)
   const fxS = new Particles(); // screen space (1x)
-  let t = 0, winFx = 0, bagBump = 0, tokenBump = 0, noTokenT = 0, idleT = 0, movedOnce = false;
+  let t = 0, winFx = 0, bagBump = 0, tokenBump = 0, noTokenT = 0, idleT = 0, movedOnce = false, chuteWarnT = 0, missShown = false;
   let flying = [];
   let slowmoDone = new Set();
   let lastBumpSfx = 0;
   let neonOff = 0;
   let turnWins = 0;
   const btn = {};
+  const ACTION_LABEL = { close: 'GRABBING', lift: 'LIFTING', return: 'RETURNING', release: 'OPENING' };
   const toScreen = (x, y) => [(x + GX) * 2, (y + GY) * 2];
   const say = (text, hold) => Game.talk.say(text, hold);
 
@@ -114,7 +115,8 @@ Scenes.claw = (() => {
         const d = mp.x / 2 - GX - sim.carX;
         if (Math.abs(d) > 2) move = clamp(d / 10, -1, 1);
       }
-      if (move) { movedOnce = true; idleT = 0; } else idleT += dt;
+      if (move) { movedOnce = true; idleT = 0; } else if (sim.state === 'idle') idleT += dt;
+      chuteWarnT = Math.max(0, chuteWarnT - dt);
       sim.input.move = move;
       if (Input.hit('a')) S.pressA();
       if (Input.hit('b')) S.back();
@@ -157,7 +159,7 @@ Scenes.claw = (() => {
         fxS.text(436, 150, '+1', RARITY[PART_DEFS[f.type].rarity].color, { font: 'main' });
         return false;
       });
-      btn.drop.label = sim.state === 'idle' ? (Game.tokens > 0 ? 'DROP' : 'NO TOKENS') : sim.state === 'carry' ? 'RELEASE' : sim.state === 'drop' ? 'STOP' : '...';
+      btn.drop.label = sim.state === 'idle' ? (Game.tokens > 0 ? 'DROP' : 'NO TOKENS') : sim.state === 'carry' ? 'RELEASE' : sim.state === 'drop' ? 'STOP' : ACTION_LABEL[sim.state] || '...';
       UI.set(Object.values(btn));
     },
 
@@ -175,6 +177,12 @@ Scenes.claw = (() => {
           Sfx.play('ui_deny');
           noTokenT = 2;
           say(pick(['Out of tokens. Go stitch something. Or someone.', 'No token, no grab. Your creations can earn you more.']), 3);
+          return;
+        }
+        if (sim.carX > M.chuteX0 + 4) { // over the prize chute there is nothing to grab: don't burn a token on a sure miss
+          Sfx.play('ui_deny');
+          chuteWarnT = 1.6;
+          say(pick(['That\'s the chute. Over the pile, please.', 'Prizes go IN there. Steer left.', 'Nothing to grab in the chute. Go left.']), 2.4);
           return;
         }
         Game.tokens--;
@@ -199,6 +207,7 @@ Scenes.claw = (() => {
       const [hx, hy] = [sim.hub.getPosition().x * PPM, sim.hub.getPosition().y * PPM];
       switch (type) {
         case 'drop':
+          missShown = false;
           Sfx.play('claw_drop');
           if (chance(0.35)) say(pick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
           break;
@@ -217,24 +226,44 @@ Scenes.claw = (() => {
             else if (chance(0.6)) say(pick(['Got something!', 'Ooh.', 'Hold it... hold it...', 'Easy does it.']), 1.6);
           }
           break;
-        case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); break;
+        case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); Game.seen.carries = (Game.seen.carries || 0) + 1; break;
+        case 'empty': // nothing in the claw: say so right away instead of after a pointless carry
+          if (!sim.turn || !sim.turn.grabbed.size) {
+            missShown = true;
+            Sfx.play('miss');
+            say(pick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Aim for the middle of it.']), 2.2);
+          }
+          break;
         case 'gripLost':
           Telemetry.c.bySlipWhy[d.why] = (Telemetry.c.bySlipWhy[d.why] || 0) + 1;
           break;
         case 'slip': {
+          if (sim.carX >= M.chuteX0) break; // over the chute it falls in: the win beat takes over
           Sfx.play('slip');
           const [px, py] = sim.partPos(d.part);
           fxW.burst(px, py, 6, { speed: 25, ay: 60, life: 0.4, color: ['#fff6e3', '#cdb892'] });
+          if (sim.carX > M.guardX - 32) { // dropped within a claw-length of the chute: the "one more try" moment
+            Telemetry.c.nearMiss++;
+            Engine.slowmo(0.35, 0.3);
+            Engine.shake(2, 0.2);
+            const [sx, sy] = toScreen(px, py);
+            fxS.text(clamp(sx, 50, 330), sy - 10, 'SO CLOSE!', '#ff8ac6', { font: 'main', life: 1.3, vy: -16, outline: PAL.k });
+            say(pick(['SO close. The chute was RIGHT there.', 'Inches. Literal inches.', 'The chute felt that.', 'Ohh. Ohh no. So close.']), 2.4);
+            break;
+          }
           const why = d.part.twitchT && sim.time - d.part.twitchT < 0.6;
           say(why ? pick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
             pick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
           break;
         }
-        case 'release': Sfx.play('claw_open'); break;
+        case 'release':
+          Sfx.play('claw_open');
+          if (d.timeout) { Sfx.play('ui_deny'); say(pick(['Too slow! The claw has a schedule.', 'Time! It lets go on its own.']), 2.2); }
+          break;
         case 'win': onWin(d); break;
         case 'turnEnd': {
           Telemetry.grabEnd(d.result, d.won);
-          if (d.result === 'miss') {
+          if (d.result === 'miss' && !missShown) {
             Sfx.play('miss');
             if (!Game.talk.visible() || chance(0.5)) say(pick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
           }
@@ -488,9 +517,17 @@ Scenes.claw = (() => {
       const hot = b.hover || b.held;
       const pulse = b === btn.back && noTokenT > 0 && Math.sin(t * 10) > 0;
       if (hot || pulse) Draw.rect(ctx, b.x, b.y, b.w, b.h, pulse ? '#5a1834' : '#2b2d3d');
-      ico(b === btn.drop ? 'btn_a' : 'btn_b', b.x + 9, b.y + 7, b === btn.drop ? 'A' : 'B');
-      Font.draw(ctx, b.label, b.x + 20, b.y + 4, { color: b === btn.drop && Game.tokens <= 0 && sim.state === 'idle' ? '#7a6a9a' : '#ecdcbc' });
+      let lx = b.x + 20;
+      if (Input.lastDevice === 'keys') { // keyboard players see the keys, not gamepad glyphs
+        const cap = b === btn.drop ? 'SPACE' : 'ESC', cw = Font.measure(cap, 'small') + 5;
+        Draw.rect(ctx, b.x + 1, b.y + 2, cw, 10, '#1b1526'); Draw.rect(ctx, b.x + 1, b.y + 2, cw, 9, '#3c4257'); Draw.rect(ctx, b.x + 1, b.y + 2, cw, 1, '#677089');
+        Font.draw(ctx, cap, b.x + 3, b.y + 4, { font: 'small', color: '#ecdcbc' });
+        lx = b.x + cw + 5;
+      } else ico(b === btn.drop ? 'btn_a' : 'btn_b', b.x + 9, b.y + 7, b === btn.drop ? 'A' : 'B');
+      const dead = b === btn.drop && (Game.tokens <= 0 && sim.state === 'idle' || !['idle', 'drop', 'carry'].includes(sim.state));
+      Font.draw(ctx, b.label, lx, b.y + 4, { color: dead ? '#7a6a9a' : '#ecdcbc' });
     }
+    if (chuteWarnT > 0 && Math.sin(t * 16) > 0) Draw.frame(ctx, btn.left.x - 1, btn.left.y - 1, btn.left.w + 2, btn.left.h + 2, '#ff8ac6');
     if (btn.left.held || Input.held('left')) Draw.frame(ctx, btn.left.x, btn.left.y, btn.left.w, btn.left.h, '#fff6e3');
     if (btn.right.held || Input.held('right')) Draw.frame(ctx, btn.right.x, btn.right.y, btn.right.w, btn.right.h, '#fff6e3');
 
@@ -508,6 +545,17 @@ Scenes.claw = (() => {
       const [cx] = toScreen(sim.carX, 0);
       Draw.rect(ctx, cx - 16, 44, 32, 3, PAL.k);
       Draw.rect(ctx, cx - 15, 45, Math.max(0, 30 * k), 1, k < 0.3 && Math.sin(t * 20) > 0 ? PAL.R : PAL.d);
+    }
+    // the first two carries: spell out steer -> chute -> release (nothing else teaches it).
+    // The text sits on the side of the glass away from the claw so it never covers the held part.
+    if (sim.state === 'carry' && (sim.grips.length || sim.held.size) && (Game.seen.carries || 0) <= 2) {
+      const over = sim.carX > M.chuteX0 + 4, a = 0.75 + 0.2 * Math.sin(t * 6), hx = sim.carX < 80 ? 262 : 118;
+      const key = Input.lastDevice === 'keys' ? 'SPACE' : Input.lastDevice === 'pad' ? 'A' : 'THE RELEASE BUTTON';
+      if (over) Font.draw(ctx, 'NOW RELEASE!  (' + key + ')', hx, 84, { font: 'small', color: '#9be38f', align: 'center', alpha: a, outline: PAL.k });
+      else {
+        Font.draw(ctx, 'STEER TO THE CHUTE  →', hx, 78, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
+        Font.draw(ctx, 'THEN PRESS ' + key + ' TO RELEASE', hx, 89, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
+      }
     }
     // first-time controls hint, inside the glass, until the player does anything
     if (!movedOnce && sim.state === 'idle' && Game.tokens === CONFIG.startTokens) {

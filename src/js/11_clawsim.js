@@ -240,9 +240,9 @@ class ClawSim {
     return Math.hypot(b.x - a.x, b.y - a.y) * PPM;
   }
 
-  driveCarriage(target, h) {
+  driveCarriage(target, h, accelMul = 1) {
     const M = MACHINE;
-    this.carV = approach(this.carV, target, CONFIG.clawAccel * h);
+    this.carV = approach(this.carV, target, CONFIG.clawAccel * accelMul * h);
     let nx = this.carX + this.carV * h;
     if (nx < M.carMin) { nx = M.carMin; this.carV = 0; }
     if (nx > M.carMax) { nx = M.carMax; this.carV = 0; }
@@ -293,7 +293,12 @@ class ClawSim {
         break;
       case 'drop': {
         this.prongs('open');
-        this.driveCarriage(0, h);
+        // the gantry stops and the claw settles before the cable pays out (0.7 s at most), so you drop where the
+        // guide was: dropping at full speed used to land ~33 px past it (coast + pendulum), now ~3 px
+        const hv = this.hub.getLinearVelocity(), sway = this.hub.getPosition().x * PPM - this.carX;
+        const braking = this.stateT < 0.7 && (Math.abs(this.carV) > 6 || Math.abs(hv.x * PPM) > 10 || Math.abs(sway) > 3);
+        this.driveCarriage(0, h, 3);
+        if (braking) { this.hub.setLinearDamping(10); break; }
         const vy = this.hub.getLinearVelocity().y * PPM;
         const dist = this.ropeDist();
         // pay out cable, but never more than a few px of slack: the head falls at <= dropSpeed
@@ -333,11 +338,15 @@ class ClawSim {
         if (this.ropeLen > d + 1) this.ropeLen = d + 1;
         // winch spins up smoothly (an instant yank would rip parts out of the grip)
         const spin = easeInOutQuad(clamp(this.stateT / 0.45, 0, 1));
-        this.ropeLen = Math.max(M.topLen, this.ropeLen - CONFIG.liftSpeed * spin * h);
+        const emptyHanded = !this.grips.length && !this.held.size && this.grabInfo && !this.grabInfo.cand.length; // grabbed pure air: don't make them watch a slow empty ride
+        this.ropeLen = Math.max(M.topLen, this.ropeLen - CONFIG.liftSpeed * (emptyHanded ? 2.2 : 1) * spin * h);
         if (this.ropeLen <= M.topLen + 0.01 && this.stateT > 0.2) {
+          const empty = !this.grips.length && !this.held.size; // nothing in the claw: no point steering it anywhere
           for (const g of this.grips.slice()) this.rollSlip(g.part, CONFIG.topSlip, 'jolt');
-          this.setState(CONFIG.carryManual ? 'carry' : 'return');
-          this.emit('top', { held: [...this.held] });
+          if (empty) { this.emit('empty'); this.startRelease(); } else {
+            this.setState(CONFIG.carryManual ? 'carry' : 'return');
+            this.emit('top', { held: [...this.held] });
+          }
         }
         break;
       }
@@ -345,7 +354,8 @@ class ClawSim {
         this.prongs('close', 1);
         this.updateGrips(h);
         this.driveCarriage(move * CONFIG.clawMoveSpeed, h);
-        if (pressed || (CONFIG.carryTime > 0 && this.stateT > CONFIG.carryTime)) this.startRelease();
+        if (pressed) this.startRelease();
+        else if (CONFIG.carryTime > 0 && this.stateT > CONFIG.carryTime) this.startRelease(true);
         break;
       case 'return': {
         this.prongs('close', 1);
@@ -505,10 +515,10 @@ class ClawSim {
     if (held) this.rollSlip(p, CONFIG.twitchSlip, 'twitch');
   }
 
-  startRelease() {
+  startRelease(timeout = false) {
     this.dropGrips();
     this.setState('release');
-    this.emit('release', { held: [...this.held], overChute: this.carX > MACHINE.chuteX0 });
+    this.emit('release', { held: [...this.held], overChute: this.carX > MACHINE.chuteX0, timeout });
   }
 
   endTurn() {
