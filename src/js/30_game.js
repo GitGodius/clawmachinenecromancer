@@ -13,6 +13,7 @@ const Game = {
   talk: null,
   recent: [], // last won part types (for the bag display)
   seen: {},
+  fast: false, // battle speed x2, kept between fights
   started: false,
 
   newGame() {
@@ -22,6 +23,7 @@ const Game = {
     this.stage = 1;
     this.recent = [];
     this.seen = {};
+    this.fast = false;
     this.talk = new Talker({ voice: 0.62, cps: 40 });
     this.sim = new ClawSim({ onEvent: (t, d) => Scenes.claw && Scenes.claw.onSim(t, d) });
     this.sim.fillPile(CONFIG.partCount);

@@ -157,7 +157,7 @@ Scenes.slab = (() => {
       tip: Game.party.length >= 3 ? 'Party is full (3). Unstitch someone first.' : count() ? null : 'Stitch at least one part on.', onClick: bringToLife });
     Game.party.forEach((c, i) => {
       bs.push({ id: 'pty' + c.id, x: 9 + i * 36, y: 214, w: 34, h: 40, label: '', kind: 'party', c, silent: true, disabled: !!life,
-        tip: [{ t: c.name, c: '#9be38f' }, { t: `HP ${Math.ceil(c.hp)}/${c.maxHp}  ATK ${c.atk}  SPD ${c.spd}`, c: '#ecdcbc' }, ...c.traits.map((x) => ({ t: TRAITS[x].name, c: '#7a6a9a' })), { t: selected === c ? 'click again to UNSTITCH' : 'click to select', c: '#a08962' }],
+        tip: [{ t: c.name, c: '#9be38f' }, { t: `HP ${Math.ceil(c.hp)}/${c.maxHp}  ATK ${c.atk}  SPD ${c.spd}`, c: '#ecdcbc' }, ...(c.kills ? [{ t: `${c.kills} kill${c.kills > 1 ? 's' : ''} so far`, c: '#a08962' }] : []), ...c.traits.map((x) => ({ t: TRAITS[x].name, c: '#7a6a9a' })), { t: selected === c ? 'click again to UNSTITCH' : 'click to select', c: '#a08962' }],
         onClick: () => {
           if (selected === c) {
             Game.party = Game.party.filter((x) => x !== c);
@@ -255,10 +255,11 @@ Scenes.slab = (() => {
       stat('ico_heart', 'HP', c.maxHp, 366); stat('ico_sword', 'ATK', Math.round(c.atk), 404); stat('ico_boot', 'SPD', c.spd, 444);
       const tr = c.traits.length ? c.traits.map((x) => TRAITS[x].name).join(' · ') : 'no special traits';
       Font.drawWrapped(ctx, tr, 369, y0 + 12, 104, { font: 'small', color: c.traits.length ? '#9be38f' : '#4b4466' });
-      const pw = clamp(c.power / 80, 0, 1);
-      Draw.rect(ctx, 400, y0 + 27, 72, 4, PAL.k);
-      Draw.rect(ctx, 401, y0 + 28, Math.round(70 * pw), 2, pw > 0.66 ? PAL.L : pw > 0.33 ? PAL.d : PAL.B);
+      const pw = clamp(c.power / 160, 0, 1);
+      Draw.rect(ctx, 400, y0 + 27, 50, 4, PAL.k);
+      Draw.rect(ctx, 401, y0 + 28, Math.round(48 * pw), 2, pw > 0.66 ? PAL.L : pw > 0.33 ? PAL.d : PAL.B);
       Font.draw(ctx, 'POWER', 368, y0 + 26, { font: 'small', color: '#7a6a9a' });
+      Font.draw(ctx, String(c.power), 472, y0 + 26, { font: 'small', color: '#ecdcbc', align: 'right' });
     }
 
     // party roster

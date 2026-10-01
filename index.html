@@ -5271,6 +5271,7 @@ class Talker {
       if (this.t > this.hold) { this.text = ''; if (this.queue.length) this.say(...this.queue.shift()); }
     }
   }
+  clear() { this.text = ''; this.queue = []; }
   talking() { return this.text && this.shown < this.text.length; }
   visible() { return !!this.text; }
   // speech bubble with a tail pointing at (tx, ty)
@@ -6785,6 +6786,7 @@ const Game = {
   talk: null,
   recent: [], // last won part types (for the bag display)
   seen: {},
+  fast: false, // battle speed x2, kept between fights
   started: false,
 
   newGame() {
@@ -6794,6 +6796,7 @@ const Game = {
     this.stage = 1;
     this.recent = [];
     this.seen = {};
+    this.fast = false;
     this.talk = new Talker({ voice: 0.62, cps: 40 });
     this.sim = new ClawSim({ onEvent: (t, d) => Scenes.claw && Scenes.claw.onSim(t, d) });
     this.sim.fillPile(CONFIG.partCount);
@@ -7868,7 +7871,7 @@ Scenes.slab = (() => {
       tip: Game.party.length >= 3 ? 'Party is full (3). Unstitch someone first.' : count() ? null : 'Stitch at least one part on.', onClick: bringToLife });
     Game.party.forEach((c, i) => {
       bs.push({ id: 'pty' + c.id, x: 9 + i * 36, y: 214, w: 34, h: 40, label: '', kind: 'party', c, silent: true, disabled: !!life,
-        tip: [{ t: c.name, c: '#9be38f' }, { t: `HP ${Math.ceil(c.hp)}/${c.maxHp}  ATK ${c.atk}  SPD ${c.spd}`, c: '#ecdcbc' }, ...c.traits.map((x) => ({ t: TRAITS[x].name, c: '#7a6a9a' })), { t: selected === c ? 'click again to UNSTITCH' : 'click to select', c: '#a08962' }],
+        tip: [{ t: c.name, c: '#9be38f' }, { t: `HP ${Math.ceil(c.hp)}/${c.maxHp}  ATK ${c.atk}  SPD ${c.spd}`, c: '#ecdcbc' }, ...(c.kills ? [{ t: `${c.kills} kill${c.kills > 1 ? 's' : ''} so far`, c: '#a08962' }] : []), ...c.traits.map((x) => ({ t: TRAITS[x].name, c: '#7a6a9a' })), { t: selected === c ? 'click again to UNSTITCH' : 'click to select', c: '#a08962' }],
         onClick: () => {
           if (selected === c) {
             Game.party = Game.party.filter((x) => x !== c);
@@ -7966,10 +7969,11 @@ Scenes.slab = (() => {
       stat('ico_heart', 'HP', c.maxHp, 366); stat('ico_sword', 'ATK', Math.round(c.atk), 404); stat('ico_boot', 'SPD', c.spd, 444);
       const tr = c.traits.length ? c.traits.map((x) => TRAITS[x].name).join(' · ') : 'no special traits';
       Font.drawWrapped(ctx, tr, 369, y0 + 12, 104, { font: 'small', color: c.traits.length ? '#9be38f' : '#4b4466' });
-      const pw = clamp(c.power / 80, 0, 1);
-      Draw.rect(ctx, 400, y0 + 27, 72, 4, PAL.k);
-      Draw.rect(ctx, 401, y0 + 28, Math.round(70 * pw), 2, pw > 0.66 ? PAL.L : pw > 0.33 ? PAL.d : PAL.B);
+      const pw = clamp(c.power / 160, 0, 1);
+      Draw.rect(ctx, 400, y0 + 27, 50, 4, PAL.k);
+      Draw.rect(ctx, 401, y0 + 28, Math.round(48 * pw), 2, pw > 0.66 ? PAL.L : pw > 0.33 ? PAL.d : PAL.B);
       Font.draw(ctx, 'POWER', 368, y0 + 26, { font: 'small', color: '#7a6a9a' });
+      Font.draw(ctx, String(c.power), 472, y0 + 26, { font: 'small', color: '#ecdcbc', align: 'right' });
     }
 
     // party roster
@@ -8038,7 +8042,7 @@ Scenes.battle = (() => {
   const fx = new Particles();
   const debris = new Particles();
   let t = 0, units = [], phase = 'ready', result = null, zapCd = 0, menuSel = 0, logLines = [], resultT = 0;
-  let coinsShown = 0, reward = 0, restocked = [], bolts = [], fightStage = 1, prize = [];
+  let coinsShown = 0, reward = 0, restocked = [], bolts = [], fightStage = 1, prize = [], delayed = [];
   const say = (x, h) => Game.talk.say(x, h);
   const allies = () => units.filter((u) => u.team === 'ally');
   const enemies = () => units.filter((u) => u.team === 'enemy');
@@ -8070,7 +8074,7 @@ Scenes.battle = (() => {
     fx.list = []; debris.list = [];
     units = [];
     // the loot for winning is rolled up front, so you can see what you're fighting for
-    prize = [];
+    prize = []; delayed = [];
     for (let i = 0; i < CONFIG.restockParts; i++) prize.push(randomPartType({ boost: 1 + Game.stage * 0.2 }));
     Game.party.filter((c) => c.hp > 0).slice(0, 3).forEach((c, i) => units.push(makeAlly(c, i)));
     const kinds = stageEnemies(Game.stage);
@@ -8088,6 +8092,7 @@ Scenes.battle = (() => {
   function start() {
     if (phase !== 'ready') return;
     phase = 'fight';
+    Game.talk.clear(); // the Reaper's intro line would hide the combat log for most of the fight
     Sfx.play('swing');
     Engine.shake(2, 0.2);
     log('The shades drift closer...');
@@ -8156,7 +8161,7 @@ Scenes.battle = (() => {
     // traits
     if (isAlly) {
       if (att.traits.includes('bite')) { const h = Math.round(dmg * 0.3); att.hp = Math.min(att.maxHp, att.hp + h); if (h) fx.text(att.x, att.y - bodyH(att) - 10, '+' + h, '#9be38f'); }
-      if (att.traits.includes('rend')) def.bleedT = 3;
+      if (att.traits.includes('rend')) { if (!(def.bleedT > 0)) fx.text(def.x + rand(-6, 6), def.y - bodyH(def) - 16, 'BLEED', '#e8405a'); def.bleedT = 3; }
       if (att.traits.includes('smash') && chance(0.3)) { def.stunT = 1; fx.text(def.x, def.y - bodyH(def) - 16, 'STUN', PAL.L); Engine.shake(3, 0.2); }
       if (opts.fire) def.burnT = 3;
       if (att.traits.includes('set_abyssal')) { if (!(def.burnT > 0)) fx.text(def.x, def.y - bodyH(def) - 16, 'BURN', '#ffb070'); def.burnT = 3; }
@@ -8244,8 +8249,8 @@ Scenes.battle = (() => {
     Game.tokens += reward;
     coinsShown = 0;
     Game.restock([...restocked, ...deadParts]);
-    result = { kind, reward, restocked, deadParts, lost: deadAllies.map((u) => u.name) };
-    Telemetry.log('battleEnd', { kind, stage: Game.stage, reward, lost: deadAllies.length });
+    result = { kind, reward, restocked, deadParts, lost: deadAllies.map((u) => u.name + (u.c.kills ? ` (${u.c.kills} kill${u.c.kills > 1 ? 's' : ''})` : '')) };
+    Telemetry.log('battleEnd', { kind, stage: fightStage, reward, lost: deadAllies.length });
   }
 
   S.cheatWin = function () { for (const e of alive(enemies())) kill(e, null); };
@@ -8256,9 +8261,13 @@ Scenes.battle = (() => {
     fx.update(dt); debris.update(dt);
     for (const b of bolts) b.t += dt;
     bolts = bolts.filter((b) => b.t < 0.35);
-    const bdt = dt * CONFIG.battleSpeed;
+    const bdt = dt * CONFIG.battleSpeed * (Game.fast ? 2 : 1);
     if (phase === 'fight') {
+      if (Game.fast) Telemetry.c.fastSecs += realDt;
       zapCd = Math.max(0, zapCd - bdt);
+      for (const d of delayed) d.t -= bdt;
+      for (const d of delayed.filter((x) => x.t <= 0)) d.fn();
+      delayed = delayed.filter((x) => x.t > 0);
       for (const u of units) {
         if (u.dead) continue;
         u.flashT = Math.max(0, u.flashT - dt);
@@ -8289,7 +8298,7 @@ Scenes.battle = (() => {
               Sfx.play('zap', { intensity: 0.5, pitch: 0.7 });
             } else if (dist <= u.range + 8) {
               dealHit(u, f);
-              if (u.traits.includes('whip') && chance(0.25)) setTimeout(() => { if (!f.dead && !u.dead) dealHit(u, f, { mult: 0.6 }); }, 180);
+              if (u.traits.includes('whip') && chance(0.25)) { fx.text(u.x, u.y - bodyH(u) - 14, 'WHIP!', '#e7a6f0'); delayed.push({ t: 0.18, fn: () => { if (!f.dead && !u.dead) dealHit(u, f, { mult: 0.6 }); } }); }
             } else Sfx.play('swing');
           }
           if (u.animT >= 1) { u.state = 'idle'; u.animT = 0; }
@@ -8345,7 +8354,7 @@ Scenes.battle = (() => {
     }
     return [
       phase === 'ready' ? { label: 'FIGHT', act: start } : { label: zapCd > 0 ? `ZAP  ${Math.ceil(zapCd)}s` : 'ZAP', disabled: zapCd > 0, act: zap },
-      { label: 'ABILITIES', disabled: true, act: () => { say('Abilities come from parts. Try a Demon Skull. Or a Black Heart.', 3); } },
+      { label: Game.fast ? 'SPEED  x2' : 'SPEED  x1', act: () => { Game.fast = !Game.fast; Telemetry.c.speedToggles++; Sfx.play('ui_click'); } },
       { label: 'RETREAT', act: retreat },
     ];
   }
@@ -8706,7 +8715,7 @@ const Telemetry = {
   sceneTime: {},
   cur: null, curT: 0,
   c: {
-    grabs: 0, wins: 0, slips: 0, misses: 0, doubles: 0, freebies: 0, nearMiss: 0, sets: 0, homecomings: 0,
+    grabs: 0, wins: 0, slips: 0, misses: 0, doubles: 0, freebies: 0, nearMiss: 0, sets: 0, homecomings: 0, speedToggles: 0, fastSecs: 0,
     retryFast: 0, retrySlow: 0, quitAfterFail: 0,
     bySlipWhy: {}, wonRarity: { common: 0, uncommon: 0, rare: 0, legendary: 0 },
     creatures: 0, unstitched: 0, battles: 0, victories: 0, defeats: 0, retreats: 0, zaps: 0,
@@ -8761,7 +8770,7 @@ const Telemetry = {
       `slip causes: ${Object.entries(c.bySlipWhy).map(([k, v]) => k + ' ' + v).join(', ') || '-'}`,
       `after a failed grab: retried within 6s ${c.retryFast}, retried later ${c.retrySlow}, left the machine ${c.quitAfterFail}   (one-more-try rate ${pct(c.retryFast, fails)})`,
       `creatures stitched ${c.creatures}   unstitched ${c.unstitched}   sets completed ${c.sets}   remains won back ${c.homecomings}`,
-      `battles ${c.battles}   won ${c.victories}   lost ${c.defeats}   retreats ${c.retreats}   zaps used ${c.zaps}   best stage ${c.bestStage}`,
+      `battles ${c.battles}   won ${c.victories}   lost ${c.defeats}   retreats ${c.retreats}   zaps used ${c.zaps}   speed toggles ${c.speedToggles}   seconds at x2 ${Math.round(c.fastSecs)}   best stage ${c.bestStage}`,
       `pity tokens given ${c.pity}`,
       `time: ${Object.entries(st).map(([k, v]) => k + ' ' + Math.round(v) + 's').join(', ')}`,
       '',

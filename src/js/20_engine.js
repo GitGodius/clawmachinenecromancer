@@ -453,6 +453,7 @@ class Talker {
       if (this.t > this.hold) { this.text = ''; if (this.queue.length) this.say(...this.queue.shift()); }
     }
   }
+  clear() { this.text = ''; this.queue = []; }
   talking() { return this.text && this.shown < this.text.length; }
   visible() { return !!this.text; }
   // speech bubble with a tail pointing at (tx, ty)

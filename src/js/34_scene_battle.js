@@ -29,7 +29,7 @@ Scenes.battle = (() => {
   const fx = new Particles();
   const debris = new Particles();
   let t = 0, units = [], phase = 'ready', result = null, zapCd = 0, menuSel = 0, logLines = [], resultT = 0;
-  let coinsShown = 0, reward = 0, restocked = [], bolts = [], fightStage = 1, prize = [];
+  let coinsShown = 0, reward = 0, restocked = [], bolts = [], fightStage = 1, prize = [], delayed = [];
   const say = (x, h) => Game.talk.say(x, h);
   const allies = () => units.filter((u) => u.team === 'ally');
   const enemies = () => units.filter((u) => u.team === 'enemy');
@@ -61,7 +61,7 @@ Scenes.battle = (() => {
     fx.list = []; debris.list = [];
     units = [];
     // the loot for winning is rolled up front, so you can see what you're fighting for
-    prize = [];
+    prize = []; delayed = [];
     for (let i = 0; i < CONFIG.restockParts; i++) prize.push(randomPartType({ boost: 1 + Game.stage * 0.2 }));
     Game.party.filter((c) => c.hp > 0).slice(0, 3).forEach((c, i) => units.push(makeAlly(c, i)));
     const kinds = stageEnemies(Game.stage);
@@ -79,6 +79,7 @@ Scenes.battle = (() => {
   function start() {
     if (phase !== 'ready') return;
     phase = 'fight';
+    Game.talk.clear(); // the Reaper's intro line would hide the combat log for most of the fight
     Sfx.play('swing');
     Engine.shake(2, 0.2);
     log('The shades drift closer...');
@@ -147,7 +148,7 @@ Scenes.battle = (() => {
     // traits
     if (isAlly) {
       if (att.traits.includes('bite')) { const h = Math.round(dmg * 0.3); att.hp = Math.min(att.maxHp, att.hp + h); if (h) fx.text(att.x, att.y - bodyH(att) - 10, '+' + h, '#9be38f'); }
-      if (att.traits.includes('rend')) def.bleedT = 3;
+      if (att.traits.includes('rend')) { if (!(def.bleedT > 0)) fx.text(def.x + rand(-6, 6), def.y - bodyH(def) - 16, 'BLEED', '#e8405a'); def.bleedT = 3; }
       if (att.traits.includes('smash') && chance(0.3)) { def.stunT = 1; fx.text(def.x, def.y - bodyH(def) - 16, 'STUN', PAL.L); Engine.shake(3, 0.2); }
       if (opts.fire) def.burnT = 3;
       if (att.traits.includes('set_abyssal')) { if (!(def.burnT > 0)) fx.text(def.x, def.y - bodyH(def) - 16, 'BURN', '#ffb070'); def.burnT = 3; }
@@ -235,8 +236,8 @@ Scenes.battle = (() => {
     Game.tokens += reward;
     coinsShown = 0;
     Game.restock([...restocked, ...deadParts]);
-    result = { kind, reward, restocked, deadParts, lost: deadAllies.map((u) => u.name) };
-    Telemetry.log('battleEnd', { kind, stage: Game.stage, reward, lost: deadAllies.length });
+    result = { kind, reward, restocked, deadParts, lost: deadAllies.map((u) => u.name + (u.c.kills ? ` (${u.c.kills} kill${u.c.kills > 1 ? 's' : ''})` : '')) };
+    Telemetry.log('battleEnd', { kind, stage: fightStage, reward, lost: deadAllies.length });
   }
 
   S.cheatWin = function () { for (const e of alive(enemies())) kill(e, null); };
@@ -247,9 +248,13 @@ Scenes.battle = (() => {
     fx.update(dt); debris.update(dt);
     for (const b of bolts) b.t += dt;
     bolts = bolts.filter((b) => b.t < 0.35);
-    const bdt = dt * CONFIG.battleSpeed;
+    const bdt = dt * CONFIG.battleSpeed * (Game.fast ? 2 : 1);
     if (phase === 'fight') {
+      if (Game.fast) Telemetry.c.fastSecs += realDt;
       zapCd = Math.max(0, zapCd - bdt);
+      for (const d of delayed) d.t -= bdt;
+      for (const d of delayed.filter((x) => x.t <= 0)) d.fn();
+      delayed = delayed.filter((x) => x.t > 0);
       for (const u of units) {
         if (u.dead) continue;
         u.flashT = Math.max(0, u.flashT - dt);
@@ -280,7 +285,7 @@ Scenes.battle = (() => {
               Sfx.play('zap', { intensity: 0.5, pitch: 0.7 });
             } else if (dist <= u.range + 8) {
               dealHit(u, f);
-              if (u.traits.includes('whip') && chance(0.25)) setTimeout(() => { if (!f.dead && !u.dead) dealHit(u, f, { mult: 0.6 }); }, 180);
+              if (u.traits.includes('whip') && chance(0.25)) { fx.text(u.x, u.y - bodyH(u) - 14, 'WHIP!', '#e7a6f0'); delayed.push({ t: 0.18, fn: () => { if (!f.dead && !u.dead) dealHit(u, f, { mult: 0.6 }); } }); }
             } else Sfx.play('swing');
           }
           if (u.animT >= 1) { u.state = 'idle'; u.animT = 0; }
@@ -336,7 +341,7 @@ Scenes.battle = (() => {
     }
     return [
       phase === 'ready' ? { label: 'FIGHT', act: start } : { label: zapCd > 0 ? `ZAP  ${Math.ceil(zapCd)}s` : 'ZAP', disabled: zapCd > 0, act: zap },
-      { label: 'ABILITIES', disabled: true, act: () => { say('Abilities come from parts. Try a Demon Skull. Or a Black Heart.', 3); } },
+      { label: Game.fast ? 'SPEED  x2' : 'SPEED  x1', act: () => { Game.fast = !Game.fast; Telemetry.c.speedToggles++; Sfx.play('ui_click'); } },
       { label: 'RETREAT', act: retreat },
     ];
   }
