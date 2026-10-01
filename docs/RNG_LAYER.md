@@ -22,7 +22,7 @@ A pure-luck loop has three weaknesses:
 
 The layer fixes each one without removing the randomness. It gives luck a **price**, a **memory** and a **steering wheel**.
 
-> **Since the soul grip** (the physical grab from PR #3), the grab itself rolls nothing: what the prongs close around is what you get. The luck left in the claw is the pile (what lies where, what the machine holds), the living parts that twitch, and your own hands on the carry. The levers below bend exactly those, and the Lens became a forecast of the physics instead of a peek at the dice.
+> **Since 0.11** the claw is a real claw: the grab rolls nothing, and on a plain drop nothing holds a part but the prongs. The luck left in the claw is the pile (what lies where, what is on top, what the machine holds), the living parts that twitch, and your own hands on the carry. The levers below bend exactly those. The Lens became a forecast of the physics instead of a peek at the dice, and Iron Grip is the one place where magic touches the grab.
 
 ## 2. Design principles
 
@@ -75,12 +75,12 @@ Tone stays dry and morbid. "Bad luck is still luck. I'll bank it."
 | Lever | Cost |
 |---|---|
 | Quake | 3 |
-| Iron Grip | 2 |
+| Iron Grip | 3 |
 | Order | 4 |
 | Redo | 3 |
 | Nudge | free, but TILT risk |
 
-**Sanity check.** A bot grabs with about 38% misses and 4–12% slips, so a grab earns about 0.5–0.6 Luck on average. That is roughly one lever use for every 5 or 6 grabs, plus one per battle. Converting tokens into Luck on purpose (throwing grabs) is a losing trade: a thrown grab earns 1–2 Luck, and 2 Luck buys an Iron Grip, which adds far less than the half a part an honest grab is worth.
+**Sanity check.** A bot grabs with about 38% misses and 4–12% slips, so a grab earns about 0.5–0.6 Luck on average. That is roughly one lever use for every 5 or 6 grabs, plus one per battle. Converting tokens into Luck on purpose (throwing grabs) is a losing trade: a thrown grab earns 1–2 Luck, and 3 Luck buys an Iron Grip, a single hexed drop.
 
 ## 5. The levers
 
@@ -104,14 +104,17 @@ The classic arcade trick, and the pinball one. A sideways bump with a little hop
 - **Risk:** TILT. Each nudge adds heat; heat drains at 0.45/s. Go past 3 and the next nudge trips **TILT**: the machine jolts, the claw locks for about 3 s, and you lose 1 Luck. The gauge in the panel header shows the heat. Three quick nudges are safe; a fourth is not.
 - **Limits:** only from idle. Seals the chute like a quake does (§6). Free, so it cannot produce parts.
 
-### 5.3 IRON GRIP — hex the claw &nbsp;`[2]` &nbsp;2 Luck
+### 5.3 IRON GRIP — hex the claw &nbsp;`[2]` &nbsp;3 Luck
 
-Arms the **next drop** with a necromantic grip. Press again before dropping to disarm and get the Luck back.
+Arms the **next drop** with necromancy, the only magic the claw ever gets. Press again before dropping to disarm and get the Luck back.
 
-- **What it bends:** *grip and slip.* For that one drop the soul grip binds catches half as good as it normally needs (`ironCatch`), holds 1.6x harder (`ironBoost`), the soul hook pulls 1.6x harder and reaches 30% further, and a rough carry strains it about a third as much (`ironSlip` 0.35).
-- **Measured** (`tools/rig_check.mjs`, the same 100 seeded drops with and without it): grabs won 60% → 81%, grabs that lost a grip on the way 65% → 15%.
+- **What it bends:** *reach, grip and slip.* A plain drop is the claw's own physics. A hexed one gets:
+  - the **soul hook**, which drags the part straight under the claw up into its mouth while it spreads and clamps (`hookPull`, `hookReach`), so even a part in a pit can be reached;
+  - the **soul grip**, which binds what the claw catches to its heart with a friction joint as strong as the catch is good, 1.6x (`gripStrength`, `ironBoost`), and binds catches half as good as a plain claw needs (`ironCatch`);
+  - a rough carry strains it about a third as much (`ironSlip` 0.35).
+- **Measured.** The claw bot, aimed at parts a player would pick (200 drops each): a careful carry wins 39% plain and 86% hexed, a mashed carry 30% and 81%. `tools/rig_check.mjs` (the same seeded drops at any part, with and without it): 19% → 83%.
 - **Does not** fix your aim, and does not stop a part that is physically wedged in the pile from tearing free. It turns "it had it, then dropped it" into a rare event, not into a certainty.
-- **Feedback:** gold aura and status light on the claw; the Lens shows the boosted odds before you drop.
+- **Feedback:** gold aura and status light on the claw; the drop guide and the part under it turn violet (the soul hook will reach for it); the Lens shows the boosted odds before you drop.
 - **With Redo:** if the armed drop fails and you Redo it, the Iron Grip is armed again. The rewind puts the world back exactly as it was before the drop, and the Luck for the grip was already spent.
 
 ### 5.4 ORDER — special order &nbsp;`[3]` &nbsp;4 Luck
@@ -133,10 +136,10 @@ After a **missed or slipped** grab, rewinds the world to the moment before the d
 
 Not a lever: the information layer.
 
-- **Before you drop:** a badge on the drop guide reads `HOLD 77%  SKULL`: the chance this drop comes up holding *something*, and the part under the claw. Green from 52%, yellow from 33%, red below. Armed Iron Grip shows in the number.
+- **Before you drop:** a badge on the drop guide reads `HOLD 58%  SKULL`: the chance this drop comes up holding *something*, and the part under the claw. Green from 52%, yellow from 33%, red below. Armed Iron Grip shows in the number.
 - **After the claw closes:** what the claw really caught and how firmly (`WOLF SKULL  GRIP 76%`, `NO GRIP: BY THE TIPS` or `NOTHING IN THE CLAW`). Nothing is rolled, so this is a reading, not a roll: the catch quality is the hold that the carry meter then measures your handling against.
 
-The badge is a forecast of the physics (`ClawSim.chanceFor`): size (a big torso barely fits the mouth), how far off-centre the part is, slime and Iron Grip, times a measured calibration (`RIGSIM.lensShift` 0.85). On the soul grip about 77% of drops from rest come up holding something, and none of those factors moves that much: the soul hook forgives a few px of aim, and when the part under the claw won't fit, a neighbour often does. So the badge mostly reads 65-83%, "how good is this drop", not a verdict. The calibration matters: a badge that over-promises feels rigged, which is the opposite of the point (the first, uncalibrated badge on the dice grab showed a green 79% that held 59% of the time). Measured over 300 drops each: badge 77% vs held 77% plain, 83% vs 82% with Iron Grip. `tools/rig_check.mjs` guards it (badge 77% vs held 75% over 240 drops) and checks that the grab rolls no dice. If the grab changes (`ClawSim.scanGrips`, the soul hook, the prongs), re-measure `lensShift` and `lensIron`.
+The badge is a forecast of the physics (`ClawSim.chanceFor`). On the claw's own physics the thing that matters most is whether the part under the claw lies on top of the pile or down in a pit between taller neighbours, where the prong tips can't get under it. `predict()` measures that by casting rays 10 and 14 px to either side: on top, 63% of drops held something; deep in a pit, 21%. Size (a big torso barely fits the mouth), how far off-centre and slime come next. Iron Grip leaves only `lensIron` (0.22) of the plain chance to fail. The calibration matters: a badge that over-promises feels rigged, which is the opposite of the point (the first, uncalibrated badge on the dice grab showed a green 79% that held 59% of the time). Fitted to 400 drops each: badge 40.8% vs held 41.0% plain (red badges held 25%, yellow 43%, green 60%), 87% vs 89% with Iron Grip. `tools/rig_check.mjs` guards it (badge 40% vs held 43% over 240 drops; green 71% vs yellow 44%) and checks that the grab rolls no dice. If the grab changes (the prongs, the spread, `ClawSim.scanCage`, the soul hook), re-measure `lensShift` and `lensIron`.
 
 ## 6. Keeping it honest
 
@@ -216,8 +219,8 @@ Every number is in the **Rig** group of the tuning panel (`` ` ``): costs, Luck 
 - **Chute seal:** with the seal, zero spills; without it, spills do occur (14 in 40 quakes), so the seal is doing real work. The lid stays up through the drop, close and lift, is down while the claw carries and when the turn is over (also when the claw comes up empty and lets go at once), and a part thrown at the chute mid-drop never gets in (40 of 40 do without the lid).
 - **Nudge:** shoves the right way (about 10-13 px), hardest near the claw, no spills, no NaN.
 - **Redo:** after a failed grab, every part and the claw are restored to the recorded pre-drop state, exactly: positions, raw angles (no modulo 2π; comparing modulo hid a real bug), every revolute joint angle, the joint count. A bone tail is forced to lie across the ±π seam, and the same check is shown to fail (joint error 2π) with the old wrapped restore. Iron Grip comes back with the rewind, and only when it was armed.
-- **Iron Grip:** win rate 60% → 81%, and the share of grabs that lose a grip on the way 65% → 15%.
-- **Lens:** the badge equals the Lens model times the measured shift, Iron Grip always raises it, the grab rolls no dice (a different random stream from the moment of the drop gives the very same catch), and the badge is calibrated (77% shown vs 75% actually held over 240 drops; nearly every badge is green on the soul grip, so read it as "how good is this drop overall", not as a sharp discriminator).
+- **Iron Grip:** win rate 19% → 83% on the same seeded drops, and fewer grabs that lose what they caught on the way.
+- **Lens:** the badge equals the Lens model times the measured shift, Iron Grip always raises it, the grab rolls no dice (a different random stream from the moment of the drop gives the very same catch), and the badge is calibrated (40% shown vs 43% actually held over 240 drops) and discriminates (green badges held 71%, yellow 44%).
 - **Economy and rules:** Luck gains, cap, spending, refunds (also in the stats: a taken-back Iron Grip is not counted as spent), costs, TILT (the fourth quick nudge), Order delivery by slot, `rigOn=0`, `rigFree=1`.
 - **Hooks are invisible:** the same seeded grabs with the recording hooks stubbed out give identical results. And `VERBOSE=1 node tools/tune.mjs 80` before and after the layer was added produced bit-identical results for all 80 seeds.
 - **Fuzz:** hundreds of random lever pulls, drops, releases and steps keep every invariant.

@@ -22,9 +22,9 @@ const RIGSIM = {
   nudge: { side: 185, up: 100, spin: 4.4 }, // one bump, at full strength under the claw (see nudge())
   // The Lens shows chanceFor() x this, measured so the badge matches how often drops really come up holding
   // something (tools/rig_check.mjs "calibration"; uncalibrated green badges once held only 59% of the time and
-  // felt rigged). Re-measure both if the grab changes (ClawSim.scanGrips, the soul hook, the prongs).
-  lensShift: 0.85, // soul grip: badges averaged 0.91 raw while 77% of drops came up holding (300 drops)
-  lensIron: 1.07, // Iron Grip reaches harder and binds weaker catches: how much more often an armed drop holds something
+  // felt rigged). Re-measure both if the grab changes (the prongs, the spread, ClawSim.scanCage, the soul hook).
+  lensShift: 1, // the model is fitted to 400 plain drops: badge 40.8% on average, 41.0% held
+  lensIron: 0.22, // Iron Grip leaves this share of a plain drop's chance to fail (400 armed drops: badge 87%, held 89%)
   steady: 0.55, // fraction of speed kept when the shaking stops (the machine "steadies")
   damp: 3, // linear damping on loose parts while shaking: reins in how high a shaken pile heaves
   dropRest: 14, // px/s: a quake unlocks the drop once every part is slower than this
@@ -215,42 +215,51 @@ Object.assign(ClawSim.prototype, {
   },
 
   // ------------------------------------------------------------ LENS
-  // The grab rolls nothing (ClawSim.scanGrips: what the prongs close around is what you get), so the Lens is a
-  // forecast of the physics, not a peek at dice: how likely a drop right here comes up holding SOMETHING, for part
-  // p whose centre is lx px off the claw's axis. Size (a big torso barely fits the mouth), how far off centre (the
-  // soul hook forgives a few px), slime and Iron Grip; scaled by the measured lensShift. tools/rig_check.mjs
-  // ("calibration") checks it against real drops, so a green badge means what it says.
-  // Measured on the soul grip: a drop comes up holding something about 77% of the time, and none of these moves it
-  // much (the soul hook forgives a few px of aim, and when the part under the claw won't fit, a neighbour often
-  // does), so the badge reads "how good is this drop overall", not a sharp verdict.
-  chanceFor(p, lx, iron = false) {
+  // The grab rolls nothing (what the prongs close around is what you get), so the Lens is a forecast of the
+  // physics: how likely a drop right here comes up holding SOMETHING, for part p whose centre is lx px off the
+  // claw's axis. Measured on the claw's own physics, what matters most is whether that part lies on top or down in a
+  // pit between taller neighbours, where the prongs can't get under it (pit: px its top lies below the highest
+  // surface 10-14 px to either side: on top 63% held, deep in a pit 21%). Then size (a big torso barely fits the
+  // mouth), how far off-centre, and slime. Iron Grip's soul hook reaches into pits and its soul grip holds what it
+  // catches: only lensIron of the plain failure chance is left. tools/rig_check.mjs ("calibration") checks the
+  // badge against real drops, so a green badge means what it says.
+  chanceFor(p, lx, iron = false, pit = 0) {
     const s = SPR.get(p.def.sprite);
     const dim = p.def.chain ? 16 : Math.max(s.w, s.h);
-    const size = dim <= 20 ? 1 : dim <= 26 ? 0.96 : 0.93;
-    const center = 1 - 0.12 * Math.min(1, Math.abs(lx) / 10);
+    const reach = clamp(0.5 - 0.0125 * pit, 0.2, 0.65);
+    const size = dim <= 29 ? 1 : 0.75;
+    const center = 1 - 0.3 * smoothstep(6, 12, Math.abs(lx));
     const wet = 0.55 + 0.45 * (p.def.grip || 1); // hearts and eyeballs are slippery
-    return size * center * wet * (iron ? RIGSIM.lensIron : 1); // predict() scales by lensShift, then caps at 98%
+    const c = reach * size * center * wet;
+    return iron ? 1 - (1 - c) * RIGSIM.lensIron : c; // predict() scales by lensShift, then caps at 98%
   },
 
-  // What would a drop right here hold? Finds the first part under the claw's axis and scores it with chanceFor().
-  // The chance is for holding SOMETHING: which part ends up in the claw depends on how the pile shifts as it lands.
+  // What would a drop right here hold? Finds the first part under the claw's axis, how buried it is, and scores it
+  // with chanceFor(). The chance is for holding SOMETHING: which part ends up in the claw depends on how the pile
+  // shifts as it lands.
   predict() {
     if (this.state !== 'idle') return null;
     const pl = planck, V = pl.Vec2, M = MACHINE;
     const top = this.hub.getPosition().y * PPM + 30;
-    let best = null;
-    this.world.rayCast(V(this.carX / PPM, top / PPM), V(this.carX / PPM, M.floor / PPM), (fix, point, normal, fr) => {
-      const ud = fix.getBody().getUserData();
-      if (ud === 'claw') return -1;
-      best = { part: ud && ud.def ? ud : null, y: point.y * PPM };
-      return fr;
-    });
+    const ray = (x) => { // the first surface below x: { y, part } (the claw itself doesn't count)
+      let hit = null;
+      this.world.rayCast(V(x / PPM, top / PPM), V(x / PPM, M.floor / PPM), (fix, point, normal, fr) => {
+        const ud = fix.getBody().getUserData();
+        if (ud === 'claw' || (ud && ud.won)) return -1;
+        hit = { part: ud && ud.def ? ud : null, y: point.y * PPM };
+        return fr;
+      });
+      return hit;
+    };
+    const best = ray(this.carX);
     if (!best) return null;
     const p = best.part;
     if (!p || p.won) return { part: null, y: best.y };
-    let lx = Infinity; // the body nearest the claw's axis (a bone tail is six bodies), as tryGrab() scores it
+    let lx = Infinity; // the body nearest the claw's axis (a bone tail is six bodies), as the claw meets it
     for (const b of p.bodies) { const d = b.getPosition().x * PPM - this.carX; if (Math.abs(d) < Math.abs(lx)) lx = d; }
-    return { part: p, y: best.y, lx, chance: clamp(this.chanceFor(p, lx, this.iron) * RIGSIM.lensShift, 0, 0.98) };
+    const rim = Math.min(...[-14, -10, 10, 14].map((o) => { const h = ray(this.carX + o); return h ? h.y : M.floor; }));
+    const pit = best.y - rim;
+    return { part: p, y: best.y, lx, pit, chance: clamp(this.chanceFor(p, lx, this.iron, pit) * RIGSIM.lensShift, 0, 0.98) };
   },
 
   // ------------------------------------------------------------ recording (for REDO)
@@ -331,7 +340,7 @@ Object.assign(ClawSim.prototype, {
     this.applyFrame(H, H.frames[0]);
     H.bodies.forEach((b, i) => { const v = H.v0[i]; b.setLinearVelocity(V(v[0], v[1])); b.setAngularVelocity(v[2]); b.setAwake(true); });
     this.ropeLen = MACHINE.topLen;
-    this.turn = null; this.grips = []; this.held = new Set(); this.landed = false;
+    this.turn = null; this.grips = []; this.cage = []; this.held = new Set(); this.landed = false;
     this.iron = H.iron; // the world is as it was before the drop, Iron Grip included (it was already paid for)
     this.setState('idle');
     this.emit('rewind', { phase: 'end' });

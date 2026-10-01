@@ -1,5 +1,7 @@
 # Balance
 
+> **Not re-measured for 0.11 yet.** 0.11 made the claw pure physics (Iron Grip is the only magic), which changes the grab odds these tables were built on: about 40% of careful drops win something now, against 69% before. Run `node tools/balance.mjs` once the new claw's feel is settled, and update `PROFILES` in `tools/lib/runbot.mjs` with `node tools/tune.mjs 300 --profiles`.
+
 Every number that decides how the game plays is measured here, by code that plays the game, so the next person can retune without guessing. Nothing in this file is opinion except the **targets**, and those are enforced.
 
 ```sh

@@ -59,37 +59,41 @@ Handy URL flags for testing:
 
 ## 4. How the claw works (the part that has to feel good)
 
-**The rule: what the prongs close around is what you get.** Nothing about a grab is rolled. A good grab holds, a bad grab gets nothing, and a part never hangs on from outside the claw.
+**The rule: what the prongs close around is what you get.** Nothing about a grab is rolled, and on a plain drop nothing holds a part but the claw itself. A good grab holds, a bad grab gets nothing, and a part never hangs on from outside the claw.
 
 - **Physics.** The pile, the cable and the claw are real rigid bodies (planck.js, a Box2D port). A grab goes:
   1. **Drop.** The claw comes down in its narrow half-open pose, so its prong tips land on the part under the drop guide rather than on that part's neighbours. A stiff cable mount keeps the head on target instead of letting it skate down the slope of the pile.
-  2. **Spread.** When the cable goes slack, the prongs spread around whatever the tips landed on while the head settles in between them.
-  3. **Clamp.** The prongs close hard enough to shove the pile aside. The cable carries half the head's weight so the tips aren't pinned under 5 kg of claw.
+  2. **Spread.** When the tips touch down, the cable takes the claw's weight and backs off a touch so the prongs can open in the air. Resting on its tips, the claw's own weight used to pin them shut. Then the cable lowers the open claw around whatever the tips touched until it rests on the pile again.
+  3. **Clamp.** The prongs close hard enough to shove the pile aside. The cable carries half the head's weight so the tips aren't pinned under the claw.
   4. **Lock.** Once closed, the prongs lock like a worm-gear claw. A claw that kept squeezing would pop rigid parts out through its mouth.
   5. **Lift.** The winch reels the cable in at real speed, so whatever the claw holds feels the lift.
-- **The soul grip.** A part is bound to the claw only if its centre of mass is inside the claw's mouth (outlined live by the prongs' inner faces, so a prong jammed open makes a leaky claw) and a prong is touching it. How strongly depends on how it was caught:
-  - depth inside the mouth
+- **The catch.** A part is caught if its centre of mass is inside the closed claw's mouth (outlined live by the prongs' inner faces) and a prong touches it. How well it is caught depends on:
+  - how deep inside it sits
   - one prong or both
-  - slimy (hearts and eyeballs are wet)
-  - weight (heavy parts need a better catch)
+  - slime (hearts and eyeballs are wet)
 
-  The grip is a friction joint, so it resists the part sliding through the claw up to a force limit.
-- **The soul hook (the extra magic).** While the claw spreads and clamps, it drags the part straight under its centre line up into its mouth. That's the part the drop guide marks in violet before you drop. It's a real force: the pile pushes back, a buried part stays buried, and the prongs still have to close around whatever comes up. This is what makes aiming count.
-- **Slips.** Slips are purely physical: a part slips when it's pushed out of the claw's mouth. Causes, as the playtest report names them:
+  Nothing else holds it: the prongs cage it and their pads grip it. A part on top of the pile is the one to go for. One in a pit between taller neighbours is hard to get, because the prong tips can't get under it. That's what Quake and Nudge are for, and the odds badge says so.
+- **The carry and the clutch.** The prongs are held shut by a slip clutch. Rough handling strains it: racing past the steady speed, hard starts and stops, slamming the end stop. When the strain is more than the catch can take, the clutch slips: the prongs visibly creak open and the part starts to slide (SLIPPING!). Ease off and they close again. Keep yanking and the jaws sag open and the part drops. In bot tests a careful carry keeps 97% of what it caught, and a mashed one about 80%.
+- **Iron Grip: the magic, when you pay for it.** Spending Luck on Iron Grip (the Rig) hexes the claw for one drop:
+  - the **soul hook** drags the part straight under the claw up into its mouth while the claw spreads and clamps (the drop guide and that part turn violet);
+  - the **soul grip** binds what the claw catches to its heart with a friction joint, as strong as the catch is good.
+
+  A hexed claw wins about 85% of drops; a plain one wins about 40%.
+- **Slips.** Slips are physical: a part slips when it's pushed out of the claw's mouth. Causes, as the playtest report names them:
   - **wedged:** the pile holds on to it as the claw lifts
   - **slid:** it was only half in, or the claw is overstuffed
   - **jolt:** the bounce when the winch hits its stop
   - **twitch:** a living part fights the grip (hands, tentacles, hearts and tails twitch in the pile too)
   - **swing:** a hard swing
-  - **strain:** a rough carry frayed the grip until it tore (the integrated build: the carry meter warns first, and easing off re-seats it)
+  - **strain:** the clutch gave way under a rough carry (the carry meter warns first, and easing off closes the prongs again)
 
   The prongs have grippy pads inside and smooth metal outside, so parts slide off the outside instead of riding along on a prong. A part pinched by just the prong tips can still come along. The Reaper calls it out, and it usually falls.
 - **Juice.** The key feedback, in the order it happens:
-  - **Machine noise:** the motor hum's pitch follows the carriage speed and the load.
-  - **Aim:** the drop guide runs straight down to the part the soul hook will reach for and outlines it in violet.
-  - **Landing:** a thunk, dust and a small screen shake. The prongs spread with a ghostly whistle, and a violet tendril reaches from the claw's heart to the part as it's drawn up. The prongs ratchet shut and the winch spins up.
-  - **Bind:** a shimmer and a flare where the grip takes hold. Its colour says how firm the catch is: green is firm, amber is loose, and flickering red means it's sliding out. The prongs glow and spectral threads run from them into the part. The part's name and rarity are labelled, with the carry meter under them: how firm the catch is against how hard you are carrying it, in words (STEADY, STRAINED, SLIPPING!). NO GRIP means it's only riding on the prongs.
-  - **Snap:** when a grip tears, you get a crack of sparks and a falling whine, and the Reaper says why.
+  - **Machine noise:** the motor hum's pitch follows the carriage speed and the load, and it groans lower as the clutch strains.
+  - **Aim:** the drop guide runs straight down to the part under the claw and marks it, with brackets as wide as the closed claw's mouth. The odds badge (the Lens) says how likely this drop is to come up holding something. All of it turns violet when Iron Grip is armed.
+  - **Landing:** a thunk, dust and a small screen shake. The prongs spread, the claw settles around the part, the prongs ratchet shut and the winch spins up. With Iron Grip, a violet tendril reaches from the claw's heart to the part as it's drawn up.
+  - **Catch:** the part the claw holds is outlined in the colour of the catch: green is firm, amber is loose, and flickering red means it's sliding out. Its name and rarity are labelled, with the carry meter under them: how firm the catch is against how hard you are carrying it, in words (STEADY, STRAINED, SLIPPING!). NO GRIP means it's only riding on the prongs. A hexed claw's prongs glow, and spectral threads run from them into the part.
+  - **Snap:** when the clutch gives, the prongs clunk open. A soul grip tears with a crack of sparks. Either way, the Reaper says why.
   - **Win:** the chute catch hit-pauses, the bulbs chase, and the prize flies into your bag. Rare catches get slow-mo; legendaries get a gold flash.
   - **Life in the pile:** eyeballs follow the claw, hearts pulse, and legendaries sparkle.
   - **The Reaper** comments on everything.
@@ -97,8 +101,7 @@ Handy URL flags for testing:
   - **No wasted tokens:** DROP over the chute is refused with a nudge, and the claw settles before the cable pays out. Measured headless, dropping at full speed used to land about 33 px past the guide; now it lands within about 3–5 px, same as dropping at rest.
   - **Misses are quick:** an empty claw releases at the top instead of waiting for a pointless carry (and rides up faster after a pure air grab), and the miss line plays right away.
   - **Near misses:** a part that slips within a claw-length of the chute gets SO CLOSE!, a short slow-mo and a matching line, and is counted in the playtest report. A slip over the chute is a win, not a slip.
-- **Carry feedback.** A STEADY bar under the carry timer shows the slip chance per second right now. The held part's outline goes yellow then red, a creak plays when it goes red, and the Reaper's slip line names the cause (strain, the jolt at the top, a twitch, or swinging). *Strain* is the speed changes of the carriage while carrying (a full-speed start or stop is about 1, a reversal about 2, an end-stop slam is instant; it calms down over 0.6 s) and adds slip chance above a safe margin. `strainSlip = 0` is the old game. See §6b for how much it changes.
-- **Things to chase.** The graveyard shows its loot before you fight (the exact parts that will drop into the machine). Parts from a creature that died keep its name: they announce themselves when they fall in, the claw labels them ("Knuckles' Wolf Skull"), the Reaper welcomes them home when you win one back, and the slab tooltip says who they used to be.
+- **Carry feedback.** The carry meter under the held part shows the catch (the bar's notch: how much strain it can take) against the strain right now (the fill), in words: STEADY, STRAINED (dotted), SLIPPING! (striped, blinking). The first slip shows HOLD STILL AND IT SETTLES. *Strain* is the speed changes of the carriage while carrying (a full-speed start or stop is about 1, a reversal about 2, an end-stop slam is instant), plus time spent faster than the steady speed; it calms down over 0.6 s.
 
 ## 5. Tools for finding the fun
 
@@ -153,7 +156,7 @@ These tests were automated (bots and headless simulation), not human playtests. 
 5. **Economy side effect.** Grabs now pay out about 0.9 parts per token, up from about 0.6. By Stage 5 that's roughly 25 parts instead of 14, so battles in §7 will feel easier. If they do, `startTokens` or `winTokens` is the knob. Don't make the claw worse.
 6. **Carry skill still doesn't matter.** Gentle and jerky steering bots win about the same (76% vs 75%). Held parts sit in a locked cage, and the carriage's capped acceleration never shakes one loose. *This is still an open design problem* (see §8).
 
-   *Since then:* the integrated build adds a carry-strain layer on top of the soul grip (rough handling frays the grip; ease off and it re-seats), the carriage has momentum, and a drop on the move brakes and settles first. See the README and docs/BALANCE.md for the current numbers.
+   *Since then:* the soul grip and soul hook became Iron Grip's hex (§4). A plain drop is the claw's own physics: the prongs spread in the air and lower around the part, and the carry strains a slip clutch that lets the prongs creak open (careful 39% vs mashing 30% in bot tests). See the README and docs/BALANCE.md for current numbers.
 7. **Battle curve** (headless, Zap used on cooldown). The Stage 5 boss is a deliberate wall that needs a full party of three.
 
    | Party | S1 | S2 | S3 | S4 | S5 (boss) | S8 | S10 |
@@ -227,7 +230,7 @@ Log each session with this template:
 
 **If the answer is yes**, meaning people retry and chase parts:
 
-- ~~Make carrying a skill~~ (done in the integrated build: carriage momentum, plus strain that frays the soul grip, telegraphed by the carry meter).
+- ~~Make carrying a skill~~ (done: carriage momentum, plus strain that slips the claw's clutch, telegraphed by the carry meter).
 - ~~Give parts from the same creature a set bonus~~ (done: part sets).
 - ~~A run summary so the ending lands~~ (done: the end screen after the Landlord).
 - Let players see the next restock falling into the machine before they fight, to set up "I want that" (partly done: the IF YOU WIN panel shows the prize).

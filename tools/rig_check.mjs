@@ -249,7 +249,7 @@ section('lens (odds badge)');
       const a = sim.predict();
       if (!a || !a.part) continue;
       n++;
-      if (Math.abs(a.chance - clamp(sim.chanceFor(a.part, a.lx, false) * RIGSIM.lensShift, 0, 0.98)) > 1e-12) mismatch++;
+      if (Math.abs(a.chance - clamp(sim.chanceFor(a.part, a.lx, false, a.pit) * RIGSIM.lensShift, 0, 0.98)) > 1e-12) mismatch++;
       sim.iron = true; const b = sim.predict(); sim.iron = false;
       if (!(b.chance >= a.chance - 1e-12) || (a.chance < 0.98 && b.chance <= a.chance)) ironLess++;
     }
@@ -465,7 +465,7 @@ section('rules (Luck, costs, TILT, Order)');
   const spent0 = Telemetry.c.luckSpent;
   r = Rig.use('grip'); const armed = sim.iron, afterArm = Rig.luck;
   r = Rig.use('grip');
-  check('Iron Grip arms for 2 and disarming refunds it', armed && afterArm === 8 - CONFIG.costGrip && !sim.iron && Rig.luck === 8 && r.disarm);
+  check('Iron Grip arms for its cost and disarming refunds it', armed && afterArm === 8 - CONFIG.costGrip && !sim.iron && Rig.luck === 8 && r.disarm);
   check('...and the stats agree: a taken-back grip is not counted as spent', Telemetry.c.luckSpent === spent0, `spent ${spent0} -> ${Telemetry.c.luckSpent}`);
   Rig.luck = 7; Rig.use('grip'); sim.armIron(false); Rig.refund(5, 'x');
   check('a refund never passes the cap', Rig.luck <= CONFIG.luckMax, `luck ${Rig.luck}`);

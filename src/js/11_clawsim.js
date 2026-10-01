@@ -47,7 +47,8 @@ class ClawSim {
     this.pressed = false;
     this.turn = null;
     this.turnCount = 0;
-    this.grips = [];
+    this.grips = []; // soul grips: a hexed claw (Iron Grip) binds what it catches to its heart
+    this.cage = []; // what the claw holds on its own physics: the catch, and how hard the carry strains its clutch
     // The Rig (12_clawrig.js): drop lock, chute lid, active quake, armed Iron Grip, turn recording for REDO
     this.lockT = 0; this.lockWhy = null;
     this.sealAge = 0; this.lid = null;
@@ -56,7 +57,7 @@ class ClawSim {
     this.hist = null; this.redoHist = null; this.rw = null;
     this.cav = null; // the claw's cavity polygon, refreshed while it grips
     this.joltT = -9;
-    this.strain = 0; // how roughly the load is being carried: it frays the soul grip (carryStrain)
+    this.strain = 0; // how roughly the load is being carried: it slips the claw's clutch (see fray)
     this.build();
   }
 
@@ -199,6 +200,7 @@ class ClawSim {
     if (p.removed) return;
     p.removed = true;
     this.grips = this.grips.filter((g) => { if (g.part === p) { this.world.destroyJoint(g.joint); return false; } return true; });
+    this.cage = this.cage.filter((c) => c.part !== p);
     for (const b of p.bodies) this.world.destroyBody(b);
     this.held.delete(p);
     this.parts = this.parts.filter((q) => q !== p);
@@ -270,6 +272,8 @@ class ClawSim {
     this.setProngFriction(CONFIG.closeFriction);
     this.strain = 0;
     this.braked = false;
+    this.cage = [];
+    this.lowering = false;
     this.beginRecord();
     this.emit('drop', { iron: this.turn.iron });
     return true;
@@ -310,17 +314,17 @@ class ClawSim {
     let nx = this.carX + this.carV * h;
     if (nx < M.carMin) { nx = M.carMin; this.carV = 0; } // the end stop: a loaded carriage that hits it at speed is jarred
     if (nx > M.carMax) { nx = M.carMax; this.carV = 0; }
-    if (this.grips.length && (this.state === 'carry' || this.state === 'return')) this.addStrain(this.carV - v0, h);
+    if ((this.grips.length || this.cage.length) && (this.state === 'carry' || this.state === 'return')) this.addStrain(this.carV - v0, h);
     this.carriage.setLinearVelocity(planck.Vec2((nx - this.carX) / h / PPM, 0));
     this.carX = nx;
   }
 
-  prongs(mode) {
+  prongs(mode, openTorque = 120) {
     let torque, sL, sR;
     if (mode === 'open') {
       sL = clamp(12 * (CONFIG.clawOpen - this.jL.getJointAngle()), -5, 5);
       sR = clamp(12 * (-CONFIG.clawOpen - this.jR.getJointAngle()), -5, 5);
-      torque = 120;
+      torque = openTorque;
     }
     else if (mode === 'close') { sL = -CONFIG.closeSpeed; sR = CONFIG.closeSpeed; torque = CONFIG.closeTorque; }
     else if (mode === 'hold') {
@@ -329,8 +333,15 @@ class ClawSim {
       // Pushed open, they creep back; they never squeeze tighter.
       const aL = this.jL.getJointAngle(), aR = this.jR.getJointAngle();
       this.holdL = Math.min(this.holdL, aL); this.holdR = Math.max(this.holdR, aR);
-      sL = Math.min(0, 6 * (this.holdL - aL)); sR = Math.max(0, 6 * (this.holdR - aR));
-      torque = CONFIG.gripTorque;
+      const give = this.clutchGive(); // a strained clutch slips: the prongs creak open and the catch slides
+      if (give > 0) {
+        const open = give * CONFIG.clutchOpen;
+        sL = clamp(4 * (this.holdL + open - aL), -3, 3); sR = clamp(4 * (this.holdR - open - aR), -3, 3);
+        torque = CONFIG.gripTorque * (1 - 0.6 * give);
+      } else {
+        sL = Math.min(0, 6 * (this.holdL - aL)); sR = Math.max(0, 6 * (this.holdR - aR));
+        torque = CONFIG.gripTorque;
+      }
     }
     else { // relax: servo to a half-open pose (or to the drop pose while it falls)
       const k = 5, a = mode === 'drop' ? CONFIG.dropOpen : 0.3;
@@ -407,18 +418,37 @@ class ClawSim {
         break;
       }
       case 'spread': {
-        // Touched down: the prongs spread around what the tips landed on while the head settles in
-        // between them on a slack cable, then the claw clamps shut.
+        // Touched down. Resting on its tips, the claw's own weight would pin the prongs shut, so the cable takes the
+        // weight and backs off a touch while they spread in the air, then lowers the open claw around whatever the
+        // tips touched until it rests on the pile again, and it clamps. Stopped early by the player, it spreads and
+        // closes right where it is.
         guide = CONFIG.clawGuide; stiff = 3;
-        this.prongs('open');
+        this.prongs('open', CONFIG.spreadTorque);
         this.driveCarriage(0, h);
-        if (this.sink) this.ropeLen = Math.min(M.maxLen, Math.max(this.ropeLen, this.ropeDist() + 3));
-        this.soulHook();
+        this.soulHook(); // Iron Grip only
         const open = (this.jL.getJointAngle() - this.jR.getJointAngle()) / 2;
-        this.settleT = Math.abs(this.hub.getLinearVelocity().y * PPM) < 6 ? this.settleT + h : 0;
-        if ((this.stateT > 0.2 && (open > CONFIG.clawOpen - 0.08 || this.stateT > 0.45) && this.settleT > 0.06) || this.stateT > 0.8) {
-          this.setState('close');
-          this.emit('close');
+        if (!this.sink) {
+          this.settleT = Math.abs(this.hub.getLinearVelocity().y * PPM) < 6 ? this.settleT + h : 0;
+          if ((this.stateT > 0.2 && (open > CONFIG.clawOpen - 0.08 || this.stateT > 0.45) && this.settleT > 0.06) || this.stateT > 0.8) {
+            this.setState('close');
+            this.emit('close');
+          }
+          break;
+        }
+        if (!this.lowering) {
+          this.ropeLen = Math.max(M.topLen, Math.min(this.ropeLen, this.ropeDist() - CONFIG.spreadLift * h));
+          if (open > CONFIG.clawOpen - 0.08 || this.stateT > 0.35) { this.lowering = true; this.lowerT = 0; this.slackT = 0; }
+        } else {
+          this.lowerT += h;
+          const dist = this.ropeDist(), vy = this.hub.getLinearVelocity().y * PPM;
+          this.ropeLen = Math.min(M.maxLen, this.ropeLen + CONFIG.sinkSpeed * h, dist + 4);
+          const slack = this.ropeLen - dist;
+          this.slackT = this.lowerT > 0.08 && slack > 2 && vy < 25 ? this.slackT + h : 0;
+          if (this.slackT > 0.05 || this.lowerT > 0.7 || this.ropeLen >= M.maxLen) {
+            this.lowering = false;
+            this.setState('close');
+            this.emit('close');
+          }
         }
         break;
       }
@@ -439,7 +469,7 @@ class ClawSim {
           this.holdL = this.jL.getJointAngle(); this.holdR = this.jR.getJointAngle();
           this.setState('lift');
           this.scanGrips();
-          this.emit('lift', { grips: this.grips.map((g) => g.part) });
+          this.emit('lift', { grips: this.holds().map((g) => g.part) });
         }
         break;
       }
@@ -540,14 +570,17 @@ class ClawSim {
     return [dx * c - dy * s, dx * s + dy * c];
   }
 
-  // ------------------------------------------------------------ the soul grip
-  // What the prongs close around is what you get. A part whose centre of mass ends up inside the
-  // claw's cavity (outlined live by the prongs' inner faces, so a prong jammed open makes a leaky
-  // claw) and that the claw is touching gets bound to the head by a friction joint: the Reaper's
-  // soul grip. How strong depends on how it was caught: how deep inside, pinched by both prongs or
-  // resting on one, slimy or dry, light or heavy. Nothing is rolled. A part slips only when the
-  // physics pushes it out of the cavity (wedged in the pile, a hard swing, a twitch, the bounce at
-  // the top), and a grip that nothing touches fades until the part settles back onto the prongs.
+  // ------------------------------------------------------------ the catch
+  // What the prongs close around is what you get, and nothing is rolled. On a plain drop nothing holds a part
+  // but the claw itself: the prongs cage it and its pads grip it (scanCage keeps a record of each catch for the
+  // carry strain and the meter). A part whose centre of mass is inside the claw's cavity (outlined live by the
+  // prongs' inner faces, so a prong jammed open makes a leaky claw) and that a prong touches is caught; how well
+  // depends on how deep inside, pinched by both prongs or resting on one, and slime.
+  //
+  // Iron Grip (the Rig) hexes the claw for one drop: the soul hook drags the part under it up into its mouth, and
+  // what it catches is bound to the head by a friction joint, the Reaper's soul grip, as strong as the catch is
+  // good. A part slips only when the physics pushes it out of the cavity (wedged in the pile, a hard swing, a
+  // twitch, the bounce at the top), or when a rough carry frays the grip.
 
   // The cavity in world px: down the left prong's inner face to its hook, across the mouth, back up
   // the right prong. The closing edge is the underside of the head.
@@ -598,6 +631,7 @@ class ClawSim {
       if (this.fray(g, h)) continue; // frayed through: it let go
       this.setGripStrength(g);
     }
+    this.scanCage(poly, h);
     for (const p of this.parts) {
       if (p.won || !this.touching(p) || this.time - (p.unbindT || -9) < 0.4 || this.grips.some((g) => g.part === p)) continue;
       let best = null;
@@ -607,9 +641,37 @@ class ClawSim {
       }
       if (!best) continue;
       const q = this.gripQuality(p, best.d);
-      if (q >= CONFIG.gripMin * (this.ironOn() ? CONFIG.ironCatch : 1)) this.bind(p, best.b, q); // Iron Grip binds weaker catches too
+      if (this.ironOn() && q >= CONFIG.gripMin * (this.ironOn() ? CONFIG.ironCatch : 1)) this.bind(p, best.b, q); // Iron Grip binds weaker catches too
     }
   }
+
+  // The claw's own hold, no magic: a part whose centre is inside the closed claw and that a prong touches is caught.
+  // How well (gripQuality: how deep, one prong or two, slime) decides how much carry strain the clutch takes before
+  // it slips. Nothing holds the part but the prongs: when it falls out, it's gone.
+  scanCage(poly, h) {
+    if (this.ironOn()) { if (this.cage.length) this.cage = []; return; } // a hexed claw holds with its soul grip instead
+    for (const c of this.cage.slice()) {
+      c.t += h;
+      c.depth = Math.max(...c.part.bodies.map((b) => { const q = b.getWorldCenter(); return cavityDepth(poly, q.x * PPM, q.y * PPM); }));
+      if (c.part.won || c.depth < -CONFIG.gripSlack) { this.cage = this.cage.filter((x) => x !== c); continue; } // out of the claw
+      c.q = this.gripQuality(c.part, c.depth);
+      this.fray(c, h);
+    }
+    for (const p of this.parts) {
+      if (p.won || !this.touching(p) || this.cage.some((c) => c.part === p)) continue;
+      const depth = Math.max(...p.bodies.map((b) => { const q = b.getWorldCenter(); return cavityDepth(poly, q.x * PPM, q.y * PPM); }));
+      if (depth <= 0) continue;
+      const q = this.gripQuality(p, depth);
+      if (q < CONFIG.gripMin) continue;
+      this.cage.push({ part: p, body: p.body, q, qBest: q, hold: q, t: 0, depth, fray: 0, load: 0, slipping: false, mass: p.bodies.reduce((a, b) => a + b.getMass(), 0) });
+    }
+  }
+
+  // how far the clutch has slipped (0..1): the worst strained catch in the claw
+  clutchGive() { let f = 0; for (const c of this.cage) f = Math.max(f, c.fray); return clamp(f, 0, 1); }
+
+  // everything the claw has hold of: soul grips and its own catches
+  holds() { return this.grips.length ? this.grips.concat(this.cage) : this.cage; }
 
   bind(p, body, q) {
     const c = body.getWorldCenter(), s = SPR.get(p.def.sprite);
@@ -680,7 +742,13 @@ class ClawSim {
     if (!g.slipping && g.fray > 0.08) { g.slipping = true; this.emit('slipping', { part: g.part }); }
     else if (g.slipping && g.fray <= 0) { g.slipping = false; this.emit('reseat', { part: g.part }); }
     if (g.fray < 1) return false;
-    this.loseGrip(g, 'strain'); // yanked loose: the carry was rougher than the catch
+    if (g.joint) this.loseGrip(g, 'strain'); // yanked loose: the carry was rougher than the catch
+    else { // the clutch slipped all the way: the jaws sag open and the part goes
+      g.fray = 0; g.slipping = false;
+      this.cage = this.cage.filter((x) => x !== g);
+      g.part.unbindT = this.time;
+      this.emit('gripLost', { part: g.part, why: 'strain' });
+    }
     if (!this.grips.length && CONFIG.slipOpen > 0) this.slipOpenT = CONFIG.slipOpen;
     return true;
   }
@@ -688,9 +756,10 @@ class ClawSim {
   // For the carry meter: the grip that is closest to letting go. hold = what its catch can take (0..1, Iron Grip
   // counted in), load = the strain it feels right now, fray = how far it has slid (0..1, at 1 it goes).
   carryInfo() {
-    if (!this.grips.length || (this.state !== 'carry' && this.state !== 'return' && this.state !== 'lift')) return null;
+    const all = this.holds();
+    if (!all.length || (this.state !== 'carry' && this.state !== 'return' && this.state !== 'lift')) return null;
     let worst = null;
-    for (const g of this.grips) {
+    for (const g of all) {
       const k = this.ironOn() ? CONFIG.ironSlip : 1, hold = g.hold / k, load = g.load / k; // in the units the player sees
       const r = { part: g.part, hold: clamp(hold, 0, 1.5), load, fray: clamp(g.fray, 0, 1), slipping: g.slipping, iron: this.ironOn() };
       if (!worst || r.fray > worst.fray || (r.fray === worst.fray && load - hold > worst.load - worst.hold)) worst = r;
@@ -698,7 +767,7 @@ class ClawSim {
     return worst;
   }
 
-  ironOn() { return !!(this.turn && this.turn.iron); } // this drop has Iron Grip (the Rig)
+  ironOn() { return !!(this.turn && this.turn.iron); } // this drop has Iron Grip (the Rig): the claw is hexed
 
   loseGrip(g, why) {
     if (!this.grips.includes(g)) return;
@@ -706,16 +775,17 @@ class ClawSim {
     this.unclamp(g.part);
     this.grips = this.grips.filter((x) => x !== g);
     g.part.unbindT = this.time;
-    this.emit('gripLost', { part: g.part, why });
+    this.emit('gripLost', { part: g.part, why, soul: true });
   }
 
   dropGrips() {
     for (const g of this.grips) { this.world.destroyJoint(g.joint); this.unclamp(g.part); }
     this.grips = [];
+    this.cage = [];
   }
 
-  // The extra magic. A real claw standing on its prong tips closes above whatever lies between them.
-  // This one reaches: while the prongs spread and clamp, the SOUL HOOK drags the part straight below
+  // Iron Grip's magic. A real claw standing on its prong tips can close above whatever lies between them.
+  // A hexed one reaches: while the prongs spread and clamp, the SOUL HOOK drags the part straight below
   // the claw's centre line (the part the drop guide points at) up toward its heart. It's a real
   // force, so the pile pushes back, a buried part stays buried and nothing passes through a prong:
   // the prongs still have to close around whatever comes up.
@@ -732,12 +802,12 @@ class ClawSim {
   }
 
   soulHook() {
-    const hook = (this.hook = CONFIG.hookPull > 0 ? this.hookTarget(CONFIG.hookReach * (this.ironOn() ? 1.3 : 1)) : null);
+    const hook = (this.hook = CONFIG.hookPull > 0 && this.ironOn() ? this.hookTarget() : null);
     if (!hook) return;
     const V = planck.Vec2, heart = this.hub.getWorldPoint(V(0, 17 / PPM));
     for (const b of hook.part.bodies) {
       const c = b.getWorldCenter(), dx = heart.x - c.x, dy = heart.y - c.y, L = Math.hypot(dx, dy) || 1;
-      const f = b.getMass() * CONFIG.gravity * CONFIG.hookPull * (this.ironOn() ? CONFIG.ironBoost : 1) * Math.min(1, (L * PPM) / 6); // Iron Grip reaches harder too
+      const f = b.getMass() * CONFIG.gravity * CONFIG.hookPull * Math.min(1, (L * PPM) / 6);
       b.applyForce(V((dx / L) * f, (dy / L) * f), c, true);
     }
     hook.part.pullT = this.time;

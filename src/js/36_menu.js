@@ -157,7 +157,7 @@ const Overlays = (() => {
           ['THE IDEA', '#ff8ac6'],
           ['Win body parts from the claw machine. Stitch them into monsters on the slab. Send them to fight the shades in the graveyard. Every part they lose goes back in the machine.', '#ecdcbc'],
           ['THE CLAW', '#ff8ac6'],
-          [`${K('left')} ${K('right')} steer.  ${K('a')} drops the claw, and again to let go over the chute.  Hold the mouse or a finger on the glass to steer toward it. Carrying: hold a direction to speed up, ease off to steady it. Fast carries swing, and swinging parts slip.`, '#ecdcbc'],
+          [`${K('left')} ${K('right')} steer.  ${K('a')} drops the claw, and again to let go over the chute.  Hold the mouse or a finger on the glass to steer toward it. Go for parts on top of the pile. Carrying: ease off to keep it steady, or the prongs creak open and it slips.`, '#ecdcbc'],
           ['THE RIG', '#ff8ac6'],
           [`Bad luck fills your LUCK. Spend it on the levers beside the glass: ${K('nudgeL')} ${K('nudgeR')} nudge (free, but do not TILT it), ${K('quake')} quake, ${K('grip')} iron grip, ${K('order')} order a part, ${K('redo')} redo a failed grab.`, '#ecdcbc'],
           ['THE FIGHT', '#ff8ac6'],

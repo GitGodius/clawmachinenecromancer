@@ -2,6 +2,17 @@
 
 Player-facing changes first. The version in the corner of the title screen matches the heading here.
 
+## 0.11.0: a real claw
+
+The claw had a bit of magic doing the work on every drop: a "soul hook" pulled the part under it up into its mouth, and a "soul grip" glued what it caught to the claw. It worked, but it felt weird. Now the claw is a claw.
+
+- **Pure physics.** No pulling, no glue, no dice. The claw comes down, spreads its prongs in the air, lowers around the part, closes and lifts. Only the prongs hold what it caught. A part on top of the pile is the one to go for; a part down in a pit between taller neighbours is hard to get, which is what Quake and Nudge are for.
+- **The carry strains the claw's clutch.** Race or yank it around and the prongs creak open and the part starts to slide (SLIPPING!). Ease off and they close again. Keep yanking and it drops.
+- **Magic only when you pay for it.** The soul hook and the soul grip are now what Iron Grip does: it hexes one drop, and the violet shows up only then. It costs 3 Luck (was 2).
+- **The odds badge knows about pits.** Recalibrated for the physical claw: red badges hold about a quarter of the time, green ones about 60%.
+- Bots: a careful carry wins about 39% of drops (about 60% on parts on top of the pile), a masher 30%, a hexed drop about 85%.
+- Not re-balanced yet: the economy tables in docs/BALANCE.md were measured with the 0.10 claw, which won far more often.
+
 ## 0.10.0: everything, together
 
 The four open lines of work (the Rig, the soul grip, the polish pass, and the grab-loop and monster fixes) fitted into one build. Same caveat as 0.9.0: checked by bots and a headless browser, not yet on real hardware.

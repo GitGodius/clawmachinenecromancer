@@ -1,8 +1,8 @@
 # The claw: grab fix and feel plan
 
-> **Status in the integrated build.** This page is the record of one of two rival fixes for the grab (pull request #2), kept because its diagnosis and its feel plan shaped the game. The grab itself is now the other fix, the **soul grip** (PROTOTYPE.md §4): on the same 1000 seeded piles it won the part inside the claw 91% of the time against 51% here, and the part aimed at 50% against 25%. What this page contributed lives on top of it:
+> **Status in the integrated build.** This page is the record of one of two rival fixes for the grab (pull request #2), kept because its diagnosis and its feel plan shaped the game. The other fix (pull request #3) won on the same 1000 seeded piles; since 0.11 its geometry and cage are the claw's own physics, and its soul hook and soul grip are Iron Grip's magic (PROTOTYPE.md §4). What this page contributed lives on top of it:
 >
-> - **Strain against hold**, rebuilt on the physics with nothing rolled: lurches and speed past the steady speed strain the grip, a grip whose catch can't take it frays and slides, easing off re-seats it ("Phew."), and a grip frayed through tears and the jaws sag open.
+> - **Strain against hold**, rebuilt on the physics with nothing rolled: lurches and speed past the steady speed strain the claw's slip clutch, a catch that can't take it slides as the prongs creak open, easing off closes them again ("Phew."), and keep yanking and the jaws sag open.
 > - **One carry meter** under the held part (the catch against the strain, in words: STEADY, STRAINED, SLIPPING!), the creak and the grit of a sliding part, the HOLD STILL hint on the first slip, and the motor groaning lower as the grip strains.
 > - **Feedback:** the drop guide's brackets as wide as the closed claw, "Just clipped it." when the claw closed on a part without catching it, grip quality at the close in the playtest report, and the **Grip** group in the tuning panel.
 >
