@@ -29,7 +29,7 @@ Scenes.battle = (() => {
   const fx = new Particles();
   const debris = new Particles();
   let t = 0, units = [], phase = 'ready', result = null, zapCd = 0, menuSel = 0, logLines = [], resultT = 0;
-  let coinsShown = 0, reward = 0, restocked = [], bolts = [], fightStage = 1;
+  let coinsShown = 0, reward = 0, restocked = [], bolts = [], fightStage = 1, prize = [];
   const say = (x, h) => Game.talk.say(x, h);
   const allies = () => units.filter((u) => u.team === 'ally');
   const enemies = () => units.filter((u) => u.team === 'enemy');
@@ -60,6 +60,9 @@ Scenes.battle = (() => {
     t = 0; phase = 'ready'; result = null; zapCd = 0; menuSel = 0; logLines = []; resultT = 0; bolts = []; fightStage = Game.stage;
     fx.list = []; debris.list = [];
     units = [];
+    // the loot for winning is rolled up front, so you can see what you're fighting for
+    prize = [];
+    for (let i = 0; i < CONFIG.restockParts; i++) prize.push(randomPartType({ boost: 1 + Game.stage * 0.2 }));
     Game.party.filter((c) => c.hp > 0).slice(0, 3).forEach((c, i) => units.push(makeAlly(c, i)));
     const kinds = stageEnemies(Game.stage);
     kinds.forEach((k, i) => units.push(makeEnemy(k, i, kinds.length)));
@@ -147,6 +150,7 @@ Scenes.battle = (() => {
       if (att.traits.includes('rend')) def.bleedT = 3;
       if (att.traits.includes('smash') && chance(0.3)) { def.stunT = 1; fx.text(def.x, def.y - bodyH(def) - 16, 'STUN', PAL.L); Engine.shake(3, 0.2); }
       if (opts.fire) def.burnT = 3;
+      if (att.traits.includes('set_abyssal')) { if (!(def.burnT > 0)) fx.text(def.x, def.y - bodyH(def) - 16, 'BURN', '#ffb070'); def.burnT = 3; }
     }
     if (def.hp <= 0) kill(def, att);
   }
@@ -203,15 +207,14 @@ Scenes.battle = (() => {
     const survivors = allies().filter((u) => !u.dead);
     // write back to the party
     for (const u of allies()) u.c.hp = u.dead ? 0 : Math.max(1, Math.ceil(u.hp));
-    const deadParts = deadAllies.flatMap((u) => u.c.parts());
+    const deadParts = deadAllies.flatMap((u) => u.c.parts().map((type) => ({ type, from: u.name }))); // remains keep their name
     Game.party = Game.party.filter((c) => c.hp > 0);
     reward = 0;
     restocked = [];
     if (kind === 'win') {
       reward = CONFIG.winTokens + Game.stage;
       if (survivors.some((u) => u.traits.includes('golden'))) reward += 1;
-      const boost = 1 + Game.stage * 0.2;
-      for (let i = 0; i < CONFIG.restockParts; i++) restocked.push(randomPartType({ boost }));
+      restocked = prize.slice();
       for (const c of Game.party) c.hp = c.maxHp; // the Reaper patches them up
       Telemetry.c.victories++;
       Telemetry.c.bestStage = Math.max(Telemetry.c.bestStage, Game.stage);
@@ -388,6 +391,7 @@ Scenes.battle = (() => {
     Font.draw(ctx, 'Stage ' + fightStage + (fightStage % 5 === 0 ? '  ·  BOSS' : ''), 472, 18, { align: 'right', color: '#a6aec2', shadow: PAL.k });
     if (SPR.has('ico_token')) SPR.draw(ctx, 'ico_token', 12, 12);
     Font.draw(ctx, String(Game.tokens), 20, 8, { color: PAL.L, shadow: PAL.k });
+    if (phase !== 'done') drawPrize(ctx);
 
     // menu
     Draw.panel(ctx, 8, 206, 102, 58, 'slate');
@@ -405,6 +409,16 @@ Scenes.battle = (() => {
     if (phase === 'ready' && Math.sin(t * 5) > 0) Draw.frame(ctx, 10, 210, 98, 17, '#ff8ac6');
   };
 
+  // what winning pays: tokens plus the parts that will drop into the machine
+  function drawPrize(ctx) {
+    const w = 72 + prize.length * 26, x = Math.round(240 - w / 2);
+    Draw.panel(ctx, x, 4, w, 36, 'slate');
+    Font.draw(ctx, 'IF YOU WIN', x + 6, 8, { font: 'small', color: '#a6aec2' });
+    if (SPR.has('ico_token')) SPR.draw(ctx, 'ico_token', x + 10, 28);
+    Font.draw(ctx, '+' + (CONFIG.winTokens + Game.stage), x + 18, 24, { color: PAL.L });
+    prize.forEach((type, i) => drawPartIcon(ctx, type, x + 70 + i * 26, 24, 20, { outline: RARITY[PART_DEFS[type].rarity].glow || undefined }));
+  }
+
   function drawResult(ctx) {
     const r = result;
     const title = r.kind === 'win' ? 'STAGE CLEARED!' : r.kind === 'lose' ? 'DEFEATED' : 'RETREATED';
@@ -418,8 +432,12 @@ Scenes.battle = (() => {
       if (SPR.has('ico_token')) for (let i = 0; i < coinsShown; i++) SPR.draw(ctx, 'ico_token', x + 4 + i * 10, 234);
       Font.draw(ctx, `+${coinsShown} tokens`, x + 8 + r.reward * 10, 230, { color: PAL.L });
     }
-    const back = r.restocked.length + r.deadParts.length;
-    if (back) Font.draw(ctx, `${back} part${back > 1 ? 's' : ''} dropped into the claw machine`, 126, 247, { color: '#7a6a9a' });
+    const back = [...r.restocked, ...r.deadParts.map((d) => d.type)];
+    if (back.length) {
+      Font.draw(ctx, 'BACK IN THE MACHINE', 126, 243, { font: 'small', color: '#7a6a9a' });
+      back.slice(0, 9).forEach((type, i) => drawPartIcon(ctx, type, 252 + i * 22, 244, 16, { outline: RARITY[PART_DEFS[type].rarity].glow || undefined }));
+      if (back.length > 9) Font.draw(ctx, '+' + (back.length - 9), 252 + 9 * 22, 241, { font: 'small', color: '#a6aec2' });
+    }
     if (!r.reward && !back) Font.draw(ctx, 'No reward. No shame. Well, some shame.', 126, 234, { color: '#7a6a9a' });
   }
 

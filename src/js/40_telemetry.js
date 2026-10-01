@@ -9,7 +9,7 @@ const Telemetry = {
   sceneTime: {},
   cur: null, curT: 0,
   c: {
-    grabs: 0, wins: 0, slips: 0, misses: 0, doubles: 0, freebies: 0, nearMiss: 0,
+    grabs: 0, wins: 0, slips: 0, misses: 0, doubles: 0, freebies: 0, nearMiss: 0, sets: 0, homecomings: 0,
     retryFast: 0, retrySlow: 0, quitAfterFail: 0,
     bySlipWhy: {}, wonRarity: { common: 0, uncommon: 0, rare: 0, legendary: 0 },
     creatures: 0, unstitched: 0, battles: 0, victories: 0, defeats: 0, retreats: 0, zaps: 0,
@@ -63,7 +63,7 @@ const Telemetry = {
       `near misses (slipped within a claw-length of the chute): ${c.nearMiss}`,
       `slip causes: ${Object.entries(c.bySlipWhy).map(([k, v]) => k + ' ' + v).join(', ') || '-'}`,
       `after a failed grab: retried within 6s ${c.retryFast}, retried later ${c.retrySlow}, left the machine ${c.quitAfterFail}   (one-more-try rate ${pct(c.retryFast, fails)})`,
-      `creatures stitched ${c.creatures}   unstitched ${c.unstitched}`,
+      `creatures stitched ${c.creatures}   unstitched ${c.unstitched}   sets completed ${c.sets}   remains won back ${c.homecomings}`,
       `battles ${c.battles}   won ${c.victories}   lost ${c.defeats}   retreats ${c.retreats}   zaps used ${c.zaps}   best stage ${c.bestStage}`,
       `pity tokens given ${c.pity}`,
       `time: ${Object.entries(st).map(([k, v]) => k + ' ' + Math.round(v) + 's').join(', ')}`,

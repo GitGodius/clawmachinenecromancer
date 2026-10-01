@@ -215,7 +215,7 @@ class ClawSim {
     for (const p of this.parts) if (!p.won) { const [x, y] = this.partPos(p); if (x > MACHINE.chuteX0 && y > MACHINE.lipY) p.won = true; }
   }
 
-  queueSpawn(type, delay = 0) { this.pending.push({ type, t: delay }); }
+  queueSpawn(type, delay = 0, from) { this.pending.push({ type, t: delay, from }); }
 
   // ------------------------------------------------------------ control
   press() { this.pressed = true; }
@@ -397,6 +397,7 @@ class ClawSim {
       if (this.pendingT <= 0) {
         const it = this.pending.shift();
         const p = this.spawnPart(it.type, rand(M.spawnX0 + 6, M.spawnX1 - 20), M.top + 12, rand(-3, 3), [rand(-10, 10), 20]);
+        if (it.from) p.from = it.from;
         this.emit('spawn', { part: p });
         this.pendingT = 0.28;
       }

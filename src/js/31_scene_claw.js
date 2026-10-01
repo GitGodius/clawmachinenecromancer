@@ -299,6 +299,7 @@ Scenes.claw = (() => {
           Sfx.play('restock');
           const [px, py] = sim.partPos(d.part);
           fxW.burst(px, py, 8, { speed: 20, life: 0.5, color: [RARITY[d.part.def.rarity].color, '#fff6e3'] });
+          if (d.part.from) { const [sx, sy] = toScreen(px, py); fxS.text(sx, sy + 8, poss(d.part.from), '#a08962', { life: 1.4, vy: -10 }); }
           break;
         }
       }
@@ -307,8 +308,9 @@ Scenes.claw = (() => {
 
   function onWin(d) {
     const p = d.part, def = p.def, r = RARITY[def.rarity];
-    Game.addPart(p.type);
+    Game.addPart(p.type, p.from);
     turnWins++;
+    if (p.from) Telemetry.c.homecomings++;
     Telemetry.c.wonRarity[def.rarity]++;
     if (!d.inTurn) Telemetry.c.freebies++;
     Telemetry.log('won', { part: p.type, rarity: def.rarity });
@@ -336,7 +338,7 @@ Scenes.claw = (() => {
       [`A ${def.name}! Someone's getting spoiled.`, `${def.name}! Oh, that's a GOOD part.`],
       ['...I was saving that one.', `The ${def.name}. You absolute ghoul.`],
     ][order];
-    say(pick(lines), 2.6);
+    say(p.from && order < 3 ? pick([`${poss(p.from)} ${def.name}. Welcome home.`, `Oh. ${poss(p.from)} ${def.name}. Hello again.`, `${p.from} did say they'd be back.`]) : pick(lines), 2.6);
     if (!d.inTurn) say('Free part! Don\'t tell the manager. I\'m the manager.', 2.6);
   }
 
@@ -546,8 +548,9 @@ Scenes.claw = (() => {
       const [px, py] = sim.partPos(gp);
       const [sx, sy] = toScreen(px, py);
       const r = RARITY[gp.def.rarity];
-      const txt = gp.def.name + (r.order ? ' · ' + r.name : '');
-      Font.draw(ctx, txt, clamp(sx, 60, 330), sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      const txt = (gp.from ? poss(gp.from) + ' ' : '') + gp.def.name + (r.order ? ' · ' + r.name : '');
+      Font.draw(ctx, txt, clamp(sx, 90, 300), sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      if (gp.def.set) Font.draw(ctx, PART_SETS[gp.def.set].name.toUpperCase() + ' SET', clamp(sx, 90, 300), sy + 37, { font: 'small', color: '#f6c64b', align: 'center', outline: PAL.k });
     }
     if (sim.state === 'carry' && CONFIG.carryTime > 0) {
       const k = 1 - sim.stateT / CONFIG.carryTime;

@@ -183,6 +183,8 @@ function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(RNG() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
   return arr;
 }
+// possessive: Barnaby -> Barnaby's, Knuckles -> Knuckles'
+function poss(name) { return name + (/s$/i.test(name) ? "'" : "'s"); }
 
 // ==== 03_palette.js ====
 // ---------------------------------------------------------------------------
@@ -4128,6 +4130,25 @@ const TRAITS = {
   whip:     { name: 'Tail Whip',   desc: '25% chance to strike twice' },
 };
 
+// SETS — put `need` parts of one set on the same creature for a bonus (applied in Creature.compute).
+// Aim decides WHICH part you get, so sets are what makes one particular part worth chasing.
+const PART_SETS = {
+  skeleton: { name: 'Skeleton', need: 3, title: 'the Rattly',   desc: '+2 DEF',           parts: ['skull', 'ribcage', 'bonearm', 'boneleg'] },
+  beast:    { name: 'Beast',    need: 3, title: 'the Feral',    desc: '+30% ATK',         parts: ['wolfskull', 'clawarm', 'goatleg', 'tail'] },
+  abyssal:  { name: 'Abyssal',  need: 3, title: 'the Abyssal',  desc: 'Hits burn',        parts: ['demonskull', 'eyeball', 'tentacle', 'blackheart', 'wings'] },
+  royal:    { name: 'Royal',    need: 3, title: 'the Regal',    desc: '+20% ATK, +2 DEF', parts: ['crownskull', 'armor', 'swordarm', 'goldheart'] },
+  ogre:     { name: 'Ogre',     need: 2, title: 'the Enormous', desc: '+25% HP and ATK',  parts: ['ogregut', 'ogrearm'] },
+};
+for (const k in PART_SETS) {
+  for (const p of PART_SETS[k].parts) PART_DEFS[p].set = k;
+  TRAITS['set_' + k] = { name: PART_SETS[k].name + ' set', desc: PART_SETS[k].desc, set: true };
+}
+// which sets a creature's slots (or any {slot: type} map) complete
+function setsOf(slots) {
+  const t = Object.values(slots).filter(Boolean);
+  return Object.keys(PART_SETS).filter((k) => t.filter((x) => PART_DEFS[x].set === k).length >= PART_SETS[k].need);
+}
+
 const SLOT_NAMES = { head: 'Head', torso: 'Torso', arm: 'Arm', leg: 'Leg', heart: 'Heart', back: 'Back' };
 // creature layout: which slot keys exist and what part slot they take
 const RIG_SLOTS = [
@@ -4155,7 +4176,7 @@ function randomPartType(opts = {}) {
 }
 
 let _partUid = 1;
-function makePartItem(type) { return { uid: _partUid++, type }; }
+function makePartItem(type, from) { return { uid: _partUid++, type, from }; } // from: the dead creature this part used to be
 
 // ==== 11_clawsim.js ====
 // ---------------------------------------------------------------------------
@@ -4375,7 +4396,7 @@ class ClawSim {
     for (const p of this.parts) if (!p.won) { const [x, y] = this.partPos(p); if (x > MACHINE.chuteX0 && y > MACHINE.lipY) p.won = true; }
   }
 
-  queueSpawn(type, delay = 0) { this.pending.push({ type, t: delay }); }
+  queueSpawn(type, delay = 0, from) { this.pending.push({ type, t: delay, from }); }
 
   // ------------------------------------------------------------ control
   press() { this.pressed = true; }
@@ -4557,6 +4578,7 @@ class ClawSim {
       if (this.pendingT <= 0) {
         const it = this.pending.shift();
         const p = this.spawnPart(it.type, rand(M.spawnX0 + 6, M.spawnX1 - 20), M.top + 12, rand(-3, 3), [rand(-10, 10), 20]);
+        if (it.from) p.from = it.from;
         this.emit('spawn', { part: p });
         this.pendingT = 0.28;
       }
@@ -6777,8 +6799,8 @@ const Game = {
     this.sim.fillPile(CONFIG.partCount);
   },
 
-  addPart(type) {
-    const it = makePartItem(type);
+  addPart(type, from) {
+    const it = makePartItem(type, from);
     this.inventory.push(it);
     this.recent.unshift(type);
     if (this.recent.length > 8) this.recent.pop();
@@ -6789,7 +6811,8 @@ const Game = {
     return i >= 0 ? this.inventory.splice(i, 1)[0] : null;
   },
   // dead creatures and battle loot go back into the machine
-  restock(types) { types.forEach((t, i) => this.sim.queueSpawn(t, i * 0.2)); },
+  // entries are a part type, or { type, from } for the remains of a creature that died
+  restock(items) { items.forEach((it, i) => this.sim.queueSpawn(it.type || it, i * 0.2, it.from)); },
 
   canFight() { return this.party.some((c) => c.hp > 0); },
   broke() { return this.tokens <= 0 && !this.inventory.length && !this.party.length; },
@@ -7102,6 +7125,7 @@ Scenes.claw = (() => {
           Sfx.play('restock');
           const [px, py] = sim.partPos(d.part);
           fxW.burst(px, py, 8, { speed: 20, life: 0.5, color: [RARITY[d.part.def.rarity].color, '#fff6e3'] });
+          if (d.part.from) { const [sx, sy] = toScreen(px, py); fxS.text(sx, sy + 8, poss(d.part.from), '#a08962', { life: 1.4, vy: -10 }); }
           break;
         }
       }
@@ -7110,8 +7134,9 @@ Scenes.claw = (() => {
 
   function onWin(d) {
     const p = d.part, def = p.def, r = RARITY[def.rarity];
-    Game.addPart(p.type);
+    Game.addPart(p.type, p.from);
     turnWins++;
+    if (p.from) Telemetry.c.homecomings++;
     Telemetry.c.wonRarity[def.rarity]++;
     if (!d.inTurn) Telemetry.c.freebies++;
     Telemetry.log('won', { part: p.type, rarity: def.rarity });
@@ -7139,7 +7164,7 @@ Scenes.claw = (() => {
       [`A ${def.name}! Someone's getting spoiled.`, `${def.name}! Oh, that's a GOOD part.`],
       ['...I was saving that one.', `The ${def.name}. You absolute ghoul.`],
     ][order];
-    say(pick(lines), 2.6);
+    say(p.from && order < 3 ? pick([`${poss(p.from)} ${def.name}. Welcome home.`, `Oh. ${poss(p.from)} ${def.name}. Hello again.`, `${p.from} did say they'd be back.`]) : pick(lines), 2.6);
     if (!d.inTurn) say('Free part! Don\'t tell the manager. I\'m the manager.', 2.6);
   }
 
@@ -7349,8 +7374,9 @@ Scenes.claw = (() => {
       const [px, py] = sim.partPos(gp);
       const [sx, sy] = toScreen(px, py);
       const r = RARITY[gp.def.rarity];
-      const txt = gp.def.name + (r.order ? ' · ' + r.name : '');
-      Font.draw(ctx, txt, clamp(sx, 60, 330), sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      const txt = (gp.from ? poss(gp.from) + ' ' : '') + gp.def.name + (r.order ? ' · ' + r.name : '');
+      Font.draw(ctx, txt, clamp(sx, 90, 300), sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      if (gp.def.set) Font.draw(ctx, PART_SETS[gp.def.set].name.toUpperCase() + ' SET', clamp(sx, 90, 300), sy + 37, { font: 'small', color: '#f6c64b', align: 'center', outline: PAL.k });
     }
     if (sim.state === 'carry' && CONFIG.carryTime > 0) {
       const k = 1 - sim.stateT / CONFIG.carryTime;
@@ -7474,6 +7500,14 @@ class Creature {
     this.maxHp = Math.round(hp);
     this.atk = Math.round(atk * 10) / 10;
     this.def = all.reduce((a, d) => a + (d.def || 0), 0);
+    // set bonuses (also pushed as traits, so the preview, tooltips and battle show them with no extra plumbing)
+    this.sets = setsOf(this.slots);
+    for (const k of this.sets) this.traits.push('set_' + k);
+    const mulAtk = (m) => { this.atk = Math.round(this.atk * m * 10) / 10; };
+    if (this.sets.includes('skeleton')) this.def += 2;
+    if (this.sets.includes('beast')) mulAtk(1.3);
+    if (this.sets.includes('royal')) { mulAtk(1.2); this.def += 2; }
+    if (this.sets.includes('ogre')) { this.maxHp = Math.round(this.maxHp * 1.25); mulAtk(1.25); }
     this.spd = spd;
     this.moveSpeed = (legs.length ? 12 + spd * 4 : 7) + (this.traits.includes('flutter') ? 10 : 0);
     this.atkTime = 1.25 + (arms.some((d) => d.trait === 'smash') ? 0.45 : 0) - Math.min(0.35, spd * 0.03);
@@ -7489,7 +7523,7 @@ class Creature {
     let title = null;
     if (S.head === 'crownskull') title = 'the Magnificent';
     else if (S.heart === 'goldheart') title = 'Heart of Gold';
-    else if (count((d, k) => k.startsWith('ogre')) >= 2) title = 'the Enormous';
+    else if (setsOf(S).length) title = PART_SETS[setsOf(S)[0]].title;
     else if (t.includes('tentacle')) title = 'the Tentacular';
     else if (S.head === 'wolfskull') title = 'the Hungry';
     else if (S.head === 'eyeball') title = 'the Watcher';
@@ -7708,6 +7742,7 @@ Scenes.slab = (() => {
     let slot = d.slot;
     if (slot === 'arm') slot = !build.armR ? 'armR' : !build.armL ? 'armL' : 'armR';
     if (slot === 'leg') slot = !build.legR ? 'legR' : !build.legL ? 'legL' : 'legR';
+    const setsBefore = setsOf(types());
     Game.takeItem(item.uid);
     if (build[slot]) Game.inventory.push(build[slot]);
     build[slot] = item;
@@ -7720,6 +7755,16 @@ Scenes.slab = (() => {
     Telemetry.log('stitch', { part: item.type, slot });
     if (chance(0.3)) say(pick(['Snug.', 'It fits. Mostly.', 'Needle, thread, hope.', 'Ooh, that suits them.', 'Stitch, stitch, stitch.', 'Lovely. Horrible. Lovely.']), 1.6);
     if (item.type === 'pegleg' && chance(0.6)) say('A peg leg. Classic look. Terrible posture.', 2.2);
+    for (const k of setsOf(types())) { // a set just came together: make a moment of it
+      if (setsBefore.includes(k)) continue;
+      const S = PART_SETS[k];
+      Sfx.play('win_uncommon');
+      fx.burst(FEET_X, FEET_Y - 60, 26, { speed: 100, life: 0.8, ay: 30, color: ['#f6c64b', '#fff1a6', '#fff6e3'] });
+      fx.text(FEET_X, FEET_Y - 150, S.name.toUpperCase() + ' SET!', '#f6c64b', { font: 'main', life: 1.8, vy: -12 });
+      fx.text(FEET_X, FEET_Y - 136, S.desc, '#fff1a6', { life: 1.8, vy: -12 });
+      Telemetry.c.sets++;
+      say(pick([`The ${S.name} set! ${S.desc}. Now we're getting somewhere.`, `${S.name} set complete. ${S.desc}. Lovely.`]), 3.2);
+    }
   }
   function unstitchSlot(slot) {
     if (!build[slot]) return;
@@ -7752,9 +7797,14 @@ Scenes.slab = (() => {
 
   function items() { return Game.inventory.slice().sort((a, b) => RARITY[PART_DEFS[b.type].rarity].order - RARITY[PART_DEFS[a.type].rarity].order || a.type.localeCompare(b.type)); }
 
-  function partTip(type, extra) {
+  function partTip(type, extra, item) {
     const d = PART_DEFS[type], r = RARITY[d.rarity];
     const lines = [{ t: d.name, c: r.color }, { t: `${r.name} ${SLOT_NAMES[d.slot]}`, c: '#7a6a9a' }];
+    if (item && item.from) lines.push({ t: `Once ${poss(item.from)}`, c: '#a08962' });
+    if (d.set) {
+      const S = PART_SETS[d.set], have = Object.values(types()).filter((x) => x && PART_DEFS[x].set === d.set).length;
+      lines.push({ t: `${S.name} set ${Math.min(have, S.need)}/${S.need}: ${S.desc}`, c: have >= S.need ? '#f6c64b' : '#c9a24a' });
+    }
     const st = [];
     if (d.hp) st.push('HP +' + d.hp);
     if (d.atk) st.push('ATK +' + d.atk);
@@ -7803,7 +7853,7 @@ Scenes.slab = (() => {
     list.slice(page * PER, page * PER + PER).forEach((it, i) => {
       const x = 9 + (i % COLS) * (CELL_W + 2), y = 21 + Math.floor(i / COLS) * (CELL_H + 2);
       bs.push({ id: 'inv' + it.uid, x, y, w: CELL_W, h: CELL_H, label: '', item: it, kind: 'cell', silent: true, disabled: !!life,
-        tip: partTip(it.type, 'click to stitch on'), onClick: () => stitch(it) });
+        tip: partTip(it.type, 'click to stitch on', it), onClick: () => stitch(it) });
     });
     if (pages > 1) {
       bs.push({ id: 'pgL', x: 9, y: 182, w: 18, h: 12, label: '◀', onClick: () => { page--; Sfx.play('page'); } });
@@ -7812,7 +7862,7 @@ Scenes.slab = (() => {
     RIG_SLOTS.forEach(([slot], i) => {
       const it = build[slot];
       bs.push({ id: 'slot' + slot, x: 366, y: 20 + i * 17, w: 106, h: 16, label: '', kind: 'slot', slot, silent: true, disabled: !it || !!life,
-        tip: it ? partTip(it.type, 'click to unstitch') : null, onClick: () => unstitchSlot(slot) });
+        tip: it ? partTip(it.type, 'click to unstitch', it) : null, onClick: () => unstitchSlot(slot) });
     });
     bs.push({ id: 'life', x: 364, y: 200, w: 110, h: 22, label: 'BRING TO LIFE', style: 'green', disabled: !canBring(), kind: 'big', sound: 'ui_click',
       tip: Game.party.length >= 3 ? 'Party is full (3). Unstitch someone first.' : count() ? null : 'Stitch at least one part on.', onClick: bringToLife });
@@ -7913,7 +7963,7 @@ Scenes.slab = (() => {
       const c = new Creature(ty);
       const y0 = 158;
       const stat = (ico, label, v, x) => { if (SPR.has(ico)) SPR.draw(ctx, ico, x + 3, y0 + 4); Font.draw(ctx, label + ' ' + v, x + 9, y0, { color: '#ecdcbc' }); };
-      stat('ico_heart', 'HP', c.maxHp, 366); stat('ico_sword', 'ATK', c.atk, 404); stat('ico_boot', 'SPD', c.spd, 444);
+      stat('ico_heart', 'HP', c.maxHp, 366); stat('ico_sword', 'ATK', Math.round(c.atk), 404); stat('ico_boot', 'SPD', c.spd, 444);
       const tr = c.traits.length ? c.traits.map((x) => TRAITS[x].name).join(' · ') : 'no special traits';
       Font.drawWrapped(ctx, tr, 369, y0 + 12, 104, { font: 'small', color: c.traits.length ? '#9be38f' : '#4b4466' });
       const pw = clamp(c.power / 80, 0, 1);
@@ -7988,7 +8038,7 @@ Scenes.battle = (() => {
   const fx = new Particles();
   const debris = new Particles();
   let t = 0, units = [], phase = 'ready', result = null, zapCd = 0, menuSel = 0, logLines = [], resultT = 0;
-  let coinsShown = 0, reward = 0, restocked = [], bolts = [], fightStage = 1;
+  let coinsShown = 0, reward = 0, restocked = [], bolts = [], fightStage = 1, prize = [];
   const say = (x, h) => Game.talk.say(x, h);
   const allies = () => units.filter((u) => u.team === 'ally');
   const enemies = () => units.filter((u) => u.team === 'enemy');
@@ -8019,6 +8069,9 @@ Scenes.battle = (() => {
     t = 0; phase = 'ready'; result = null; zapCd = 0; menuSel = 0; logLines = []; resultT = 0; bolts = []; fightStage = Game.stage;
     fx.list = []; debris.list = [];
     units = [];
+    // the loot for winning is rolled up front, so you can see what you're fighting for
+    prize = [];
+    for (let i = 0; i < CONFIG.restockParts; i++) prize.push(randomPartType({ boost: 1 + Game.stage * 0.2 }));
     Game.party.filter((c) => c.hp > 0).slice(0, 3).forEach((c, i) => units.push(makeAlly(c, i)));
     const kinds = stageEnemies(Game.stage);
     kinds.forEach((k, i) => units.push(makeEnemy(k, i, kinds.length)));
@@ -8106,6 +8159,7 @@ Scenes.battle = (() => {
       if (att.traits.includes('rend')) def.bleedT = 3;
       if (att.traits.includes('smash') && chance(0.3)) { def.stunT = 1; fx.text(def.x, def.y - bodyH(def) - 16, 'STUN', PAL.L); Engine.shake(3, 0.2); }
       if (opts.fire) def.burnT = 3;
+      if (att.traits.includes('set_abyssal')) { if (!(def.burnT > 0)) fx.text(def.x, def.y - bodyH(def) - 16, 'BURN', '#ffb070'); def.burnT = 3; }
     }
     if (def.hp <= 0) kill(def, att);
   }
@@ -8162,15 +8216,14 @@ Scenes.battle = (() => {
     const survivors = allies().filter((u) => !u.dead);
     // write back to the party
     for (const u of allies()) u.c.hp = u.dead ? 0 : Math.max(1, Math.ceil(u.hp));
-    const deadParts = deadAllies.flatMap((u) => u.c.parts());
+    const deadParts = deadAllies.flatMap((u) => u.c.parts().map((type) => ({ type, from: u.name }))); // remains keep their name
     Game.party = Game.party.filter((c) => c.hp > 0);
     reward = 0;
     restocked = [];
     if (kind === 'win') {
       reward = CONFIG.winTokens + Game.stage;
       if (survivors.some((u) => u.traits.includes('golden'))) reward += 1;
-      const boost = 1 + Game.stage * 0.2;
-      for (let i = 0; i < CONFIG.restockParts; i++) restocked.push(randomPartType({ boost }));
+      restocked = prize.slice();
       for (const c of Game.party) c.hp = c.maxHp; // the Reaper patches them up
       Telemetry.c.victories++;
       Telemetry.c.bestStage = Math.max(Telemetry.c.bestStage, Game.stage);
@@ -8347,6 +8400,7 @@ Scenes.battle = (() => {
     Font.draw(ctx, 'Stage ' + fightStage + (fightStage % 5 === 0 ? '  ·  BOSS' : ''), 472, 18, { align: 'right', color: '#a6aec2', shadow: PAL.k });
     if (SPR.has('ico_token')) SPR.draw(ctx, 'ico_token', 12, 12);
     Font.draw(ctx, String(Game.tokens), 20, 8, { color: PAL.L, shadow: PAL.k });
+    if (phase !== 'done') drawPrize(ctx);
 
     // menu
     Draw.panel(ctx, 8, 206, 102, 58, 'slate');
@@ -8364,6 +8418,16 @@ Scenes.battle = (() => {
     if (phase === 'ready' && Math.sin(t * 5) > 0) Draw.frame(ctx, 10, 210, 98, 17, '#ff8ac6');
   };
 
+  // what winning pays: tokens plus the parts that will drop into the machine
+  function drawPrize(ctx) {
+    const w = 72 + prize.length * 26, x = Math.round(240 - w / 2);
+    Draw.panel(ctx, x, 4, w, 36, 'slate');
+    Font.draw(ctx, 'IF YOU WIN', x + 6, 8, { font: 'small', color: '#a6aec2' });
+    if (SPR.has('ico_token')) SPR.draw(ctx, 'ico_token', x + 10, 28);
+    Font.draw(ctx, '+' + (CONFIG.winTokens + Game.stage), x + 18, 24, { color: PAL.L });
+    prize.forEach((type, i) => drawPartIcon(ctx, type, x + 70 + i * 26, 24, 20, { outline: RARITY[PART_DEFS[type].rarity].glow || undefined }));
+  }
+
   function drawResult(ctx) {
     const r = result;
     const title = r.kind === 'win' ? 'STAGE CLEARED!' : r.kind === 'lose' ? 'DEFEATED' : 'RETREATED';
@@ -8377,8 +8441,12 @@ Scenes.battle = (() => {
       if (SPR.has('ico_token')) for (let i = 0; i < coinsShown; i++) SPR.draw(ctx, 'ico_token', x + 4 + i * 10, 234);
       Font.draw(ctx, `+${coinsShown} tokens`, x + 8 + r.reward * 10, 230, { color: PAL.L });
     }
-    const back = r.restocked.length + r.deadParts.length;
-    if (back) Font.draw(ctx, `${back} part${back > 1 ? 's' : ''} dropped into the claw machine`, 126, 247, { color: '#7a6a9a' });
+    const back = [...r.restocked, ...r.deadParts.map((d) => d.type)];
+    if (back.length) {
+      Font.draw(ctx, 'BACK IN THE MACHINE', 126, 243, { font: 'small', color: '#7a6a9a' });
+      back.slice(0, 9).forEach((type, i) => drawPartIcon(ctx, type, 252 + i * 22, 244, 16, { outline: RARITY[PART_DEFS[type].rarity].glow || undefined }));
+      if (back.length > 9) Font.draw(ctx, '+' + (back.length - 9), 252 + 9 * 22, 241, { font: 'small', color: '#a6aec2' });
+    }
     if (!r.reward && !back) Font.draw(ctx, 'No reward. No shame. Well, some shame.', 126, 234, { color: '#7a6a9a' });
   }
 
@@ -8638,7 +8706,7 @@ const Telemetry = {
   sceneTime: {},
   cur: null, curT: 0,
   c: {
-    grabs: 0, wins: 0, slips: 0, misses: 0, doubles: 0, freebies: 0, nearMiss: 0,
+    grabs: 0, wins: 0, slips: 0, misses: 0, doubles: 0, freebies: 0, nearMiss: 0, sets: 0, homecomings: 0,
     retryFast: 0, retrySlow: 0, quitAfterFail: 0,
     bySlipWhy: {}, wonRarity: { common: 0, uncommon: 0, rare: 0, legendary: 0 },
     creatures: 0, unstitched: 0, battles: 0, victories: 0, defeats: 0, retreats: 0, zaps: 0,
@@ -8692,7 +8760,7 @@ const Telemetry = {
       `near misses (slipped within a claw-length of the chute): ${c.nearMiss}`,
       `slip causes: ${Object.entries(c.bySlipWhy).map(([k, v]) => k + ' ' + v).join(', ') || '-'}`,
       `after a failed grab: retried within 6s ${c.retryFast}, retried later ${c.retrySlow}, left the machine ${c.quitAfterFail}   (one-more-try rate ${pct(c.retryFast, fails)})`,
-      `creatures stitched ${c.creatures}   unstitched ${c.unstitched}`,
+      `creatures stitched ${c.creatures}   unstitched ${c.unstitched}   sets completed ${c.sets}   remains won back ${c.homecomings}`,
       `battles ${c.battles}   won ${c.victories}   lost ${c.defeats}   retreats ${c.retreats}   zaps used ${c.zaps}   best stage ${c.bestStage}`,
       `pity tokens given ${c.pity}`,
       `time: ${Object.entries(st).map(([k, v]) => k + ' ' + Math.round(v) + 's').join(', ')}`,

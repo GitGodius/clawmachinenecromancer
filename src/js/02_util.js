@@ -36,3 +36,5 @@ function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(RNG() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
   return arr;
 }
+// possessive: Barnaby -> Barnaby's, Knuckles -> Knuckles'
+function poss(name) { return name + (/s$/i.test(name) ? "'" : "'s"); }

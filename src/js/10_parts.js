@@ -55,6 +55,25 @@ const TRAITS = {
   whip:     { name: 'Tail Whip',   desc: '25% chance to strike twice' },
 };
 
+// SETS — put `need` parts of one set on the same creature for a bonus (applied in Creature.compute).
+// Aim decides WHICH part you get, so sets are what makes one particular part worth chasing.
+const PART_SETS = {
+  skeleton: { name: 'Skeleton', need: 3, title: 'the Rattly',   desc: '+2 DEF',           parts: ['skull', 'ribcage', 'bonearm', 'boneleg'] },
+  beast:    { name: 'Beast',    need: 3, title: 'the Feral',    desc: '+30% ATK',         parts: ['wolfskull', 'clawarm', 'goatleg', 'tail'] },
+  abyssal:  { name: 'Abyssal',  need: 3, title: 'the Abyssal',  desc: 'Hits burn',        parts: ['demonskull', 'eyeball', 'tentacle', 'blackheart', 'wings'] },
+  royal:    { name: 'Royal',    need: 3, title: 'the Regal',    desc: '+20% ATK, +2 DEF', parts: ['crownskull', 'armor', 'swordarm', 'goldheart'] },
+  ogre:     { name: 'Ogre',     need: 2, title: 'the Enormous', desc: '+25% HP and ATK',  parts: ['ogregut', 'ogrearm'] },
+};
+for (const k in PART_SETS) {
+  for (const p of PART_SETS[k].parts) PART_DEFS[p].set = k;
+  TRAITS['set_' + k] = { name: PART_SETS[k].name + ' set', desc: PART_SETS[k].desc, set: true };
+}
+// which sets a creature's slots (or any {slot: type} map) complete
+function setsOf(slots) {
+  const t = Object.values(slots).filter(Boolean);
+  return Object.keys(PART_SETS).filter((k) => t.filter((x) => PART_DEFS[x].set === k).length >= PART_SETS[k].need);
+}
+
 const SLOT_NAMES = { head: 'Head', torso: 'Torso', arm: 'Arm', leg: 'Leg', heart: 'Heart', back: 'Back' };
 // creature layout: which slot keys exist and what part slot they take
 const RIG_SLOTS = [
@@ -82,4 +101,4 @@ function randomPartType(opts = {}) {
 }
 
 let _partUid = 1;
-function makePartItem(type) { return { uid: _partUid++, type }; }
+function makePartItem(type, from) { return { uid: _partUid++, type, from }; } // from: the dead creature this part used to be

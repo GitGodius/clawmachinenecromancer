@@ -56,6 +56,14 @@ class Creature {
     this.maxHp = Math.round(hp);
     this.atk = Math.round(atk * 10) / 10;
     this.def = all.reduce((a, d) => a + (d.def || 0), 0);
+    // set bonuses (also pushed as traits, so the preview, tooltips and battle show them with no extra plumbing)
+    this.sets = setsOf(this.slots);
+    for (const k of this.sets) this.traits.push('set_' + k);
+    const mulAtk = (m) => { this.atk = Math.round(this.atk * m * 10) / 10; };
+    if (this.sets.includes('skeleton')) this.def += 2;
+    if (this.sets.includes('beast')) mulAtk(1.3);
+    if (this.sets.includes('royal')) { mulAtk(1.2); this.def += 2; }
+    if (this.sets.includes('ogre')) { this.maxHp = Math.round(this.maxHp * 1.25); mulAtk(1.25); }
     this.spd = spd;
     this.moveSpeed = (legs.length ? 12 + spd * 4 : 7) + (this.traits.includes('flutter') ? 10 : 0);
     this.atkTime = 1.25 + (arms.some((d) => d.trait === 'smash') ? 0.45 : 0) - Math.min(0.35, spd * 0.03);
@@ -71,7 +79,7 @@ class Creature {
     let title = null;
     if (S.head === 'crownskull') title = 'the Magnificent';
     else if (S.heart === 'goldheart') title = 'Heart of Gold';
-    else if (count((d, k) => k.startsWith('ogre')) >= 2) title = 'the Enormous';
+    else if (setsOf(S).length) title = PART_SETS[setsOf(S)[0]].title;
     else if (t.includes('tentacle')) title = 'the Tentacular';
     else if (S.head === 'wolfskull') title = 'the Hungry';
     else if (S.head === 'eyeball') title = 'the Watcher';

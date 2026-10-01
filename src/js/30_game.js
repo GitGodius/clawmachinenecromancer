@@ -27,8 +27,8 @@ const Game = {
     this.sim.fillPile(CONFIG.partCount);
   },
 
-  addPart(type) {
-    const it = makePartItem(type);
+  addPart(type, from) {
+    const it = makePartItem(type, from);
     this.inventory.push(it);
     this.recent.unshift(type);
     if (this.recent.length > 8) this.recent.pop();
@@ -39,7 +39,8 @@ const Game = {
     return i >= 0 ? this.inventory.splice(i, 1)[0] : null;
   },
   // dead creatures and battle loot go back into the machine
-  restock(types) { types.forEach((t, i) => this.sim.queueSpawn(t, i * 0.2)); },
+  // entries are a part type, or { type, from } for the remains of a creature that died
+  restock(items) { items.forEach((it, i) => this.sim.queueSpawn(it.type || it, i * 0.2, it.from)); },
 
   canFight() { return this.party.some((c) => c.hp > 0); },
   broke() { return this.tokens <= 0 && !this.inventory.length && !this.party.length; },
