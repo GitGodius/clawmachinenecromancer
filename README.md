@@ -1,22 +1,30 @@
 # THE GOOD PARTS
 
-**Collect · Reanimate · Conquer.** A claw-machine necromancer prototype that runs in the browser.
+**Collect · Reanimate · Conquer.** A claw-machine necromancer game that runs in the browser.
 
-A hooded Reaper runs a claw machine full of body parts. Grab parts with a physics claw, stitch them into mismatched monsters on the slab, and send them to fight the shades in the graveyard. Winning earns more tokens, and the graveyard restocks the machine. Creatures that die go back into the pile.
+> Every monster you send to fight is built from parts you won from the claw, and every part it loses goes back in the machine.
+
+A hooded Reaper runs a claw machine full of body parts. Grab parts with a physics claw, stitch them into mismatched monsters on the slab, and send them to fight the shades in the graveyard. Winning earns tokens and restocks the machine; creatures that die fall apart back into the pile, still wearing their names. Matching parts (three skeleton bits, a full royal set) give a creature a bonus, which is a reason to chase one particular part. Fifteen stages, three acts, a boss at every fifth. The last one is the Landlord.
 
 ![scenes: shop · claw · slab · graveyard](docs/screens.png)
 
 ## Play
 
-- **Easiest:** open `index.html`. It's a single self-contained file (about 750 KB) that works offline with no server.
-- **Development:** open `dev.html`. It loads `src/js/*.js` directly, so you can edit and refresh.
+- **Easiest:** open `index.html`. One self-contained file (about 880 KB) that works offline with no server. Your run is saved in the browser and comes back after a refresh.
+- **Development:** open `dev.html`. It loads `src/js/*.js` directly (edit, refresh) and has the tuning panel and cheats. The page players get has neither.
 
-Controls:
+Default controls (every key can be rebound in Settings; `P` opens the pause menu):
 
-- **Claw:** ← → move, Space to drop, steer to the chute, Space to release, Esc to go back.
-- **The Rig** (the claw's luck-bending levers, see below): **Q / E** nudge the glass, **1** quake, **2** iron grip, **3** order, **4** redo. Or click the panel.
-- **Everything else:** mouse (touch works too). Gamepad works on the claw (LB / RB nudge, X quake, Y iron grip).
-- **Shortcuts:** M to mute, ` for the tuning panel, P for the playtest report.
+| | |
+|---|---|
+| **Claw** | `←` `→` steer · `Space` drop, and again to let go over the chute · `Esc` back. Holding the mouse or a finger on the glass steers toward it. A drop over the chute is refused (no token spent), and a drop on the move stops and settles first, so the claw lands where the guide was. **What the prongs close around is what you get:** nothing about a grab is rolled, and the violet outline shows the part the claw will reach for. |
+| **Carrying** | Hold a direction to speed up, ease off to steady it. **Racing at full speed or stopping hard strains the grip: it frays, then tears.** Ease off and a fraying grip re-seats. The meter under the part says how firm the catch is and how hard you are pushing it (STEADY, STRAINED, SLIPPING!). |
+| **The Rig** | `Q` `E` nudge the glass · `1` quake · `2` iron grip · `3` order · `4` redo, or click the panel beside the glass. Gamepad: LB / RB nudge, X quake, Y iron grip. |
+| **Slab** | Click a part to stitch it on, click a slot to take it off, or use the arrow keys and `Space`. **BRING TO LIFE** when ready. Tooltips show set progress and whose remains a part is. |
+| **Graveyard** | **FIGHT**, then **ZAP** (heal and haste, on a cooldown) or **RETREAT** (keeps everyone standing, pays for the damage you did). **SPEED** x1/x2 is remembered. The panel at the top shows exactly what winning pays. |
+| **Anywhere** | `P` pause · `M` mute · `F` fullscreen. Mouse and touch are wired up everywhere (touch has only been simulated, not tried on a real device: see docs/RELEASE.md). The **Menu** button under the game pauses. |
+
+Pausing stops everything and allows no game action. That is deliberate: a fight you can plan frame by frame is not a fight.
 
 ## The Rig: rig the machine back
 
@@ -28,34 +36,52 @@ The claw is a luck machine, and the Reaper admits it's rigged. So the machine no
 |---|---|---|---|
 | **Quake** | 1 | 3 | An earthquake. The pile churns into a new layout. |
 | **Nudge ◀ ▶** | Q E | free | Bump the glass. Do it too fast and the machine **TILT**s. |
-| **Iron Grip** | 2 | 2 | The next drop holds harder and slips far less. |
+| **Iron Grip** | 2 | 2 | The next drop catches more, holds harder and shrugs off a rough carry. |
 | **Order** | 3 | 4 | Pick a slot; the Reaper drops one in from the back room. |
-| **Redo** | 4 | 3 | After a miss or slip, turn back time: same pile, token back, fresh dice. |
+| **Redo** | 4 | 3 | After a miss or slip, turn back time: same pile, token back, another go. |
 
-A **Lens** shows the odds: a badge on the drop guide before you drop, and the actual roll when the claw closes. Open `?rig=0` for the original claw, to compare. The full plan, numbers and safety rails are in [docs/RNG_LAYER.md](docs/RNG_LAYER.md).
+A **Lens** shows the odds: a badge on the drop guide before you drop (calibrated against real drops, so 77% means about 77%), and what the claw really caught, and how firmly, when it closes. In `dev.html`, `?rig=0` gives the original claw, to compare. The full plan, numbers and safety rails are in [docs/RNG_LAYER.md](docs/RNG_LAYER.md).
 
-## What this prototype is testing
+## The docs
 
-Is the claw grab fun enough to be the core of a monster-building game? [PROTOTYPE.md](PROTOTYPE.md) covers:
+| File | What it is |
+|---|---|
+| [docs/DESIGN.md](docs/DESIGN.md) | The promise and the pillars, worded to settle arguments, with the check that keeps each true |
+| [docs/RNG_LAYER.md](docs/RNG_LAYER.md) | The Rig: the claw's luck levers, their numbers and their safety rails |
+| [docs/claw-feel.md](docs/claw-feel.md) | Why the old grab ignored parts in the claw, and the strain-against-hold feel plan the carry is built on |
+| [docs/BALANCE.md](docs/BALANCE.md) | Every balance number, the evidence for it, and the targets it must meet (generated by `tools/balance.mjs`) |
+| [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) | What is in, how it is checked, and what is not covered |
+| [docs/RELEASE.md](docs/RELEASE.md) | Shipping, saves across updates, and what has **not** been tested on real hardware |
+| [CHANGELOG.md](CHANGELOG.md) | What changed, for players |
+| [PROTOTYPE.md](PROTOTYPE.md) | The original prototype notes and playtest guide. Historical: several details there are superseded |
 
-- the exact question and the scope
-- how to playtest it (what to watch for, plus a log template)
-- what the automated tuning found
-- what to do if the answer is yes, or no
-
-## Build and tools
+## Build and test
 
 ```sh
-npm install                     # dev tools only: planck (vendored copy is in vendor/), playwright-core
-node tools/build.mjs            # -> index.html + dev.html
-node tools/tune.mjs 300         # headless claw bot: grab/slip odds per part
-node tools/battle_sim.mjs 60    # headless battle balance per stage
-node tools/rig_check.mjs        # headless checks of the Rig: quake, rewind, economy, fuzz
-node tools/play.mjs "dev.html?scene=claw" out '[{"hold":"ArrowLeft","ms":800},{"press":"Space"},{"wait":6000},{"shot":"grab"}]'
+npm install             # dev tools only: planck (a vendored copy is in vendor/) and playwright-core
+npm run build           # index.html, dev.html, dist/ (including the itch.io zip)
+npm test                # rules, saves, keys, fixed-seed fights and grabs, the flashing lint
+npm run balance:check   # do the numbers still match the evidence, and are the targets met?
+npm run e2e             # real Chromium: pause, rebind, continue, victory, crashes, frames, a soak
+npm run verify          # all of the above
+npm run rigcheck        # the Rig, headless: quake, rewind, economy, fuzz
+DSF=2 node tools/play.mjs "dev.html?scene=claw" out '[{"hold":"ArrowLeft","ms":800},{"press":"Space"},{"wait":6000},{"clip":[0,0,480,270],"shot":"grab"}]'   # scripted play: clip crops in game pixels, DSF sharpens
 ```
+
+| Tool | For |
+|---|---|
+| `tools/test.mjs` | Regression tests. `--update` rewrites `tools/golden.json` (the diff in git is the record of what a rebalance moved) |
+| `tools/balance.mjs` | Measure everything, rewrite `docs/BALANCE.md`. `--quick` skips real physics; `--check` is CI |
+| `tools/run_sim.mjs` | Whole runs played by bots (careful, average, masher, assisted) with real physics or the fast model (`--fast`) |
+| `tools/tune.mjs` | The claw tuner: grab odds by carry style, what the claw really held, why grips were lost, sweeps of any CONFIG value |
+| `tools/rig_check.mjs` | The Rig, headless: quakes, nudges, the chute lid, rewind, the Luck economy, a fuzz |
+| `tools/matchups.mjs` | Which build beats which enemy |
+| `tools/battle_sim.mjs` | Win rate of party shapes by stage |
+| `tools/e2e.mjs` | The browser suite |
+| `tools/play.mjs`, `tools/shot.mjs` | Scripted play and screenshots of `dev.html` |
 
 ## Credits
 
-- Game code, pixel art, bitmap font, synthesized audio and music were all made for this prototype.
-- Physics is [planck.js](https://github.com/piqnt/planck.js) v1.5.0 (MIT, © Erin Catto and Ali Shakiba). It's vendored in `vendor/`, with its license alongside.
+- Game code, pixel art, bitmap font, synthesized audio and music were all made for this game.
+- Physics is [planck.js](https://github.com/piqnt/planck.js) v1.5.0 (MIT, © Erin Catto and Ali Shakiba). It is vendored in `vendor/`, with its license alongside.
 - Art direction follows the concept board the prototype was built from.

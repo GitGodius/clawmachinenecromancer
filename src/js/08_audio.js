@@ -312,6 +312,13 @@ const { AudioSys, Sfx, Music } = (() => {
         wire(f, env(v, tn, 0.03, 0.16, d - 0.08, 0.08), v.out);
       }
     },
+    creak: (v, t, o) => { // the claw straining: a wobbling metal groan plus ratchet ticks as the part slides
+      const p = o.p, d = 0.45;
+      const s = tone(v, t, { type: 'sawtooth', f: 150 * p, f1: 112 * p, d, a: 0.05, g: 0.16, lp: 950, q: 6 });
+      lfo(v, 21, 28, t, t + d).connect(s.detune);
+      hiss(v, t, { d: 0.32, a: 0.06, g: 0.1, f: 2300 * p, q: 5 });
+      for (const k of [0.07, 0.18, 0.31]) hiss(v, t + k, { d: 0.02, g: 0.22, f: rr(1800, 3200) * p, q: 3 });
+    },
     miss: (v, t, o) => {
       tone(v, t, { type: 'triangle', f: 440 * o.p, d: 0.16, g: 0.29 });
       const s = tone(v, t + 0.17, { type: 'triangle', f: 349 * o.p, f1: 330 * o.p, d: 0.4, g: 0.29 });
@@ -365,6 +372,26 @@ const { AudioSys, Sfx, Music } = (() => {
       const g = 0.07 + 0.17 * o.i;
       for (let k = 0; k < 4; k++) hiss(v, t + k * 0.035 + R() * 0.015, { d: 0.03, g, f: rr(900, 2600), q: 3 });
       tone(v, t + 0.02, { f: 380 * o.p, f1: 900 * o.p, d: 0.04, g: g * 0.8 });
+    },
+    // --- the soul grip ---
+    soul_reach: (v, t, o) => { // the claw reaches for the part below: a breathy swell and a ghostly rising whistle
+      const p = o.p;
+      hiss(v, t, { d: 0.5, a: 0.18, g: 0.2, f: 450 * p, f1: 2600 * p, q: 5 });
+      const s = tone(v, t + 0.05, { f: 520 * p, f1: 830 * p, glide: 0.4, d: 0.5, a: 0.14, g: 0.07 });
+      lfo(v, 7, 25, t, t + 0.55).connect(s.detune);
+    },
+    soul_bind: (v, t, o) => { // the grip takes hold: a hollow thrum, a whoosh up, a minor shimmer (brighter = firmer)
+      const p = o.p, i = o.i;
+      tone(v, t, { f: 98 * p, f1: 147 * p, glide: 0.12, d: 0.35, a: 0.01, g: 0.22 });
+      hiss(v, t, { d: 0.22, a: 0.05, g: 0.18 + 0.2 * i, f: 700 * p, f1: 4200 * p, q: 3 });
+      [0, 3, 7, 12].forEach((iv, k) => bell(v, t + 0.04 + k * 0.035, hz(76 + iv) * p, 0.04 + 0.06 * i, 0.3 + 0.4 * i));
+    },
+    soul_snap: (v, t, o) => { // the grip tears: a brittle crack and a sighing fall
+      const p = o.p;
+      hiss(v, t, { d: 0.04, g: 0.6, type: 'highpass', f: 3500 });
+      tone(v, t, { type: 'triangle', f: 1300 * p, f1: 240 * p, glide: 0.35, d: 0.4, g: 0.16 });
+      const s = tone(v, t + 0.01, { f: 880 * p, f1: 180 * p, glide: 0.45, d: 0.5, g: 0.1 });
+      lfo(v, 11, 30, t, t + 0.5).connect(s.detune);
     },
     heartbeat: (v, t, o) => {
       const g = 0.2 + 0.25 * o.i;
@@ -601,6 +628,7 @@ const { AudioSys, Sfx, Music } = (() => {
     restock: [1.5, 1], thunder: [0.7, 1], alive: [1, 1], victory: [1, 1], defeat: [1, 1], zap: [8, 3],
     win_legendary: [1, 1], win_rare: [2, 1], meow: [3, 1], purr: [1, 1],
     quake: [1, 1], nudge: [6, 2], tilt: [1, 1], luck_gain: [6, 2], grip_arm: [3, 1], order: [2, 1], rewind: [1, 1], roll_ok: [6, 2], roll_no: [6, 2],
+    soul_reach: [2, 1], soul_bind: [8, 3], soul_snap: [6, 2], creak: [3, 1],
   };
   // Reverb send per sound.
   const WET = {
@@ -609,6 +637,7 @@ const { AudioSys, Sfx, Music } = (() => {
     stitch: 0.06, unstitch: 0.06, zap: 0.15, thunder: 0.45, alive: 0.4, enemy_die: 0.4, creature_die: 0.12,
     victory: 0.3, defeat: 0.35, meow: 0.12, page: 0.05, swing: 0.05,
     quake: 0.25, nudge: 0.06, tilt: 0.2, luck_gain: 0.2, grip_arm: 0.15, order: 0.15, rewind: 0.2, roll_ok: 0.1, roll_no: 0.05,
+    soul_reach: 0.35, soul_bind: 0.3, soul_snap: 0.25, creak: 0.08,
   };
   // These use intensity themselves; the rest just get a mild loudness scale.
   const RAW = { bump: 1, hit: 1, claw_land: 1, swing: 1, heartbeat: 1, enemy_hit: 1, twitch: 1 };
@@ -887,6 +916,13 @@ const { AudioSys, Sfx, Music } = (() => {
       B.duckAmt = a; B.duckEnd = end;
       hold(p, t); p.linearRampToValueAtTime(1 - a, t + 0.08);
       p.setValueAtTime(1 - a, Math.max(end, t + 0.08)); p.linearRampToValueAtTime(1, Math.max(end, t + 0.08) + 0.6);
+    },
+    // hold the music low while a menu has the game paused; dim(false) brings it back
+    dim(on) {
+      if (!ctx || !B) return;
+      const t = ctx.currentTime, p = B.duck.gain;
+      hold(p, t); p.linearRampToValueAtTime(on ? 0.3 : 1, t + 0.15);
+      B.duckEnd = 0; B.duckAmt = 0;
     },
     get track() { return want; },
     // test hook: schedule `secs` of a track into the current (offline) context in one go

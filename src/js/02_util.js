@@ -4,6 +4,7 @@
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const invLerp = (a, b, v) => (v - a) / (b - a);
+const smoothstep = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const approach = (v, target, step) => (v < target ? Math.min(v + step, target) : Math.max(v - step, target));
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOutQuad = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
@@ -20,7 +21,16 @@ function mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+// Two random streams. RNG drives anything that changes an outcome (grip rolls, damage, drops).
+// VRNG drives what only changes how it looks or reads (particles, shake, flavour lines, names).
+// Keeping them apart means a seed reproduces a whole fight whatever the screen is doing, which is what
+// lets the headless bots and the golden tests (tools/test.mjs) stand in for the real game.
 let RNG = Math.random;
+let VRNG = Math.random;
+const vrand = (a = 0, b = 1) => a + (b - a) * VRNG();
+const vrandInt = (a, b) => Math.floor(vrand(a, b + 1));
+const vpick = (arr) => arr[Math.floor(VRNG() * arr.length)];
+const vchance = (p) => VRNG() < p;
 const rand = (a = 0, b = 1) => a + (b - a) * RNG();
 const randInt = (a, b) => Math.floor(rand(a, b + 1));
 const pick = (arr) => arr[Math.floor(RNG() * arr.length)];
@@ -36,3 +46,14 @@ function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(RNG() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
   return arr;
 }
+
+// On/off at `hz` blinks per second, for indicators that pulse for attention. With "reduce flashing" on it
+// never goes faster than 1.5 per second (accessibility: nothing may strobe faster than 3 flashes a second).
+const blinkOn = (t, hz, duty = 0.5) => {
+  const calm = typeof Settings !== 'undefined' && Settings.v.reduceFlash;
+  const f = calm ? Math.min(hz, 1.5) : hz;
+  return (t * f) % 1 < duty;
+};
+
+// possessive: Barnaby -> Barnaby's, Knuckles -> Knuckles'
+function poss(name) { return name + (/s$/i.test(name) ? "'" : "'s"); }

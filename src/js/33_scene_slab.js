@@ -24,13 +24,18 @@ Scenes.slab = (() => {
       say(Game.inventory.length ? 'The slab. Click a part to stitch it on. Any combination works. Some work better.' : 'Nothing to stitch. The machine is that way.', 4);
     } else if (!Game.inventory.length && !count()) say('Empty-handed? The claw awaits.', 2.5);
   };
+  S.uiNav = true; // arrows move a focus ring over the parts, slots and buttons; confirm presses it
   S.exit = function () {};
+  // Parts stitched on but not yet brought to life still belong to the player: a save counts them as bag parts.
+  S.buildTypes = () => (build ? Object.values(build).filter(Boolean).map((i) => (i.from ? { type: i.type, from: i.from } : i.type)) : []); // as saves hold them: remains keep their name
+  S.reset = () => { build = null; life = null; selected = null; page = 0; lastStitch = null; };
 
   function stitch(item) {
     const d = PART_DEFS[item.type];
     let slot = d.slot;
     if (slot === 'arm') slot = !build.armR ? 'armR' : !build.armL ? 'armL' : 'armR';
     if (slot === 'leg') slot = !build.legR ? 'legR' : !build.legL ? 'legL' : 'legR';
+    const setsBefore = setsOf(types());
     Game.takeItem(item.uid);
     if (build[slot]) Game.inventory.push(build[slot]);
     build[slot] = item;
@@ -41,8 +46,19 @@ Scenes.slab = (() => {
     const pt = { head: L.neck, torso: [0, L.ty], armL: L.shL, armR: L.shR, legL: L.hipL, legR: L.hipR, heart: L.heart, back: L.back }[slot] || [0, -30];
     fx.burst(FEET_X + pt[0] * 2, FEET_Y + pt[1] * 2, 10, { speed: 50, life: 0.45, ay: 60, color: ['#9be38f', '#fff6e3', '#4fae6c'] });
     Telemetry.log('stitch', { part: item.type, slot });
-    if (chance(0.3)) say(pick(['Snug.', 'It fits. Mostly.', 'Needle, thread, hope.', 'Ooh, that suits them.', 'Stitch, stitch, stitch.', 'Lovely. Horrible. Lovely.']), 1.6);
-    if (item.type === 'pegleg' && chance(0.6)) say('A peg leg. Classic look. Terrible posture.', 2.2);
+    Save.soon();
+    if (vchance(0.3)) say(vpick(['Snug.', 'It fits. Mostly.', 'Needle, thread, hope.', 'Ooh, that suits them.', 'Stitch, stitch, stitch.', 'Lovely. Horrible. Lovely.']), 1.6);
+    if (item.type === 'pegleg' && vchance(0.6)) say('A peg leg. Classic look. Terrible posture.', 2.2);
+    for (const k of setsOf(types())) { // a set just came together: make a moment of it
+      if (setsBefore.includes(k)) continue;
+      const S = PART_SETS[k];
+      Sfx.play('win_uncommon');
+      fx.burst(FEET_X, FEET_Y - 60, 26, { speed: 100, life: 0.8, ay: 30, color: ['#f6c64b', '#fff1a6', '#fff6e3'] });
+      fx.text(FEET_X, FEET_Y - 150, S.name.toUpperCase() + ' SET!', '#f6c64b', { font: 'main', life: 1.8, vy: -12 });
+      fx.text(FEET_X, FEET_Y - 136, S.desc, '#fff1a6', { life: 1.8, vy: -12 });
+      Telemetry.c.sets++;
+      say(vpick([`The ${S.name} set! ${S.desc}. Now we're getting somewhere.`, `${S.name} set complete. ${S.desc}. Lovely.`]), 3.2);
+    }
   }
   function unstitchSlot(slot) {
     if (!build[slot]) return;
@@ -60,6 +76,7 @@ Scenes.slab = (() => {
     Music.duck(0.7, 3);
     Sfx.play('zap');
     Telemetry.c.creatures++;
+    Game.tally('creatures');
     Telemetry.log('create', { name: c.name, parts: c.parts().join(',') });
   }
 
@@ -67,17 +84,23 @@ Scenes.slab = (() => {
     const c = life.c;
     c.born = Engine.t;
     Game.party.push(c);
+    Save.soon();
     build = emptyBuild();
     life = null;
-    say(pick(['Not pretty. But it\'ll fight.', 'Look at them go. Well. Look at them.', 'It\'s alive! Ish.', 'A face only a necromancer could love.']), 3);
+    say(vpick(['Not pretty. But it\'ll fight.', 'Look at them go. Well. Look at them.', 'It\'s alive! Ish.', 'A face only a necromancer could love.']), 3);
     Game.talk.say(`Meet ${c.name}. Take them to the graveyard.`, 3.2, false);
   }
 
   function items() { return Game.inventory.slice().sort((a, b) => RARITY[PART_DEFS[b.type].rarity].order - RARITY[PART_DEFS[a.type].rarity].order || a.type.localeCompare(b.type)); }
 
-  function partTip(type, extra) {
+  function partTip(type, extra, item) {
     const d = PART_DEFS[type], r = RARITY[d.rarity];
     const lines = [{ t: d.name, c: r.color }, { t: `${r.name} ${SLOT_NAMES[d.slot]}`, c: '#7a6a9a' }];
+    if (item && item.from) lines.push({ t: `Once ${poss(item.from)}`, c: '#a08962' });
+    if (d.set) {
+      const S = PART_SETS[d.set], have = Object.values(types()).filter((x) => x && PART_DEFS[x].set === d.set).length;
+      lines.push({ t: `${S.name} set ${Math.min(have, S.need)}/${S.need}: ${S.desc}`, c: have >= S.need ? '#f6c64b' : '#c9a24a' });
+    }
     const st = [];
     if (d.hp) st.push('HP +' + d.hp);
     if (d.atk) st.push('ATK +' + d.atk);
@@ -104,17 +127,17 @@ Scenes.slab = (() => {
         Engine.flash('#e7f7ff', 0.25);
         Engine.shake(5, 0.5);
         Engine.hitPause(0.08);
-        for (let i = 0; i < 3; i++) life.bolts.push({ x0: FEET_X + rand(-60, 60), seed: randInt(1, 999), t: 0 });
+        for (let i = 0; i < 3; i++) life.bolts.push({ x0: FEET_X + vrand(-60, 60), seed: vrandInt(1, 999), t: 0 });
       }
-      if (life.stage >= 1 && lt < 1.3 && chance(dt * 30)) {
-        fx.burst(FEET_X + rand(-30, 30), FEET_Y - rand(10, 120), 3, { speed: 70, life: 0.25, color: ['#c2f5ff', '#fff', '#9be38f'] });
-        if (chance(dt * 8)) Sfx.play('zap', { intensity: 0.4 });
+      if (life.stage >= 1 && lt < 1.3 && vchance(dt * 30)) {
+        fx.burst(FEET_X + vrand(-30, 30), FEET_Y - vrand(10, 120), 3, { speed: 70, life: 0.25, color: ['#c2f5ff', '#fff', '#9be38f'] });
+        if (vchance(dt * 8)) Sfx.play('zap', { intensity: 0.4 });
       }
       if (life.stage === 1 && lt > 1.35) { life.stage = 2; Sfx.play('alive'); fx.burst(FEET_X, FEET_Y - 60, 30, { speed: 90, life: 0.8, ay: 40, color: ['#9be38f', '#fff6e3', '#4fae6c'] }); }
       if (life.stage === 2 && lt > 3.2) finishLife();
     }
     if (Input.hit('b') && !life) Engine.go('shop');
-    if (Input.hit('a') && !life && canBring()) bringToLife();
+    if (Input.hit('a') && !UI.focusId && !life && canBring()) bringToLife();
     buildButtons();
   };
 
@@ -126,7 +149,7 @@ Scenes.slab = (() => {
     list.slice(page * PER, page * PER + PER).forEach((it, i) => {
       const x = 9 + (i % COLS) * (CELL_W + 2), y = 21 + Math.floor(i / COLS) * (CELL_H + 2);
       bs.push({ id: 'inv' + it.uid, x, y, w: CELL_W, h: CELL_H, label: '', item: it, kind: 'cell', silent: true, disabled: !!life,
-        tip: partTip(it.type, 'click to stitch on'), onClick: () => stitch(it) });
+        tip: partTip(it.type, 'click to stitch on', it), onClick: () => stitch(it) });
     });
     if (pages > 1) {
       bs.push({ id: 'pgL', x: 9, y: 182, w: 18, h: 12, label: '◀', onClick: () => { page--; Sfx.play('page'); } });
@@ -135,13 +158,13 @@ Scenes.slab = (() => {
     RIG_SLOTS.forEach(([slot], i) => {
       const it = build[slot];
       bs.push({ id: 'slot' + slot, x: 366, y: 20 + i * 17, w: 106, h: 16, label: '', kind: 'slot', slot, silent: true, disabled: !it || !!life,
-        tip: it ? partTip(it.type, 'click to unstitch') : null, onClick: () => unstitchSlot(slot) });
+        tip: it ? partTip(it.type, 'click to unstitch', it) : null, onClick: () => unstitchSlot(slot) });
     });
     bs.push({ id: 'life', x: 364, y: 200, w: 110, h: 22, label: 'BRING TO LIFE', style: 'green', disabled: !canBring(), kind: 'big', sound: 'ui_click',
       tip: Game.party.length >= 3 ? 'Party is full (3). Unstitch someone first.' : count() ? null : 'Stitch at least one part on.', onClick: bringToLife });
     Game.party.forEach((c, i) => {
       bs.push({ id: 'pty' + c.id, x: 9 + i * 36, y: 214, w: 34, h: 40, label: '', kind: 'party', c, silent: true, disabled: !!life,
-        tip: [{ t: c.name, c: '#9be38f' }, { t: `HP ${Math.ceil(c.hp)}/${c.maxHp}  ATK ${c.atk}  SPD ${c.spd}`, c: '#ecdcbc' }, ...c.traits.map((x) => ({ t: TRAITS[x].name, c: '#7a6a9a' })), { t: selected === c ? 'click again to UNSTITCH' : 'click to select', c: '#a08962' }],
+        tip: [{ t: c.name, c: '#9be38f' }, { t: `HP ${Math.ceil(c.hp)}/${c.maxHp}  ATK ${c.atk}  SPD ${c.spd}`, c: '#ecdcbc' }, ...(c.kills ? [{ t: `${c.kills} kill${c.kills > 1 ? 's' : ''} so far`, c: '#a08962' }] : []), ...c.traits.map((x) => ({ t: TRAITS[x].name, c: '#7a6a9a' })), { t: selected === c ? 'click again to UNSTITCH' : 'click to select', c: '#a08962' }],
         onClick: () => {
           if (selected === c) {
             Game.party = Game.party.filter((x) => x !== c);
@@ -149,11 +172,12 @@ Scenes.slab = (() => {
             selected = null;
             Sfx.play('unstitch');
             Telemetry.c.unstitched++;
-            say(pick([`${c.name.split(' ')[0]} is parts again. Circle of life.`, 'Back to bits. No hard feelings.']), 2.4);
+            Save.soon();
+            say(vpick([`${c.name.split(' ')[0]} is parts again. Circle of life.`, 'Back to bits. No hard feelings.']), 2.4);
           } else { selected = c; Sfx.play('ui_click'); }
         } });
     });
-    bs.push({ id: 'back', x: 124, y: 4, w: 50, h: 14, label: '◀ SHOP', onClick: () => Engine.go('shop') });
+    bs.push({ id: 'back', x: 124, y: 4, w: 50, h: 14, label: '◀ SHOP', disabled: !!life, onClick: () => Engine.go('shop') });
     bs.push({ id: 'fight', x: 306, y: 4, w: 50, h: 14, label: 'FIGHT ▶', disabled: !Game.canFight() || !!life, style: 'red',
       tip: Game.canFight() ? null : 'Bring someone to life first.', onClick: () => Engine.go('battle') });
     S.buttons = bs;
@@ -164,20 +188,22 @@ Scenes.slab = (() => {
     BG.lab(ctx, t, { surge: life ? clamp(life.stage === 1 ? 1 - (life.t - 0.45) : life.stage === 2 ? 0.3 : life.t, 0, 1) : 0 });
     // creature on the slab
     const ty = types();
-    const shakeX = life && life.stage === 1 ? rand(-2, 2) : jolt > 0 ? Math.round(Math.sin(jolt * 60) * 1) : 0;
-    const shakeY = life && life.stage === 1 ? rand(-2, 2) : 0;
+    const shakeX = life && life.stage === 1 ? vrand(-2, 2) : jolt > 0 ? Math.round(Math.sin(jolt * 60) * 1) : 0;
+    const shakeY = life && life.stage === 1 ? vrand(-2, 2) : 0;
     if (life && life.stage >= 1 && life.t < 1.2) {
       ctx.fillStyle = 'rgba(14,11,22,0.55)'; ctx.fillRect(0, 0, W, H);
     }
     drawCreature(ctx, ty, FEET_X + shakeX, FEET_Y + shakeY, {
       scale: 2, t, anim: 'idle', ghost: life ? null : 'rgba(155,227,143,0.16)', noLump: !count(),
       eyes: life && life.stage >= 2 ? '#9be38f' : null,
-      flash: life && life.stage === 1 && Math.sin(life.t * 50) > 0,
+      flash: life && life.stage === 1 && !Settings.v.reduceFlash && Math.sin(life.t * 50) > 0,
     });
     if (life && life.stage >= 1 && life.t < 1.3) {
       for (const b of life.bolts) {
-        if (Math.sin(life.t * 40 + b.seed) > -0.3) {
-          Draw.bolt(ctx, b.x0, 0, FEET_X + rand(-20, 20), FEET_Y - rand(40, 110), '#e7f7ff', 10, b.seed + Math.floor(life.t * 20));
+        if (Settings.v.reduceFlash || Math.sin(life.t * 40 + b.seed) > -0.3) {
+          const calm = Settings.v.reduceFlash; // reduceFlash: steady bolts instead of a flicker
+          Draw.bolt(ctx, b.x0, 0, FEET_X + (calm ? 0 : vrand(-20, 20)), // calm-ok: steady when reduceFlash is on
+             FEET_Y - (calm ? 75 : vrand(40, 110)), '#e7f7ff', 10, calm ? b.seed : b.seed + Math.floor(life.t * 20));
           Draw.glow(ctx, FEET_X, FEET_Y - 70, 90, '#6fd3ff', 0.25);
         }
       }
@@ -207,6 +233,7 @@ Scenes.slab = (() => {
         if (r.glow) Draw.frame(ctx, b.x + 1, b.y + 1, b.w - 2, b.h - 2, r.glow);
         if (b.hover) Draw.frame(ctx, b.x - 1, b.y - 1, b.w + 2, b.h + 2, '#fff6e3');
         drawPartIcon(ctx, b.item.type, b.x + b.w / 2, b.y + b.h / 2 + (b.hover ? -1 : 0), 24);
+        if (r.order) Font.draw(ctx, '★'.repeat(r.order), b.x + 3, b.y + 3, { font: 'small', color: r.color, shadow: PAL.k }); // rarity as a count, not just a colour
       }
     }
     if (!Game.inventory.length) Font.drawWrapped(ctx, 'Empty. Win parts from the claw machine.', 12, 86, 100, { color: '#7a6a9a' });
@@ -236,13 +263,14 @@ Scenes.slab = (() => {
       const c = new Creature(ty);
       const y0 = 158;
       const stat = (ico, label, v, x) => { if (SPR.has(ico)) SPR.draw(ctx, ico, x + 3, y0 + 4); Font.draw(ctx, label + ' ' + v, x + 9, y0, { color: '#ecdcbc' }); };
-      stat('ico_heart', 'HP', c.maxHp, 366); stat('ico_sword', 'ATK', c.atk, 404); stat('ico_boot', 'SPD', c.spd, 444);
+      stat('ico_heart', 'HP', c.maxHp, 366); stat('ico_sword', 'ATK', Math.round(c.atk), 404); stat('ico_boot', 'SPD', c.spd, 444);
       const tr = c.traits.length ? c.traits.map((x) => TRAITS[x].name).join(' · ') : 'no special traits';
       Font.drawWrapped(ctx, tr, 369, y0 + 12, 104, { font: 'small', color: c.traits.length ? '#9be38f' : '#4b4466' });
-      const pw = clamp(c.power / 80, 0, 1);
-      Draw.rect(ctx, 400, y0 + 27, 72, 4, PAL.k);
-      Draw.rect(ctx, 401, y0 + 28, Math.round(70 * pw), 2, pw > 0.66 ? PAL.L : pw > 0.33 ? PAL.d : PAL.B);
+      const pw = clamp(c.power / 160, 0, 1);
+      Draw.rect(ctx, 400, y0 + 27, 50, 4, PAL.k);
+      Draw.rect(ctx, 401, y0 + 28, Math.round(48 * pw), 2, pw > 0.66 ? PAL.L : pw > 0.33 ? PAL.d : PAL.B);
       Font.draw(ctx, 'POWER', 368, y0 + 26, { font: 'small', color: '#7a6a9a' });
+      Font.draw(ctx, String(c.power), 472, y0 + 26, { font: 'small', color: '#ecdcbc', align: 'right' });
     }
 
     // party roster
@@ -261,6 +289,7 @@ Scenes.slab = (() => {
         const k = c.hp / c.maxHp;
         Draw.rect(ctx, x + 3, y + 35, 28, 3, PAL.k);
         Draw.rect(ctx, x + 4, y + 36, Math.round(26 * k), 1, k > 0.5 ? PAL.d : k > 0.25 ? PAL.L : PAL.R);
+        if (k <= 0.5) for (let i = 0; i < 26 * k; i += 2) Draw.rect(ctx, x + 4 + i, y + 36, 1, 1, PAL.k); // hurt: the bar is dashed
         if (selected === c) Font.draw(ctx, 'UNSTITCH?', x + 17, y + 42, { font: 'small', color: PAL.R, align: 'center' });
       }
     }
@@ -268,10 +297,11 @@ Scenes.slab = (() => {
     // buttons (life, nav, paging)
     for (const b of bs) if (!b.kind || b.kind === 'big') UI.drawButton(ctx, b);
 
+    drawStagePreview(ctx, 126, 22, 230, Game.stage);
     // dialogue box
     if (Game.talk.visible()) {
       Draw.panel(ctx, 124, 236, 232, 30, 'dark');
-      if (SPR.has('reaper_face')) SPR.draw(ctx, Game.talk.talking() && Math.sin(t * 22) > 0 && SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face', 138, 251);
+      if (SPR.has('reaper_face')) SPR.draw(ctx, Game.talk.talking() && blinkOn(t, 3.5) && SPR.has('reaper_face_talk') ? 'reaper_face_talk' : 'reaper_face', 138, 251);
       Font.drawWrapped(ctx, Game.talk.text, 152, 241, 198, { color: '#ecdcbc', maxChars: Math.floor(Game.talk.shown) });
     }
   };
