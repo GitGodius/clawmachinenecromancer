@@ -19,15 +19,15 @@ The blocks between `BEGIN` and `END` markers are generated. Do not edit them; ch
 | ✅ | The carry is a skill: a careful carrier wins at least 8 points more grabs than a masher | careful 42% vs masher 33% (gap 9) |
 | ✅ | The assist is a fair helper: better than mashing, no better than careful play | masher 33% < assisted 45% <= careful 42% (+5 noise) |
 | ✅ | A careful player finishes a run (95% or more) | 98% |
-| ✅ | An average player finishes a run (90% or more) | 96% |
-| ✅ | A masher can still finish (40% or more), an assisted player too | masher 48%, assisted 66% |
-| ✅ | A run takes 18 to 35 minutes for careful and average players (bot time, faster than a human) | careful 25 min, average 27 min |
-| ✅ | No early wall: 95% of average players clear the first boss | 97% |
-| ✅ | Farming cannot beat playing: retreating at the first scratch earns less per minute than honest play | honest 6.68/min, farm15 3.27, farm50 5.6 |
+| ✅ | An average player finishes a run (90% or more) | 97% |
+| ✅ | A masher can still finish (40% or more), an assisted player too | masher 53%, assisted 74% |
+| ✅ | A run takes 18 to 35 minutes for careful and average players (bot time, faster than a human) | careful 23 min, average 25 min |
+| ✅ | No early wall: 95% of average players clear the first boss | 98% |
+| ✅ | Farming cannot beat playing: retreating at the first scratch earns less per minute than honest play | honest 7.54/min, farm15 3.64, farm50 5.62 |
 | ✅ | Nothing is wasted: no part physically leaves the machine in a real-physics run | careful 0, average 0, masher 0, assisted 0 |
 | ✅ | Build for the graveyard (1): at final-stage strength the best build is not the same against every enemy | wisps  x4: tank; shades x3: tank; wraith x1: bruiser |
-| ✅ | Build for the graveyard (2): a specialised build can be unable to beat an enemy at all (under 25%) | plated vs shades x3 23%; skirmish vs shades x3 0%; skirmish vs wraith x1 10% |
-| ✅ | A full party built from good picks beats stage 5 reliably and the final stage more often than not | stage 5: 100%, stage 15: 95% |
+| ✅ | Build for the graveyard (2): a specialised build can be unable to beat an enemy at all (under 25%) | skirmish vs shades x3 2%; skirmish vs wraith x1 18% |
+| ✅ | A full party built from good picks beats stage 5 reliably and the final stage more often than not | stage 5: 100%, stage 15: 97% |
 <!-- END targets -->
 
 ## The numbers
@@ -44,7 +44,7 @@ The blocks between `BEGIN` and `END` markers are generated. Do not edit them; ch
 | Grab: base slip / top jolt / twitch | 0.02/s / 0.12 / 0.4 |
 | Assist speed | 60% of steady |
 | Stages | 15, bosses every 5th |
-| Fingerprint of all balance numbers | `8af94c1ae332` |
+| Fingerprint of all balance numbers | `8fb3626fdf0a` |
 <!-- END numbers -->
 
 ## Evidence
@@ -69,16 +69,16 @@ The blocks between `BEGIN` and `END` markers are generated. Do not edit them; ch
 <!-- BEGIN battles -->
 | Party (random parts) | S1 | S2 | S3 | S4 | S5 | S6 | S8 | S10 | S12 | S15 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 creature, 3 parts | 100% | 72% | 18% | 10% | 3% | 20% | 0% | 0% | 0% | 0% |
-| 1 creature, 5 parts | 100% | 97% | 72% | 42% | 30% | 72% | 3% | 0% | 0% | 0% |
-| 2 creatures, 4 parts | 100% | 100% | 85% | 63% | 35% | 73% | 2% | 0% | 0% | 0% |
-| 3 creatures, 5 parts | 100% | 100% | 100% | 100% | 92% | 100% | 60% | 42% | 10% | 0% |
-| 3 creatures, 7 parts | 100% | 100% | 100% | 100% | 100% | 100% | 95% | 78% | 45% | 5% |
+| 1 creature, 3 parts | 100% | 75% | 22% | 10% | 3% | 17% | 0% | 0% | 0% | 0% |
+| 1 creature, 5 parts | 100% | 100% | 90% | 45% | 28% | 77% | 3% | 2% | 0% | 0% |
+| 2 creatures, 4 parts | 100% | 100% | 85% | 67% | 28% | 70% | 0% | 0% | 0% | 0% |
+| 3 creatures, 5 parts | 100% | 100% | 100% | 100% | 95% | 100% | 67% | 45% | 12% | 3% |
+| 3 creatures, 7 parts | 100% | 100% | 100% | 100% | 100% | 100% | 97% | 97% | 57% | 15% |
 
 | Party (best of 3 picks per slot) | S1 | S2 | S3 | S4 | S5 | S6 | S8 | S10 | S12 | S15 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 3 creatures, 8 parts, best of 3 | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 98% | 95% |
-| 2 creatures, 8 parts, best of 3 | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 88% | 57% |
+| 3 creatures, 8 parts, best of 3 | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 97% |
+| 2 creatures, 8 parts, best of 3 | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 80% |
 <!-- END battles -->
 
 Random parts show how far luck alone gets you. The best-of-3 rows are closer to a player, who picks what to aim at. The final stage is meant to be a real wall for a random party and a fair fight for a good one.
@@ -88,10 +88,10 @@ Random parts show how far luck alone gets you. The best-of-3 rows are closer to 
 <!-- BEGIN matchups -->
 | Build (x3) | wisps  x4 | shades x3 | wraith x1 |
 |---|---:|---:|---:|
-| tank | 100% (91% HP left) | 100% (78% HP left) | 100% (53% HP left) |
-| plated | 100% (84% HP left) | 23% (33% HP left) | 73% (26% HP left) |
-| bruiser | 100% (71% HP left) | 98% (63% HP left) | 100% (74% HP left) |
-| skirmish | 100% (65% HP left) | 0% (0% HP left) | 10% (30% HP left) |
+| tank | 100% (90% HP left) | 100% (82% HP left) | 100% (55% HP left) |
+| plated | 100% (83% HP left) | 37% (34% HP left) | 73% (27% HP left) |
+| bruiser | 100% (73% HP left) | 98% (62% HP left) | 100% (75% HP left) |
+| skirmish | 100% (74% HP left) | 2% (17% HP left) | 18% (36% HP left) |
 <!-- END matchups -->
 
 Three copies of one build against one enemy type at stage 15 strength, each build spending the same budget of rarity (one rare, two uncommons, the rest common; see `tools/matchups.mjs`). Wisps swarm. Shades are armoured, and armour is taken off every arm's strike separately, so a build of small hits does almost nothing to them. The Wraith is a huge, slow boss. The point of the table is that its best cell is not always in the same row and that some cells are empty. It also shows the open problem: the tank is best against Wisps and Shades, and Wisps do not yet ask a question that any build fails.
@@ -101,12 +101,12 @@ Three copies of one build against one enemy type at stage 15 strength, each buil
 <!-- BEGIN econ -->
 | Player | Finish | ≤30 min | ≤60 min | ≤90 min | Median (min) | Past boss 1 | Grabs | Fights lost | Retreats | Tokens/min |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| careful | 98% | 80% | 97% | 98% | 25 | 98% | 86.8 | 2.6 | 2 | 7.28 |
-| average | 96% | 67% | 94% | 96% | 27 | 97% | 96.5 | 4 | 2.9 | 6.68 |
-| masher | 48% | 12% | 43% | 47% | 34 | 81% | 149.1 | 38.6 | 30 | 3.04 |
-| assisted | 66% | 35% | 65% | 66% | 29 | 89% | 124.3 | 24.4 | 19 | 3.94 |
-| farm15 | 0% | 0% | 0% | 0% | - | 0% | 74.1 | 60 | 60 | 3.27 |
-| farm50 | 0% | 0% | 0% | 0% | - | 0% | 74.2 | 60.5 | 60.4 | 5.6 |
+| careful | 98% | 91% | 97% | 98% | 23 | 99% | 75.9 | 2.8 | 2.1 | 7.99 |
+| average | 97% | 80% | 97% | 97% | 25 | 98% | 83.8 | 2.9 | 2.1 | 7.54 |
+| masher | 53% | 21% | 51% | 53% | 32 | 75% | 125.8 | 33.9 | 25.7 | 3.28 |
+| assisted | 74% | 48% | 73% | 74% | 26 | 89% | 103.6 | 19.2 | 14.5 | 4.59 |
+| farm15 | 0% | 0% | 0% | 0% | - | 0% | 74.1 | 60 | 60 | 3.64 |
+| farm50 | 0% | 0% | 0% | 0% | - | 0% | 74.1 | 60.9 | 60.8 | 5.62 |
 
 200 runs each with the no-physics grab model (grab odds from the claw table).
 <!-- END econ -->

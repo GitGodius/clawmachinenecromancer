@@ -4,6 +4,8 @@
 // carry styles (what a human hand does with the arrow keys while the part swings):
 //   'gentle'  feathers the key to hold a steady cruise, coasts in and releases when nearly still: the careful player
 //   'okay'    feathers too, but lets it run at 1.2x the steady speed: someone who half-watches the wobble
+//   'keys'    holds the key, then lets go early so the coast ends over the chute: a keyboard player who reads it
+//   'nervous' re-decides every 0.12 s, often taps the wrong way, lets go once it is roughly there
 //   'jerky'   holds the key the whole way and lets go the moment it is over the chute: the button masher
 //   'auto'    leaves it to the machine (CONFIG.carryManual = 0)
 import { clamp } from './stats.mjs';
@@ -23,7 +25,7 @@ export function exposedParts(sim, M) {
 
 // One full grab. Returns what happened. `target` is a part from sim.parts (or null to aim at nothing).
 export function playGrab(sim, M, { target, aimNoise = 2.5, carry = 'gentle', u = Math.random, maxT = 30, hooks = {}, start, cfg } = {}) {
-  let ended = null, slips = 0, lifted = false;
+  let ended = null, slips = 0, lifted = false, nervT = 0, nervMove = 0;
   const prev = sim.onEvent;
   sim.onEvent = (t, d) => {
     if (t === 'turnEnd') ended = d;
@@ -48,6 +50,16 @@ export function playGrab(sim, M, { target, aimNoise = 2.5, carry = 'gentle', u =
           // hold the key the whole way and let go the moment it is over the chute
           sim.input.move = Math.abs(d) < 8 ? 0 : dir;
           if (Math.abs(d) < 8) sim.press();
+        } else if (carry === 'keys') {
+          // digital: hold, and let go where the coast will end over the chute
+          const left = d - (sim.carV * Math.abs(sim.carV)) / (2 * cfg.carryBrake);
+          sim.input.move = Math.abs(left) < 2 ? 0 : Math.sign(left);
+          if (Math.abs(d) < 5 && Math.abs(sim.carV) < 8) sim.press();
+        } else if (carry === 'nervous') {
+          // re-decide every 0.12 s: often the right way, sometimes the wrong one, sometimes not at all
+          if ((nervT -= 1 / 60) <= 0) { nervT = 0.12; const r = u(); nervMove = r < 0.3 ? -dir : r < 0.825 ? dir : 0; }
+          sim.input.move = nervMove;
+          if (Math.abs(d) < 10) sim.press();
         } else {
           // feather the key to hold a steady cruise, coast in, release when nearly still
           const cruise = cfg.swingSafe * (carry === 'okay' ? 1.2 : 0.9), brake = (v * v) / (2 * cfg.carryBrake);

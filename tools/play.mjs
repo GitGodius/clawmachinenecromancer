@@ -2,6 +2,7 @@
 //   node tools/play.mjs <url> <outDir> '<json steps>'
 // steps: {"hold":"ArrowLeft","ms":600} {"press":"Space"} {"wait":1200} {"shot":"name"}  {"move":[x,y]} {"mdown":1} {"mup":1}
 //        {"click":[x,y]} (game pixels)  {"eval":"js"}  {"size":[960,540]}
+//        {"clip":[x,y,w,h]} (game pixels) crops the next shots; set DSF=3 to render them 3x sharper
 import { chromium } from 'playwright-core';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -9,7 +10,8 @@ const [url, outDir, stepsJson] = process.argv.slice(2);
 const steps = JSON.parse(stepsJson || '[]');
 fs.mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--autoplay-policy=no-user-gesture-required'] });
-const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: +(process.env.DSF || 1) });
+let clip = null;
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')));
 page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
@@ -30,7 +32,11 @@ for (const s of steps) {
   if (s.mdown) await page.mouse.down();
   if (s.mup) await page.mouse.up();
   if (s.eval) { const r = await page.evaluate(s.eval); if (r !== undefined) console.log('eval:', JSON.stringify(r)); }
-  if (s.shot) await page.screenshot({ path: path.join(outDir, s.shot + '.png') });
+  if (s.clip) {
+    const [x, y] = await toPage([s.clip[0], s.clip[1]]), [x2, y2] = await toPage([s.clip[0] + s.clip[2], s.clip[1] + s.clip[3]]);
+    clip = { x, y, width: x2 - x, height: y2 - y };
+  }
+  if (s.shot) await page.screenshot({ path: path.join(outDir, s.shot + '.png'), ...(clip ? { clip } : {}) });
 }
 if (errors.length) console.log(errors.join('\n'));
 else console.log('no errors');

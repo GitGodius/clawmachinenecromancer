@@ -53,3 +53,6 @@ const blinkOn = (t, hz, duty = 0.5) => {
   const f = calm ? Math.min(hz, 1.5) : hz;
   return (t * f) % 1 < duty;
 };
+
+// possessive: Barnaby -> Barnaby's, Knuckles -> Knuckles'
+function poss(name) { return name + (/s$/i.test(name) ? "'" : "'s"); }

@@ -39,9 +39,14 @@ function invariants() {
   }
   for (const [k, t] of Object.entries(TRAITS)) {
     if (!t.name || !t.desc) fail(`trait ${k}: missing name/desc`);
+    if (t.set) { if (!game.get('PART_SETS')[k.slice(4)]) fail(`trait ${k}: no set of that name`); continue; } // set bonuses come from PART_SETS, not from a part
     if (!Object.values(PART_DEFS).some((d) => d.trait === k)) fail(`trait ${k}: no part carries it`);
   }
   for (const slot of slots) if (!Object.values(PART_DEFS).some((d) => d.slot === slot)) fail(`slot ${slot} has no parts`);
+  for (const [k, S] of Object.entries(game.get('PART_SETS'))) { // every set can be completed on one creature
+    for (const t of S.parts) if (!PART_DEFS[t] || PART_DEFS[t].set !== k) fail(`set ${k}: part ${t} is missing or claimed by another set`);
+    if (S.parts.length < S.need) fail(`set ${k}: needs ${S.need} parts but lists ${S.parts.length}`);
+  }
   for (const [k, v] of Object.entries(CONFIG)) if (!Number.isFinite(v)) fail(`CONFIG.${k} is not a finite number`);
   if (game.has('checkStageTable')) for (const msg of game.run('checkStageTable()')) fail(msg);
 }

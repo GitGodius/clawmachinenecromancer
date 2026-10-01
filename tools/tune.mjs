@@ -6,7 +6,8 @@
 //   AIM_NOISE=4 node tools/tune.mjs 100
 //
 // Each trial: a fresh pile, aim at a random reachable part (Gaussian aim error), drop, carry, release.
-// Carry styles: gentle (feathers to a steady cruise), jerky (holds the key, lets go on arrival), auto (the assist).
+// Carry styles: gentle (feathers to a steady cruise), okay (feathers, a bit fast), keys (holds, then lets the coast
+// land it), nervous (taps every way, often the wrong one), jerky (holds the key, lets go on arrival), auto (the assist).
 // The gap between gentle and jerky is what pillar 3 ("the carry is the skill") is made of.
 import { loadGame } from './lib/headless.mjs';
 import { playGrab, exposedParts } from './lib/clawbot.mjs';
@@ -17,7 +18,7 @@ const trials = +(process.argv[2] || 200);
 const overrides = process.argv[3] && process.argv[3][0] === '{' ? JSON.parse(process.argv[3]) : {};
 const sweepArg = process.argv.find((a, i) => i > 2 && /^\w+=[-\d.,]+$/.test(a));
 const AIM_NOISE = +(process.env.AIM_NOISE || 2.5);
-const STYLES = (process.env.STYLES || 'gentle,okay,jerky,auto').split(',');
+const STYLES = (process.env.STYLES || 'gentle,okay,keys,nervous,jerky,auto').split(',');
 const PROFILE_MODE = process.argv.includes('--profiles');
 
 export function measure(game, { trials, style, aimNoise = AIM_NOISE, config = {} }) {

@@ -38,6 +38,7 @@ Scenes.battle = (() => {
     if (phase !== 'ready') return;
     phase = 'fight';
     sim.start();
+    Game.talk.clear(); // the Reaper's intro line would hide the combat log for most of the fight
     Sfx.play('swing');
     Engine.shake(2, 0.2);
     log('The shades drift closer...');
@@ -79,6 +80,9 @@ Scenes.battle = (() => {
       }
       case 'heal': fx.text(d.u.x, d.u.y - bodyH(d.u) - 10, '+' + d.amount, '#9be38f'); break;
       case 'stun': fx.text(d.u.x, d.u.y - bodyH(d.u) - 16, 'STUN', PAL.L); Engine.shake(3, 0.2); break;
+      case 'bleed': fx.text(d.u.x + vrand(-6, 6), d.u.y - bodyH(d.u) - 16, 'BLEED', '#e8405a'); break;
+      case 'burn': fx.text(d.u.x, d.u.y - bodyH(d.u) - 16, 'BURN', '#ffb070'); break;
+      case 'whip': fx.text(d.u.x, d.u.y - bodyH(d.u) - 14, 'WHIP!', '#e7a6f0'); break;
       case 'fireball':
         d.p.y = d.u.y - bodyH(d.u) + 8;
         Sfx.play('zap', { intensity: 0.5, pitch: 0.7 });
@@ -170,7 +174,7 @@ Scenes.battle = (() => {
       say('Retreat! Live to rot another day.', 2.5);
       announce('Retreated. ' + result.reward + ' tokens.');
     }
-    Telemetry.log('battleEnd', { kind, stage: Game.stage, reward: result.reward, lost: result.lost.length });
+    Telemetry.log('battleEnd', { kind, stage: fightStage, reward: result.reward, lost: result.lost.length });
   }
 
   S.cheatWin = function () { sim && sim.killEnemies(); };
@@ -183,8 +187,10 @@ Scenes.battle = (() => {
     for (const b of bolts) b.t += dt;
     bolts = bolts.filter((b) => b.t < 0.35);
     if (phase === 'fight') {
-      sim.step(dt);
-      const bdt = dt * CONFIG.battleSpeed;
+      const speed = Game.fast ? 2 : 1;
+      if (Game.fast) Telemetry.c.fastSecs += realDt;
+      sim.step(dt * speed);
+      const bdt = dt * CONFIG.battleSpeed * speed;
       for (const u of sim.units) {
         if (u.dead) continue;
         u.flashT = Math.max(0, u.flashT - dt);
@@ -227,6 +233,7 @@ Scenes.battle = (() => {
     const cd = sim.zapCd, over = sim.over;
     return [
       phase === 'ready' ? { label: 'FIGHT', act: start } : { label: cd > 0 ? `ZAP  ${Math.ceil(cd)}s` : 'ZAP', disabled: cd > 0 || over, act: zap },
+      { label: Game.fast ? 'SPEED  x2' : 'SPEED  x1', act: () => { Game.fast = !Game.fast; Telemetry.c.speedToggles++; Sfx.play('ui_click'); Save.soon(); } },
       { label: 'RETREAT', disabled: over, act: retreat },
     ];
   }
@@ -286,10 +293,12 @@ Scenes.battle = (() => {
     Font.draw(ctx, stageTitle(fightStage), 472, 18, { align: 'right', color: '#a6aec2', shadow: PAL.k });
     if (SPR.has('ico_token')) SPR.draw(ctx, 'ico_token', 12, 12);
     Font.draw(ctx, String(Game.tokens + (phase === 'fight' ? sim.goldKills : 0)), 20, 8, { color: PAL.L, shadow: PAL.k });
+    if (phase !== 'done') drawPrize(ctx);
 
     // menu
-    Draw.panel(ctx, 8, 206, 102, 44, 'slate');
-    menuItems().forEach((it, i) => {
+    const items = menuItems();
+    Draw.panel(ctx, 8, 206, 102, 12 + items.length * 16, 'slate');
+    items.forEach((it, i) => {
       const y = 212 + i * 16;
       const hot = UI.buttons[i] && UI.buttons[i].hover;
       if (hot || i === menuSel) { if (i === menuSel) Font.draw(ctx, '▶', 15, y + 3, { color: '#fff6e3' }); }
@@ -302,6 +311,16 @@ Scenes.battle = (() => {
     else logLines.forEach((l, i) => Font.draw(ctx, l, 126, 229 + i * 12, { color: i === logLines.length - 1 ? '#ecdcbc' : '#7a6a9a' }));
     if (phase === 'ready' && Math.sin(t * 5) > 0) Draw.frame(ctx, 10, 210, 98, 17, '#ff8ac6');
   };
+
+  // what winning pays: tokens plus the parts that will drop into the machine
+  function drawPrize(ctx) {
+    const prize = sim.prize, w = 72 + prize.length * 26, x = Math.round(240 - w / 2);
+    Draw.panel(ctx, x, 4, w, 36, 'slate');
+    Font.draw(ctx, 'IF YOU WIN', x + 6, 8, { font: 'small', color: '#a6aec2' });
+    if (SPR.has('ico_token')) SPR.draw(ctx, 'ico_token', x + 10, 28);
+    Font.draw(ctx, '+' + Game.battlePay(fightStage, 'win', 1, false), x + 18, 24, { color: PAL.L });
+    prize.forEach((type, i) => drawPartIcon(ctx, type, x + 70 + i * 26, 24, 20, { outline: RARITY[PART_DEFS[type].rarity].glow || undefined }));
+  }
 
   function drawResult(ctx) {
     const r = result;
@@ -316,10 +335,14 @@ Scenes.battle = (() => {
       if (SPR.has('ico_token')) for (let i = 0; i < coinsShown; i++) SPR.draw(ctx, 'ico_token', x + 4 + i * 10, 234);
       Font.draw(ctx, `+${coinsShown} tokens`, x + 8 + r.reward * 10, 230, { color: PAL.L });
     }
-    const back = r.restocked.length + r.deadParts.length;
-    if (back) Font.draw(ctx, `${back} part${back > 1 ? 's' : ''} dropped into the claw machine`, 126, 247, { color: '#7a6a9a' });
+    const back = [...r.restocked, ...r.deadParts.map((d) => d.type)];
+    if (back.length) {
+      Font.draw(ctx, 'BACK IN THE MACHINE', 126, 243, { font: 'small', color: '#7a6a9a' });
+      back.slice(0, 9).forEach((type, i) => drawPartIcon(ctx, type, 252 + i * 22, 244, 16, { outline: RARITY[PART_DEFS[type].rarity].glow || undefined }));
+      if (back.length > 9) Font.draw(ctx, '+' + (back.length - 9), 252 + 9 * 22, 241, { font: 'small', color: '#a6aec2' });
+    }
     if (r.luck) Font.draw(ctx, '+' + r.luck + ' LUCK', 462, 230, { align: 'right', color: '#f6c64b' });
-    if (!r.reward && !back) Font.draw(ctx, 'No reward. No shame. Well, some shame.', 126, 234, { color: '#7a6a9a' });
+    if (!r.reward && !back.length) Font.draw(ctx, 'No reward. No shame. Well, some shame.', 126, 234, { color: '#7a6a9a' });
   }
 
   return S;

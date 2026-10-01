@@ -4,7 +4,7 @@
 
 > Every monster you send to fight is built from parts you won from the claw, and every part it loses goes back in the machine.
 
-A hooded Reaper runs a claw machine full of body parts. Grab parts with a physics claw, stitch them into mismatched monsters on the slab, and send them to fight the shades in the graveyard. Winning earns tokens and restocks the machine; creatures that die fall apart back into the pile. Fifteen stages, three acts, a boss at every fifth. The last one is the Landlord.
+A hooded Reaper runs a claw machine full of body parts. Grab parts with a physics claw, stitch them into mismatched monsters on the slab, and send them to fight the shades in the graveyard. Winning earns tokens and restocks the machine; creatures that die fall apart back into the pile, still wearing their names. Matching parts (three skeleton bits, a full royal set) give a creature a bonus, which is a reason to chase one particular part. Fifteen stages, three acts, a boss at every fifth. The last one is the Landlord.
 
 ![scenes: shop · claw · slab · graveyard](docs/screens.png)
 
@@ -17,11 +17,11 @@ Default controls (every key can be rebound in Settings; `P` opens the pause menu
 
 | | |
 |---|---|
-| **Claw** | `←` `→` steer · `Space` drop, and again to let go over the chute · `Esc` back. Holding the mouse or a finger on the glass steers toward it. |
+| **Claw** | `←` `→` steer · `Space` drop, and again to let go over the chute · `Esc` back. Holding the mouse or a finger on the glass steers toward it. A drop over the chute is refused (no token spent), and a drop on the move stops and settles first, so the claw lands where the guide was. |
 | **Carrying** | Hold a direction to speed up, ease off to steady it. **Fast carries sway, and a swinging part slips.** The meter shows it. |
 | **The Rig** | `Q` `E` nudge the glass · `1` quake · `2` iron grip · `3` order · `4` redo, or click the panel beside the glass. Gamepad: LB / RB nudge, X quake, Y iron grip. |
-| **Slab** | Click a part to stitch it on, click a slot to take it off, or use the arrow keys and `Space`. **BRING TO LIFE** when ready. |
-| **Graveyard** | **FIGHT**, then **ZAP** (heal and haste, on a cooldown) or **RETREAT** (keeps everyone standing, pays for the damage you did). |
+| **Slab** | Click a part to stitch it on, click a slot to take it off, or use the arrow keys and `Space`. **BRING TO LIFE** when ready. Tooltips show set progress and whose remains a part is. |
+| **Graveyard** | **FIGHT**, then **ZAP** (heal and haste, on a cooldown) or **RETREAT** (keeps everyone standing, pays for the damage you did). **SPEED** x1/x2 is remembered. The panel at the top shows exactly what winning pays. |
 | **Anywhere** | `P` pause · `M` mute · `F` fullscreen. Mouse and touch are wired up everywhere (touch has only been simulated, not tried on a real device: see docs/RELEASE.md). The **Menu** button under the game pauses. |
 
 Pausing stops everything and allows no game action. That is deliberate: a fight you can plan frame by frame is not a fight.
@@ -63,7 +63,8 @@ npm test                # rules, saves, keys, fixed-seed fights and grabs, the f
 npm run balance:check   # do the numbers still match the evidence, and are the targets met?
 npm run e2e             # real Chromium: pause, rebind, continue, victory, crashes, frames, a soak
 npm run verify          # all of the above
-npm run rigcheck       # the Rig, headless: quake, rewind, economy, fuzz
+npm run rigcheck        # the Rig, headless: quake, rewind, economy, fuzz
+DSF=2 node tools/play.mjs "dev.html?scene=claw" out '[{"hold":"ArrowLeft","ms":800},{"press":"Space"},{"wait":6000},{"clip":[0,0,480,270],"shot":"grab"}]'   # scripted play: clip crops in game pixels, DSF sharpens
 ```
 
 | Tool | For |

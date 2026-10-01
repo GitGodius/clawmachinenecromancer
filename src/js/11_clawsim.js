@@ -194,23 +194,26 @@ class ClawSim {
     this.layoutPile(types.slice(0, Math.max(n, 5)));
   }
 
-  // Drop these part types into the machine in a loose grid, then let them settle into a pile.
-  // (Also how a saved run rebuilds the machine: the types are kept, the exact pile is not.)
+  // Drop these parts into the machine in a loose grid, then let them settle into a pile. Each is a part type,
+  // or { type, from } for a dead creature's remains (they keep its name). Also how a saved run rebuilds the
+  // machine: the parts are kept, the exact pile is not.
   layoutPile(types) {
     const M = MACHINE;
     const cols = 5, cw = (M.spawnX1 - M.spawnX0) / cols;
     types.forEach((t, i) => {
       const col = i % cols, row = Math.floor(i / cols);
-      this.spawnPart(t, M.spawnX0 + cw * (col + 0.5) + rand(-3, 3), M.floor - 14 - row * 23 + rand(-2, 2), rand(-Math.PI, Math.PI));
+      const p = this.spawnPart(t.type || t, M.spawnX0 + cw * (col + 0.5) + rand(-3, 3), M.floor - 14 - row * 23 + rand(-2, 2), rand(-Math.PI, Math.PI));
+      if (t.from) p.from = t.from;
     });
     this.settle(4.5);
     // anything that bounced into the chute goes back on top of the pile
     for (const p of this.parts.slice()) {
       const [x] = this.partPos(p);
       if (x > M.guardX - 2 || p.won) {
-        const t = p.type;
+        const t = p.type, from = p.from;
         this.removePart(p);
-        this.spawnPart(t, rand(M.spawnX0, 100), 20, rand(-3, 3));
+        const q = this.spawnPart(t, rand(M.spawnX0, 100), 20, rand(-3, 3));
+        if (from) q.from = from;
       }
     }
     this.settle(1.5);
@@ -226,7 +229,7 @@ class ClawSim {
     for (const p of this.parts) if (!p.won) { const [x, y] = this.partPos(p); if (x > MACHINE.chuteX0 && y > MACHINE.lipY) p.won = true; }
   }
 
-  queueSpawn(type, delay = 0) { this.pending.push({ type, t: delay }); }
+  queueSpawn(type, delay = 0, from) { this.pending.push({ type, t: delay, from }); }
 
   // ------------------------------------------------------------ control
   press() { this.pressed = true; }
@@ -315,7 +318,12 @@ class ClawSim {
         break;
       case 'drop': {
         this.prongs('open');
-        this.driveCarriage(0, h);
+        // the gantry stops and the claw settles before the cable pays out (0.7 s at most), so you drop where the
+        // guide was: dropping at full speed used to land ~33 px past it (coast + pendulum), now ~3 px
+        const hv = this.hub.getLinearVelocity(), sway = this.hub.getPosition().x * PPM - this.carX;
+        const braking = this.stateT < 0.7 && (Math.abs(this.carV) > 6 || Math.abs(hv.x * PPM) > 10 || Math.abs(sway) > 3);
+        this.driveCarriage(0, h, CONFIG.clawAccel * 3); // brake hard
+        if (braking) { this.hub.setLinearDamping(10); break; }
         const vy = this.hub.getLinearVelocity().y * PPM;
         const dist = this.ropeDist();
         // pay out cable, but never more than a few px of slack: the head falls at <= dropSpeed
@@ -355,12 +363,16 @@ class ClawSim {
         if (this.ropeLen > d + 1) this.ropeLen = d + 1;
         // winch spins up smoothly (an instant yank would rip parts out of the grip)
         const spin = easeInOutQuad(clamp(this.stateT / 0.45, 0, 1));
-        this.ropeLen = Math.max(M.topLen, this.ropeLen - CONFIG.liftSpeed * spin * h);
+        const emptyHanded = !this.grips.length && !this.held.size && this.grabInfo && !this.grabInfo.cand.length; // grabbed pure air: don't make them watch a slow empty ride
+        this.ropeLen = Math.max(M.topLen, this.ropeLen - CONFIG.liftSpeed * (emptyHanded ? 2.2 : 1) * spin * h);
         if (this.ropeLen <= M.topLen + 0.01 && this.stateT > 0.2) {
+          const empty = !this.grips.length && !this.held.size; // nothing in the claw: no point steering it anywhere
           for (const g of this.grips.slice()) this.rollSlip(g.part, CONFIG.topSlip, 'jolt');
-          this.setState(CONFIG.carryManual ? 'carry' : 'return');
-          this.unseal(); // a held part now has to cross the guard: the chute lid comes down
-          this.emit('top', { held: [...this.held] });
+          this.unseal(); // the top of the lift: the chute lid comes down (a held part now has to cross the guard)
+          if (empty) { this.emit('empty'); this.startRelease(); } else {
+            this.setState(CONFIG.carryManual ? 'carry' : 'return');
+            this.emit('top', { held: [...this.held] });
+          }
         }
         break;
       }
@@ -368,7 +380,8 @@ class ClawSim {
         this.prongs(this.slipOpenT > 0 ? 'open' : 'close', 1);
         this.updateGrips(h);
         this.driveCarriage(move * CONFIG.clawMoveSpeed, h, move ? CONFIG.carryAccel : CONFIG.carryBrake);
-        if (pressed || (CONFIG.carryTime > 0 && this.stateT > CONFIG.carryTime)) this.startRelease();
+        if (pressed) this.startRelease();
+        else if (CONFIG.carryTime > 0 && this.stateT > CONFIG.carryTime) this.startRelease(true);
         break;
       case 'return': {
         this.prongs(this.slipOpenT > 0 ? 'open' : 'close', 1);
@@ -403,6 +416,7 @@ class ClawSim {
       if (this.pendingT <= 0) {
         const it = this.pending.shift();
         const p = this.spawnPart(it.type, rand(M.spawnX0 + 6, M.spawnX1 - 20), M.top + 12, rand(-3, 3), [rand(-10, 10), 20]);
+        if (it.from) p.from = it.from;
         this.emit('spawn', { part: p });
         this.pendingT = 0.28;
         this.redoHist = null; // the world gained a part: a rewind would put it somewhere wrong
@@ -560,10 +574,10 @@ class ClawSim {
     if (held) this.rollSlip(p, CONFIG.twitchSlip, 'twitch');
   }
 
-  startRelease() {
+  startRelease(timeout = false) {
     this.dropGrips();
     this.setState('release');
-    this.emit('release', { held: [...this.held], overChute: this.carX > MACHINE.chuteX0 });
+    this.emit('release', { held: [...this.held], overChute: this.carX > MACHINE.chuteX0, timeout });
   }
 
   endTurn() {

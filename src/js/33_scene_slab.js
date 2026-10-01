@@ -27,7 +27,7 @@ Scenes.slab = (() => {
   S.uiNav = true; // arrows move a focus ring over the parts, slots and buttons; confirm presses it
   S.exit = function () {};
   // Parts stitched on but not yet brought to life still belong to the player: a save counts them as bag parts.
-  S.buildTypes = () => (build ? Object.values(build).filter(Boolean).map((i) => i.type) : []);
+  S.buildTypes = () => (build ? Object.values(build).filter(Boolean).map((i) => (i.from ? { type: i.type, from: i.from } : i.type)) : []); // as saves hold them: remains keep their name
   S.reset = () => { build = null; life = null; selected = null; page = 0; lastStitch = null; };
 
   function stitch(item) {
@@ -35,6 +35,7 @@ Scenes.slab = (() => {
     let slot = d.slot;
     if (slot === 'arm') slot = !build.armR ? 'armR' : !build.armL ? 'armL' : 'armR';
     if (slot === 'leg') slot = !build.legR ? 'legR' : !build.legL ? 'legL' : 'legR';
+    const setsBefore = setsOf(types());
     Game.takeItem(item.uid);
     if (build[slot]) Game.inventory.push(build[slot]);
     build[slot] = item;
@@ -48,6 +49,16 @@ Scenes.slab = (() => {
     Save.soon();
     if (vchance(0.3)) say(vpick(['Snug.', 'It fits. Mostly.', 'Needle, thread, hope.', 'Ooh, that suits them.', 'Stitch, stitch, stitch.', 'Lovely. Horrible. Lovely.']), 1.6);
     if (item.type === 'pegleg' && vchance(0.6)) say('A peg leg. Classic look. Terrible posture.', 2.2);
+    for (const k of setsOf(types())) { // a set just came together: make a moment of it
+      if (setsBefore.includes(k)) continue;
+      const S = PART_SETS[k];
+      Sfx.play('win_uncommon');
+      fx.burst(FEET_X, FEET_Y - 60, 26, { speed: 100, life: 0.8, ay: 30, color: ['#f6c64b', '#fff1a6', '#fff6e3'] });
+      fx.text(FEET_X, FEET_Y - 150, S.name.toUpperCase() + ' SET!', '#f6c64b', { font: 'main', life: 1.8, vy: -12 });
+      fx.text(FEET_X, FEET_Y - 136, S.desc, '#fff1a6', { life: 1.8, vy: -12 });
+      Telemetry.c.sets++;
+      say(vpick([`The ${S.name} set! ${S.desc}. Now we're getting somewhere.`, `${S.name} set complete. ${S.desc}. Lovely.`]), 3.2);
+    }
   }
   function unstitchSlot(slot) {
     if (!build[slot]) return;
@@ -82,9 +93,14 @@ Scenes.slab = (() => {
 
   function items() { return Game.inventory.slice().sort((a, b) => RARITY[PART_DEFS[b.type].rarity].order - RARITY[PART_DEFS[a.type].rarity].order || a.type.localeCompare(b.type)); }
 
-  function partTip(type, extra) {
+  function partTip(type, extra, item) {
     const d = PART_DEFS[type], r = RARITY[d.rarity];
     const lines = [{ t: d.name, c: r.color }, { t: `${r.name} ${SLOT_NAMES[d.slot]}`, c: '#7a6a9a' }];
+    if (item && item.from) lines.push({ t: `Once ${poss(item.from)}`, c: '#a08962' });
+    if (d.set) {
+      const S = PART_SETS[d.set], have = Object.values(types()).filter((x) => x && PART_DEFS[x].set === d.set).length;
+      lines.push({ t: `${S.name} set ${Math.min(have, S.need)}/${S.need}: ${S.desc}`, c: have >= S.need ? '#f6c64b' : '#c9a24a' });
+    }
     const st = [];
     if (d.hp) st.push('HP +' + d.hp);
     if (d.atk) st.push('ATK +' + d.atk);
@@ -133,7 +149,7 @@ Scenes.slab = (() => {
     list.slice(page * PER, page * PER + PER).forEach((it, i) => {
       const x = 9 + (i % COLS) * (CELL_W + 2), y = 21 + Math.floor(i / COLS) * (CELL_H + 2);
       bs.push({ id: 'inv' + it.uid, x, y, w: CELL_W, h: CELL_H, label: '', item: it, kind: 'cell', silent: true, disabled: !!life,
-        tip: partTip(it.type, 'click to stitch on'), onClick: () => stitch(it) });
+        tip: partTip(it.type, 'click to stitch on', it), onClick: () => stitch(it) });
     });
     if (pages > 1) {
       bs.push({ id: 'pgL', x: 9, y: 182, w: 18, h: 12, label: '◀', onClick: () => { page--; Sfx.play('page'); } });
@@ -142,13 +158,13 @@ Scenes.slab = (() => {
     RIG_SLOTS.forEach(([slot], i) => {
       const it = build[slot];
       bs.push({ id: 'slot' + slot, x: 366, y: 20 + i * 17, w: 106, h: 16, label: '', kind: 'slot', slot, silent: true, disabled: !it || !!life,
-        tip: it ? partTip(it.type, 'click to unstitch') : null, onClick: () => unstitchSlot(slot) });
+        tip: it ? partTip(it.type, 'click to unstitch', it) : null, onClick: () => unstitchSlot(slot) });
     });
     bs.push({ id: 'life', x: 364, y: 200, w: 110, h: 22, label: 'BRING TO LIFE', style: 'green', disabled: !canBring(), kind: 'big', sound: 'ui_click',
       tip: Game.party.length >= 3 ? 'Party is full (3). Unstitch someone first.' : count() ? null : 'Stitch at least one part on.', onClick: bringToLife });
     Game.party.forEach((c, i) => {
       bs.push({ id: 'pty' + c.id, x: 9 + i * 36, y: 214, w: 34, h: 40, label: '', kind: 'party', c, silent: true, disabled: !!life,
-        tip: [{ t: c.name, c: '#9be38f' }, { t: `HP ${Math.ceil(c.hp)}/${c.maxHp}  ATK ${c.atk}  SPD ${c.spd}`, c: '#ecdcbc' }, ...c.traits.map((x) => ({ t: TRAITS[x].name, c: '#7a6a9a' })), { t: selected === c ? 'click again to UNSTITCH' : 'click to select', c: '#a08962' }],
+        tip: [{ t: c.name, c: '#9be38f' }, { t: `HP ${Math.ceil(c.hp)}/${c.maxHp}  ATK ${c.atk}  SPD ${c.spd}`, c: '#ecdcbc' }, ...(c.kills ? [{ t: `${c.kills} kill${c.kills > 1 ? 's' : ''} so far`, c: '#a08962' }] : []), ...c.traits.map((x) => ({ t: TRAITS[x].name, c: '#7a6a9a' })), { t: selected === c ? 'click again to UNSTITCH' : 'click to select', c: '#a08962' }],
         onClick: () => {
           if (selected === c) {
             Game.party = Game.party.filter((x) => x !== c);
@@ -247,13 +263,14 @@ Scenes.slab = (() => {
       const c = new Creature(ty);
       const y0 = 158;
       const stat = (ico, label, v, x) => { if (SPR.has(ico)) SPR.draw(ctx, ico, x + 3, y0 + 4); Font.draw(ctx, label + ' ' + v, x + 9, y0, { color: '#ecdcbc' }); };
-      stat('ico_heart', 'HP', c.maxHp, 366); stat('ico_sword', 'ATK', c.atk, 404); stat('ico_boot', 'SPD', c.spd, 444);
+      stat('ico_heart', 'HP', c.maxHp, 366); stat('ico_sword', 'ATK', Math.round(c.atk), 404); stat('ico_boot', 'SPD', c.spd, 444);
       const tr = c.traits.length ? c.traits.map((x) => TRAITS[x].name).join(' · ') : 'no special traits';
       Font.drawWrapped(ctx, tr, 369, y0 + 12, 104, { font: 'small', color: c.traits.length ? '#9be38f' : '#4b4466' });
-      const pw = clamp(c.power / 80, 0, 1);
-      Draw.rect(ctx, 400, y0 + 27, 72, 4, PAL.k);
-      Draw.rect(ctx, 401, y0 + 28, Math.round(70 * pw), 2, pw > 0.66 ? PAL.L : pw > 0.33 ? PAL.d : PAL.B);
-      Font.draw(ctx, 'POWER ' + c.power, 368, y0 + 26, { font: 'small', color: '#a6aec2' });
+      const pw = clamp(c.power / 160, 0, 1);
+      Draw.rect(ctx, 400, y0 + 27, 50, 4, PAL.k);
+      Draw.rect(ctx, 401, y0 + 28, Math.round(48 * pw), 2, pw > 0.66 ? PAL.L : pw > 0.33 ? PAL.d : PAL.B);
+      Font.draw(ctx, 'POWER', 368, y0 + 26, { font: 'small', color: '#7a6a9a' });
+      Font.draw(ctx, String(c.power), 472, y0 + 26, { font: 'small', color: '#ecdcbc', align: 'right' });
     }
 
     // party roster

@@ -7,6 +7,8 @@
 <body><canvas id="c" width="480" height="270"></canvas>
 <script src="../src/js/03_palette.js"></script>
 <script src="../src/js/04_sprites_core.js"></script>
+<script src="../src/js/05_sprites_parts.js"></script>
+<script src="../src/js/06_sprites_reaper.js"></script>
 <script src="../src/js/06_sprites_world.js"></script>
 <script>
 const Q = new URLSearchParams(location.search);
@@ -37,14 +39,12 @@ function shop(t) {
   ['jar_finger', 'books', 'potion_purple', 'skull_small', 'jar_eye'].forEach((n, i) => D(n, 30 + i * 16, 110));
   // lantern hanging
   R('k', 190, 7, 1, 30); D('lantern', 190, 37);
-  // reaper
+  // reaper: robe stops at the counter's far edge, hands rest on top (names: reaper_idle / reaper_talk / reaper_hands)
   const rt = t % 6000;
   let rn = 'reaper_idle';
   if (rt > 1000 && rt < 2600) rn = Math.floor(t / 140) % 2 ? 'reaper_talk' : 'reaper_idle';
-  if (rt > 3000 && rt < 3130) rn = 'reaper_blink';
-  if (rt > 4200 && rt < 5200) rn = 'reaper_lean';
-  if (!has(rn)) rn = 'reaper_idle';
-  D(rn, 140, COUNTER + 6);
+  D(rn, 140, COUNTER);
+  D('reaper_hands', 140, COUNTER + 6);
   // counter
   R('t', 60, COUNTER, 180, 1); R('T', 60, COUNTER + 1, 180, 2); R('u', 60, COUNTER + 3, 180, 1);
   R('u', 60, COUNTER + 4, 180, 46); R('U', 60, COUNTER + 4, 180, 1);

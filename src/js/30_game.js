@@ -17,6 +17,7 @@ const Game = {
   playTime: 0, // seconds of play in this run (menus and pauses don't count)
   stats: {},   // what this run has done, for the end screen (saved with the run)
   failStreak: 0, // failed fights in a row; the Reaper adds a token per failure (up to ladderMax) so bad luck cannot become a dead end
+  fast: false, // battle speed x2, kept between fights (and saved with the run)
 
   newGame(opts = {}) {
     this.tokens = CONFIG.startTokens;
@@ -27,6 +28,7 @@ const Game = {
     this.failStreak = 0;
     this.recent = [];
     this.seen = {};
+    this.fast = false;
     this.talk = new Talker({ voice: 0.62, cps: 40 });
     this.playTime = 0;
     this.stats = Game.newStats();
@@ -42,17 +44,20 @@ const Game = {
   // ---- saving: the run as plain data. Positions are not kept; the pile is rebuilt from part types.
   toSave() {
     const sim = this.sim;
-    const machine = sim ? [...sim.parts.filter((p) => !p.won).map((p) => p.type), ...sim.pending.map((p) => p.type)] : [];
+    // a part is its type, or { type, from } when it is the remains of a creature with a name (old saves hold bare types)
+    const item = (type, from) => (from ? { type, from } : type);
+    const machine = sim ? [...sim.parts.filter((p) => !p.won).map((p) => item(p.type, p.from)), ...sim.pending.map((p) => item(p.type, p.from))] : [];
     // a drop in flight: the token comes back (and its Iron Grip), the part it carries is in the pile. A rewind is not a
     // drop: Redo already handed that token back.
     const inGrab = !!sim && sim.state !== 'idle' && sim.state !== 'rewind';
     return {
       tokens: this.tokens + (inGrab ? 1 : 0), stage: this.stage, bestStage: this.bestStage, won: this.won, failStreak: this.failStreak,
       playTime: Math.round(this.playTime || 0), seen: this.seen, stats: this.stats,
-      inventory: [...this.inventory.map((i) => i.type), ...(typeof Scenes !== 'undefined' && Scenes.slab && Scenes.slab.buildTypes ? Scenes.slab.buildTypes() : [])],
+      inventory: [...this.inventory.map((i) => item(i.type, i.from)), ...(typeof Scenes !== 'undefined' && Scenes.slab && Scenes.slab.buildTypes ? Scenes.slab.buildTypes() : [])],
       party: this.party.map((c) => ({ slots: c.slots, hp: c.hp, name: c.name, kills: c.kills })),
       machine,
       luck: Rig.luck, iron: !!sim && sim.ironPaid(), // the Rig: banked Luck, and an Iron Grip that was paid for but not used up
+      fast: this.fast,
     };
   },
 
@@ -62,6 +67,7 @@ const Game = {
     this.newGame({ pile: false });
     let retired = 0;
     const fix = (t) => {
+      if (t && typeof t === 'object') { const f = fix(t.type); return f && typeof t.from === 'string' && t.from && t.from.length < 60 ? { type: f, from: t.from } : f; }
       if (PART_DEFS[t]) return t;
       if (PART_ALIASES[t] && PART_DEFS[PART_ALIASES[t]]) return PART_ALIASES[t];
       retired++;
@@ -78,12 +84,13 @@ const Game = {
     for (const k of Object.keys(this.stats)) this.stats[k] = Math.round(num(run.stats && run.stats[k], 0, 0, 1e6));
     Rig.luck = Math.round(num(run.luck, Math.min(CONFIG.luckStart, CONFIG.luckMax), 0, CONFIG.luckMax)); // saves from before the Rig start with the usual Luck
     this.sim.iron = !!run.iron;
+    this.fast = !!run.fast;
     const list = (v) => (Array.isArray(v) ? v : []); // a hand-edited or foreign save must not throw
-    for (const t of list(run.inventory)) { const f = fix(t); if (f) this.inventory.push(makePartItem(f)); }
+    for (const t of list(run.inventory)) { const f = fix(t); if (f) this.inventory.push(f.type ? makePartItem(f.type, f.from) : makePartItem(f)); }
     for (const c of list(run.party).slice(0, 3)) {
       if (!c || typeof c !== 'object') continue;
       const slots = {};
-      for (const [slot, t] of Object.entries(c.slots && typeof c.slots === 'object' ? c.slots : {})) { const f = t ? fix(t) : null; if (f && RIG_SLOTS.some(([k]) => k === slot)) slots[slot] = f; }
+      for (const [slot, t] of Object.entries(c.slots && typeof c.slots === 'object' ? c.slots : {})) { const f = t && typeof t === 'string' ? fix(t) : null; if (f && RIG_SLOTS.some(([k]) => k === slot)) slots[slot] = f; }
       if (!Object.keys(slots).length) continue;
       const cr = new Creature(slots);
       cr.hp = num(c.hp, cr.maxHp, 1, cr.maxHp);
@@ -94,13 +101,13 @@ const Game = {
     const machine = list(run.machine).map(fix).filter(Boolean);
     const first = machine.slice(0, 22);
     this.sim.layoutPile(first.length >= 5 ? first : [...first, ...Array.from({ length: 5 - first.length }, () => randomPartType())]);
-    machine.slice(22).forEach((t, i) => this.sim.queueSpawn(t, i * 0.25));
+    machine.slice(22).forEach((t, i) => this.sim.queueSpawn(t.type || t, i * 0.25, t.from));
     if (retired) Save.notes.push(retired + (retired > 1 ? ' parts' : ' part') + ' from an older version ' + (retired > 1 ? 'were' : 'was') + ' retired.');
     return this;
   },
 
-  addPart(type) {
-    const it = makePartItem(type);
+  addPart(type, from) {
+    const it = makePartItem(type, from);
     this.inventory.push(it);
     this.recent.unshift(type);
     if (this.recent.length > 8) this.recent.pop();
@@ -111,7 +118,8 @@ const Game = {
     return i >= 0 ? this.inventory.splice(i, 1)[0] : null;
   },
   // dead creatures and battle loot go back into the machine
-  restock(types) { types.forEach((t, i) => this.sim.queueSpawn(t, i * 0.2)); },
+  // entries are a part type, or { type, from } for the remains of a creature that died
+  restock(items) { items.forEach((it, i) => this.sim.queueSpawn(it.type || it, i * 0.2, it.from)); },
 
   // The machine never runs dry: below 5 parts the Reaper fetches 7 more from the back room.
   // Returns how many were queued (0 = the pile was fine).
@@ -148,15 +156,14 @@ const Game = {
     const deadAllies = allies.filter((u) => u.dead);
     const survivors = allies.filter((u) => !u.dead);
     for (const u of allies) u.c.hp = u.dead ? 0 : Math.max(1, Math.ceil(u.hp));
-    const deadParts = deadAllies.flatMap((u) => u.c.parts());
+    const deadParts = deadAllies.flatMap((u) => u.c.parts().map((type) => ({ type, from: u.name }))); // remains keep their name
     this.party = this.party.filter((c) => c.hp > 0);
     const restocked = [];
     const reward = this.battlePay(this.stage, kind, kind === 'win' ? 1 : sim.progress(), survivors.some((u) => u.traits.includes('golden')));
     this.tally('lost', deadAllies.length);
     this.tally(kind === 'win' ? 'fightsWon' : kind === 'lose' ? 'fightsLost' : 'retreats');
     if (kind === 'win') {
-      const boost = 1 + this.stage * 0.2;
-      for (let i = 0; i < CONFIG.restockParts; i++) restocked.push(randomPartType({ boost }));
+      restocked.push(...sim.prize); // rolled when the fight was set up, and shown as IF YOU WIN
       Telemetry.c.victories++;
       Telemetry.c.bestStage = Math.max(Telemetry.c.bestStage, this.stage);
       this.bestStage = Math.max(this.bestStage, this.stage);
@@ -173,7 +180,7 @@ const Game = {
     this.restock([...restocked, ...deadParts]);
     this.recordProgress();
     Save.soon();
-    return { kind, reward, gold: sim.goldKills, restocked, deadParts, lost: deadAllies.map((u) => u.name), won: this.won, progress: sim.progress(), luck };
+    return { kind, reward, gold: sim.goldKills, restocked, deadParts, lost: deadAllies.map((u) => u.name + (u.c.kills ? ` (${u.c.kills} kill${u.c.kills > 1 ? 's' : ''})` : '')), won: this.won, progress: sim.progress(), luck };
   },
 
   // lifetime records live in the save file, next to the run

@@ -27,7 +27,7 @@ export function sourceFiles({ only, skip = DOM_ONLY } = {}) {
 
 export function loadGame(opts = {}) {
   const files = opts.files || sourceFiles(opts);
-  const planck = require('planck');
+  let planck; try { planck = require('planck'); } catch (e) { planck = require('../../vendor/planck.min.js'); } // npm copy, else the vendored one
   const store = new Map(); // stand-in for localStorage so save code can be tested
   const ctx = {
     planck, console, performance, setTimeout, clearTimeout, setInterval, clearInterval,

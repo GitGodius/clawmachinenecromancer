@@ -8,7 +8,8 @@
 //   Game.applyBattle(sim, kind) then turns the outcome into tokens, restocks and stage progress.
 //
 // Events: start, attackStart {u}, whiff {u}, miss {att,def}, hit {att,def,dmg,crit,fire}, heal {u,amount},
-//         stun {u}, fireball {u,p}, fireHit {p}, undying {u}, kill {u,by}, zap {healed:[{u,amount}]}, over {won}
+//         stun {u}, bleed {u}, burn {u}, whip {u}, fireball {u,p}, fireHit {p}, undying {u}, kill {u,by},
+//         zap {healed:[{u,amount}]}, over {won}
 // ---------------------------------------------------------------------------
 const ARENA = { ground: 214, minX: 20, maxX: 460, allyLanes: [0, 11, -11], enemyLanes: [0, 11, -11, 5, -5], allyStartX: 120, allyGap: 38, enemyStartX: 350, enemyGap: 36 };
 
@@ -28,6 +29,8 @@ class BattleSim {
     (party || []).filter((c) => c.hp > 0).slice(0, 3).forEach((c, i) => this.units.push(this.makeAlly(c, i)));
     this.kinds = enemies || stageEnemies(stage); // `enemies` overrides the stage table (matchup tests)
     this.kinds.forEach((k, i) => this.units.push(this.makeEnemy(k, i)));
+    // what a win drops into the machine, rolled up front so the scene can show what you are fighting for
+    this.prize = Array.from({ length: CONFIG.restockParts }, () => randomPartType({ boost: 1 + stage * 0.2 }));
   }
 
   emit(type, data) { this.onEvent(type, data || {}); }
@@ -122,9 +125,10 @@ class BattleSim {
     this.emit('hit', { att, def, dmg, crit, fire: !!opts.fire });
     if (isAlly) {
       if (att.traits.includes('bite')) { const h = Math.round(dmg * 0.3); att.hp = Math.min(att.maxHp, att.hp + h); if (h) this.emit('heal', { u: att, amount: h }); }
-      if (att.traits.includes('rend')) def.bleedT = 3;
+      if (att.traits.includes('rend')) { if (!(def.bleedT > 0)) this.emit('bleed', { u: def }); def.bleedT = 3; }
       if (att.traits.includes('smash') && chance(0.3)) { def.stunT = 1; this.emit('stun', { u: def }); }
       if (opts.fire) def.burnT = 3;
+      if (att.traits.includes('set_abyssal')) { if (!(def.burnT > 0)) this.emit('burn', { u: def }); def.burnT = 3; } // the Abyssal set: every hit burns
     }
     if (def.hp <= 0) this.kill(def, att);
   }
@@ -192,7 +196,7 @@ class BattleSim {
               if (k === 0) this.dealHit(u, f, { base: h });
               else this.later.push({ t: 0.12 * k, fn: () => { const foe = f.dead ? this.nearestFoe(u) : f; if (foe && !u.dead) this.dealHit(u, foe, { base: h }); } });
             });
-            if (u.traits.includes('whip') && chance(0.25)) this.later.push({ t: 0.18, fn: () => { if (!f.dead && !u.dead) this.dealHit(u, f, { mult: 0.6 }); } });
+            if (u.traits.includes('whip') && chance(0.25)) { this.emit('whip', { u }); this.later.push({ t: 0.18, fn: () => { if (!f.dead && !u.dead) this.dealHit(u, f, { mult: 0.6 }); } }); }
           } else this.emit('whiff', { u });
         }
         if (u.animT >= 1) { u.state = 'idle'; u.animT = 0; }

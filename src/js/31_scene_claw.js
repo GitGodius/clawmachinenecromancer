@@ -9,7 +9,7 @@ Scenes.claw = (() => {
   let buf, g, glassBG, frameImg;
   const fxW = new Particles(); // world space (in the buffer, 2x on screen)
   const fxS = new Particles(); // screen space (1x)
-  let t = 0, winFx = 0, bagBump = 0, tokenBump = 0, noTokenT = 0, idleT = 0, movedOnce = false;
+  let t = 0, winFx = 0, bagBump = 0, tokenBump = 0, noTokenT = 0, idleT = 0, movedOnce = false, chuteWarnT = 0, missShown = false, swayLvl = 0, lastLoss = null;
   let flying = [];
   let slowmoDone = new Set();
   let lastBumpSfx = 0;
@@ -18,6 +18,7 @@ Scenes.claw = (() => {
   let toggleDir = 0; // steering mode 'toggle': tap a direction to start, tap again to stop
   let toggleTarget = null; // ...and with a pointer: tap the glass and the claw goes there and stops
   const btn = {};
+  const ACTION_LABEL = { close: 'GRABBING', lift: 'LIFTING', return: 'RETURNING', release: 'OPENING' };
   const toScreen = (x, y) => [(x + GX) * 2, (y + GY) * 2];
   const say = (text, hold) => Game.talk.say(text, hold);
 
@@ -163,7 +164,14 @@ Scenes.claw = (() => {
         }
       }
       if (picker) move = 0; // arrows move the menu selection, not the claw
-      if (move) { movedOnce = true; idleT = 0; } else idleT += dt;
+      if (move) { movedOnce = true; idleT = 0; } else if (sim.state === 'idle') idleT += dt;
+      chuteWarnT = Math.max(0, chuteWarnT - dt);
+      // how the carry is going, from the wobble meter: 0 steady, 1 swaying, 2 slipping. It tints the held part and
+      // the claw creaks the moment it tips into SLIPPING
+      const sw = sim.state === 'carry' || sim.state === 'return' ? sim.swayInfo() : null;
+      const lvl = sw ? (sw.ratio <= 1 ? 0 : sw.ratio <= 1.5 ? 1 : 2) : 0;
+      if (lvl === 2 && swayLvl < 2) Sfx.play('bump', { material: 'metal', intensity: 0.5 });
+      swayLvl = lvl;
       sim.input.move = move;
       // The Rig: hotkeys (Q/E nudge, 1-4 levers; pad LB/RB, X, Y)
       Rig.update(dt);
@@ -187,8 +195,8 @@ Scenes.claw = (() => {
       noLuckT = Math.max(0, noLuckT - dt); luckHint = Math.max(0, luckHint - dt); ironFlash = Math.max(0, ironFlash - dt);
       for (let i = 0; i < pipPop.length; i++) pipPop[i] = Math.max(0, pipPop[i] - dt);
       for (const k in cellPulse) cellPulse[k] = Math.max(0, cellPulse[k] - dt);
-      if ((sim.iron || (sim.turn && sim.turn.iron)) && chance(dt * 9)) { // Iron Grip: gold sparks around the claw head
-        fxW.add({ x: sim.hub.getPosition().x * PPM + rand(-11, 11), y: sim.hub.getPosition().y * PPM + rand(2, 28), vy: -14, life: 0.5, color: pick(['#fff1a6', '#f6c64b', '#ffffff']) });
+      if ((sim.iron || (sim.turn && sim.turn.iron)) && vchance(dt * 9)) { // Iron Grip: gold sparks around the claw head
+        fxW.add({ x: sim.hub.getPosition().x * PPM + vrand(-11, 11), y: sim.hub.getPosition().y * PPM + vrand(2, 28), vy: -14, life: 0.5, color: vpick(['#fff1a6', '#f6c64b', '#ffffff']) });
       }
 
       // motor voice
@@ -229,7 +237,7 @@ Scenes.claw = (() => {
         return false;
       });
       btn.drop.label = sim.state === 'rewind' ? 'REWIND' : sim.lockT > 0 ? (sim.lockWhy === 'tilt' ? 'TILT!' : 'SHAKING') :
-        sim.state === 'idle' ? (Game.tokens > 0 ? 'DROP' : 'NO TOKENS') : sim.state === 'carry' ? 'RELEASE' : sim.state === 'drop' ? 'STOP' : '...';
+        sim.state === 'idle' ? (Game.tokens > 0 ? 'DROP' : 'NO TOKENS') : sim.state === 'carry' ? 'RELEASE' : sim.state === 'drop' ? 'STOP' : ACTION_LABEL[sim.state] || '...';
       for (const [id] of CELLS) btn['r_' + id].tip = Rig.on && Input.lastDevice !== 'touch' ? tipFor(id) : null; // a tap would leave the tooltip stuck on screen
       UI.set(picker ? pickerBtns : Object.values(btn));
       if (picker) for (const b of Object.values(btn)) b.hover = b.held = false;
@@ -241,7 +249,7 @@ Scenes.claw = (() => {
       if (sim.state === 'idle') {
         if (sim.lockT > 0) { // shaking or TILTed: no token is taken
           Sfx.play('ui_deny');
-          say(sim.lockWhy === 'tilt' ? pick(['TILT! Hands off the glass.', 'The machine is sulking. Give it a second.']) : 'Hold on. It\'s still shaking.', 1.8);
+          say(sim.lockWhy === 'tilt' ? vpick(['TILT! Hands off the glass.', 'The machine is sulking. Give it a second.']) : 'Hold on. It\'s still shaking.', 1.8);
           return;
         }
         if (Game.tokens <= 0) {
@@ -255,6 +263,12 @@ Scenes.claw = (() => {
           Sfx.play('ui_deny');
           noTokenT = 2;
           say(vpick(['Out of tokens. Go stitch something. Or someone.', 'No token, no grab. Your creations can earn you more.']), 3);
+          return;
+        }
+        if (sim.carX > M.chuteX0 + 4) { // over the prize chute there is nothing to grab: don't burn a token on a sure miss
+          Sfx.play('ui_deny');
+          chuteWarnT = 1.6;
+          say(vpick(['That\'s the chute. Over the pile, please.', 'Prizes go IN there. Steer left.', 'Nothing to grab in the chute. Go left.']), 2.4);
           return;
         }
         Game.tokens--;
@@ -282,6 +296,7 @@ Scenes.claw = (() => {
       const [hx, hy] = [sim.hub.getPosition().x * PPM, sim.hub.getPosition().y * PPM];
       switch (type) {
         case 'drop':
+          missShown = false;
           Sfx.play('claw_drop');
           if (d.iron) { ironFlash = 0.6; fxW.burst(hx, hy + 14, 10, { speed: 34, life: 0.5, color: ['#fff1a6', '#f6c64b'] }); Engine.flash('#f6c64b', 0.12); }
           if (vchance(0.35)) say(vpick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
@@ -305,12 +320,12 @@ Scenes.claw = (() => {
         case 'quakePulse': {
           Engine.shake(d.big ? 4.5 : 2.6, 0.14);
           const n = d.big ? 7 : 3;
-          for (let i = 0; i < n; i++) fxW.add({ x: rand(4, 176), y: rand(-2, 6), vx: rand(-6, 6), vy: rand(6, 24), ay: 55, life: rand(0.5, 1.2), color: pick(['#6e5580', '#45365f', '#a08962', '#c9b8e0']), size: pick([1, 1, 2]) });
-          if (d.big) fxW.burst(rand(10, 130), M.floor - 6, 6, { speed: 26, angle: -Math.PI / 2, spread: 1.2, ay: 80, life: 0.5, color: ['#6e5580', '#45365f', '#a08962'] });
+          for (let i = 0; i < n; i++) fxW.add({ x: vrand(4, 176), y: vrand(-2, 6), vx: vrand(-6, 6), vy: vrand(6, 24), ay: 55, life: vrand(0.5, 1.2), color: vpick(['#6e5580', '#45365f', '#a08962', '#c9b8e0']), size: vpick([1, 1, 2]) });
+          if (d.big) fxW.burst(vrand(10, 130), M.floor - 6, 6, { speed: 26, angle: -Math.PI / 2, spread: 1.2, ay: 80, life: 0.5, color: ['#6e5580', '#45365f', '#a08962'] });
           break;
         }
         case 'unlock':
-          if (d.why === 'quake') say(pick(['New layout. Same pile. Funny how that works.', 'Look at that. A whole new set of possibilities.', 'Everything\'s in a different place. Isn\'t that nice?', 'Settled. Mostly. The bones are still talking.']), 2.6);
+          if (d.why === 'quake') say(vpick(['New layout. Same pile. Funny how that works.', 'Look at that. A whole new set of possibilities.', 'Everything\'s in a different place. Isn\'t that nice?', 'Settled. Mostly. The bones are still talking.']), 2.6);
           break;
         case 'nudge': {
           Sfx.play('nudge', { pan: d.dir * 0.5 });
@@ -332,20 +347,45 @@ Scenes.claw = (() => {
             else if (vchance(0.6)) say(vpick(['Got something!', 'Ooh.', 'Hold it... hold it...', 'Easy does it.']), 1.6);
           }
           break;
-        case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); break;
+        case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); Game.seen.carries = (Game.seen.carries || 0) + 1; break;
+        case 'empty': // nothing in the claw: say so right away instead of after a pointless carry
+          if (!sim.turn || !sim.turn.grabbed.size) {
+            missShown = true;
+            Sfx.play('miss');
+            say(vpick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Aim for the middle of it.']), 2.2);
+          }
+          break;
         case 'gripLost':
+          lastLoss = d.why;
           Telemetry.c.bySlipWhy[d.why] = (Telemetry.c.bySlipWhy[d.why] || 0) + 1;
           break;
         case 'slip': {
+          if (sim.carX >= M.chuteX0) break; // over the chute it falls in: the win beat takes over
           Sfx.play('slip');
           const [px, py] = sim.partPos(d.part);
           fxW.burst(px, py, 6, { speed: 25, ay: 60, life: 0.4, color: ['#fff6e3', '#cdb892'] });
-          const why = d.part.twitchT && sim.time - d.part.twitchT < 0.6;
-          say(why ? vpick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
-            vpick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
+          if (sim.carX > M.guardX - 32) { // dropped within a claw-length of the chute: the "one more try" moment
+            Telemetry.c.nearMiss++;
+            Engine.slowmo(0.35, 0.3);
+            Engine.shake(2, 0.2);
+            const [sx, sy] = toScreen(px, py);
+            fxS.text(clamp(sx, 50, 330), sy - 10, 'SO CLOSE!', '#ff8ac6', { font: 'main', life: 1.3, vy: -16, outline: PAL.k });
+            say(vpick(['SO close. The chute was RIGHT there.', 'Inches. Literal inches.', 'The chute felt that.', 'Ohh. Ohh no. So close.']), 2.4);
+            break;
+          }
+          const quips = {
+            twitch: ['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.'],
+            jolt: ['The top always gets them.', 'The jolt at the top. Every time.', 'So close to the top. Rude.'],
+            swing: ['Swing it less. It gets dizzy.', 'You yanked it. Gently does it.', 'Too much stick, too fast. Watch the meter.', 'Gravity: undefeated.'],
+            stuck: ['It was pinned under the others.', 'Wedged in. Try one off the top.'],
+          };
+          say(vpick(quips[lastLoss] || ['Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.']), 2.4);
           break;
         }
-        case 'release': Sfx.play('claw_open'); break;
+        case 'release':
+          Sfx.play('claw_open');
+          if (d.timeout) { Sfx.play('ui_deny'); say(vpick(['Too slow! The claw has a schedule.', 'Time! It lets go on its own.']), 2.2); }
+          break;
         case 'win': onWin(d); break;
         case 'turnEnd': {
           Telemetry.grabEnd(d.result, d.won);
@@ -355,7 +395,7 @@ Scenes.claw = (() => {
             if (!Game.seen.luckHint) { Game.seen.luckHint = true; luckHint = 5; setTimeout(() => { if (Engine.sceneName === 'claw') say('Bad luck is worth something here. Watch the LUCK meter.', 3.4); }, 250); }
             else if (d.redo && Rig.luck >= Rig.cost('redo') && !Game.seen.redoHint) { Game.seen.redoHint = true; cellPulse.redo = 7; setTimeout(() => { if (Engine.sceneName === 'claw') say('Want that one back? REDO turns back time. Press ' + Settings.hint('redo') + '.', 3.4); }, 250); }
           }
-          if (d.result === 'miss') {
+          if (d.result === 'miss' && !missShown) {
             Sfx.play('miss');
             if (!Game.talk.visible() || vchance(0.5)) say(vpick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
           }
@@ -382,6 +422,7 @@ Scenes.claw = (() => {
           Sfx.play('restock');
           const [px, py] = sim.partPos(d.part);
           fxW.burst(px, py, 8, { speed: 20, life: 0.5, color: [RARITY[d.part.def.rarity].color, '#fff6e3'] });
+          if (d.part.from) { const [sx, sy] = toScreen(px, py); fxS.text(sx, sy + 8, poss(d.part.from), '#a08962', { life: 1.4, vy: -10 }); }
           break;
         }
       }
@@ -390,9 +431,10 @@ Scenes.claw = (() => {
 
   function onWin(d) {
     const p = d.part, def = p.def, r = RARITY[def.rarity];
-    Game.addPart(p.type);
+    Game.addPart(p.type, p.from);
     Game.tally('parts');
     turnWins++;
+    if (p.from) Telemetry.c.homecomings++;
     Telemetry.c.wonRarity[def.rarity]++;
     if (!d.inTurn) Telemetry.c.freebies++;
     Telemetry.log('won', { part: p.type, rarity: def.rarity });
@@ -420,7 +462,7 @@ Scenes.claw = (() => {
       [`A ${def.name}! Someone's getting spoiled.`, `${def.name}! Oh, that's a GOOD part.`],
       ['...I was saving that one.', `The ${def.name}. You absolute ghoul.`],
     ][order];
-    say(vpick(lines), 2.6);
+    say(p.from && order < 3 ? vpick([`${poss(p.from)} ${def.name}. Welcome home.`, `Oh. ${poss(p.from)} ${def.name}. Hello again.`, `${p.from} did say they'd be back.`]) : vpick(lines), 2.6);
     if (!d.inTurn) say('Free part! Don\'t tell the manager. I\'m the manager.', 2.6);
   }
 
@@ -472,29 +514,29 @@ Scenes.claw = (() => {
       case 'deny':
         if (!inClaw) break;
         Sfx.play('ui_deny');
-        if (d.why === 'luck') { noLuckT = 1.2; say(pick(['Not enough luck. Go fail a little more.', 'Luck is tight. Misfortune is a resource.', 'Short on luck. Try being unlucky.']), 2.2); }
+        if (d.why === 'luck') { noLuckT = 1.2; say(vpick(['Not enough luck. Go fail a little more.', 'Luck is tight. Misfortune is a resource.', 'Short on luck. Try being unlucky.']), 2.2); }
         else if (d.why === 'tilt') say('TILT! Nothing works until it cools off.', 2);
         else if (d.why === 'none') say('Nothing to undo. Yet.', 1.6);
         break;
       case 'tilt':
-        if (inClaw) say(pick(['TILT! Hands off the glass!', 'Told you. Pinball rules.', 'The machine has feelings. Mostly anger.']), 2.6);
+        if (inClaw) say(vpick(['TILT! Hands off the glass!', 'Told you. Pinball rules.', 'The machine has feelings. Mostly anger.']), 2.6);
         break;
       case 'used':
         if (!inClaw) break;
         switch (d.name) {
-          case 'quake': say(pick(['Hold onto your bones!', 'Hope you like surprises.', 'The dead are restless today.', 'Shake it. Shake it ALL.']), 2.2); break;
+          case 'quake': say(vpick(['Hold onto your bones!', 'Hope you like surprises.', 'The dead are restless today.', 'Shake it. Shake it ALL.']), 2.2); break;
           case 'nudgeL': case 'nudgeR':
-            if (!d.tilt && chance(0.35)) say(pick(['Gentle...', 'Careful with the glass.', 'A little nudge never hurt. Much.']), 1.6);
+            if (!d.tilt && vchance(0.35)) say(vpick(['Gentle...', 'Careful with the glass.', 'A little nudge never hurt. Much.']), 1.6);
             break;
           case 'grip':
-            say(d.disarm ? 'Changed your mind? Luck refunded.' : pick(['Iron grip. Try not to squeeze the life out of it.', 'A little necromancy on the prongs.', 'That claw is not letting go.']), 2.4);
+            say(d.disarm ? 'Changed your mind? Luck refunded.' : vpick(['Iron grip. Try not to squeeze the life out of it.', 'A little necromancy on the prongs.', 'That claw is not letting go.']), 2.4);
             break;
           case 'order':
             Sfx.play('order');
             fxS.text(194, 70, 'SPECIAL ORDER', '#6fd3ff', { font: 'main', scale: 2, life: 1.4, vy: -6, drag: 0.6, outline: PAL.k });
             say(`One ${SLOT_NAMES[d.slot].toLowerCase()}, fresh from the back room.`, 2.6);
             break;
-          case 'redo': say(pick(['Rewinding. Don\'t ask how.', 'Never happened. Try again.', 'Time is cheap down here.']), 2.4); break;
+          case 'redo': say(vpick(['Rewinding. Don\'t ask how.', 'Never happened. Try again.', 'Time is cheap down here.']), 2.4); break;
         }
         break;
     }
@@ -661,7 +703,7 @@ Scenes.claw = (() => {
       g.save();
       g.translate(q.x * PPM, q.y * PPM);
       g.rotate(a);
-      if (held && blinkOn(t, 2.5)) { g.drawImage(SPR.outline(name, '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
+      if (held && blinkOn(t, 2.5 + swayLvl)) { g.drawImage(SPR.outline(name, ['#fff6e3', '#f6c64b', '#e8405a'][swayLvl]), -s.w / 2 - 1, -s.h / 2 - 1); }
       else if (glow > 0) { g.globalAlpha = glow; g.drawImage(SPR.outline(name, rar.glow), -s.w / 2 - 1, -s.h / 2 - 1); g.globalAlpha = 1; }
       g.drawImage(s.c, -s.w / 2, -s.h / 2);
       g.restore();
@@ -879,9 +921,17 @@ Scenes.claw = (() => {
       const hot = b.hover || b.held;
       const pulse = b === btn.back && noTokenT > 0 && blinkOn(t, 1.6);
       if (hot || pulse) Draw.rect(ctx, b.x, b.y, b.w, b.h, pulse ? '#5a1834' : '#2b2d3d');
-      ico(b === btn.drop ? 'btn_a' : 'btn_b', b.x + 9, b.y + 7, b === btn.drop ? 'A' : 'B');
-      Font.draw(ctx, b.label, b.x + 20, b.y + 4, { color: b === btn.drop && (Game.tokens <= 0 || sim.lockT > 0) && sim.state === 'idle' ? '#7a6a9a' : '#ecdcbc' });
+      let lx = b.x + 20;
+      if (Input.lastDevice === 'keys') { // keyboard players see their own keys, not gamepad glyphs
+        const cap = Settings.hint(b === btn.drop ? 'a' : 'b'), cw = Font.measure(cap, 'small') + 5;
+        Draw.rect(ctx, b.x + 1, b.y + 2, cw, 10, '#1b1526'); Draw.rect(ctx, b.x + 1, b.y + 2, cw, 9, '#3c4257'); Draw.rect(ctx, b.x + 1, b.y + 2, cw, 1, '#677089');
+        Font.draw(ctx, cap, b.x + 3, b.y + 4, { font: 'small', color: '#ecdcbc' });
+        lx = b.x + cw + 5;
+      } else ico(b === btn.drop ? 'btn_a' : 'btn_b', b.x + 9, b.y + 7, b === btn.drop ? 'A' : 'B');
+      const dead = b === btn.drop && ((Game.tokens <= 0 || sim.lockT > 0) && sim.state === 'idle' || !['idle', 'drop', 'carry'].includes(sim.state));
+      Font.draw(ctx, b.label, lx, b.y + 4, { color: dead ? '#7a6a9a' : '#ecdcbc' });
     }
+    if (chuteWarnT > 0 && blinkOn(t, 2.5)) Draw.frame(ctx, btn.left.x - 1, btn.left.y - 1, btn.left.w + 2, btn.left.h + 2, '#ff8ac6');
     if (btn.left.held || Input.held('left')) Draw.frame(ctx, btn.left.x, btn.left.y, btn.left.w, btn.left.h, '#fff6e3');
     if (btn.right.held || Input.held('right')) Draw.frame(ctx, btn.right.x, btn.right.y, btn.right.w, btn.right.h, '#fff6e3');
 
@@ -891,9 +941,11 @@ Scenes.claw = (() => {
       const [px, py] = sim.partPos(gp);
       const [sx, sy] = toScreen(px, py);
       const r = RARITY[gp.def.rarity];
-      const txt = gp.def.name + (r.order ? ' · ' + r.name : '');
-      Font.draw(ctx, txt, clamp(sx, 60, 330), sy + 26, { color: r.color, align: 'center', outline: PAL.k });
-      drawSway(ctx, clamp(sx, 60, 330), sy + 38);
+      const txt = (gp.from ? poss(gp.from) + ' ' : '') + gp.def.name + (r.order ? ' · ' + r.name : '');
+      const lx = clamp(sx, 90, 300);
+      Font.draw(ctx, txt, lx, sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      if (gp.def.set) Font.draw(ctx, PART_SETS[gp.def.set].name.toUpperCase() + ' SET', lx, sy + 37, { font: 'small', color: '#f6c64b', align: 'center', outline: PAL.k });
+      drawSway(ctx, lx, sy + (gp.def.set ? 47 : 38));
     }
     if (sim.state === 'carry' && CONFIG.carryTime > 0) {
       const k = 1 - sim.stateT / CONFIG.carryTime;
@@ -902,6 +954,19 @@ Scenes.claw = (() => {
       Draw.rect(ctx, cx - 15, 45, Math.max(0, 30 * k), 1, k < 0.3 && blinkOn(t, 3) ? PAL.R : PAL.d);
       const left = Math.max(0, Math.ceil(CONFIG.carryTime - sim.stateT));
       if (left <= 3) Font.draw(ctx, String(left), cx, 36, { font: 'small', color: '#fff6e3', align: 'center', outline: PAL.k }); // the number, not just the colour
+    }
+    // the first two carries: spell out steer -> chute -> release (nothing else teaches it).
+    // The text sits on the side of the glass away from the claw so it never covers the held part.
+    if (sim.state === 'carry' && (sim.grips.length || sim.held.size) && (Game.seen.carries || 0) <= 2) {
+      const over = sim.carX > M.chuteX0 + 4, a = 0.75 + 0.2 * Math.sin(t * 6), cgx = (sim.carX + GX) * 2;
+      const hx = cgx < 190 ? Math.min(cgx + 100, 296) : Math.max(cgx - 100, 100); // keep ~100 px clear of the claw
+      const key = Input.lastDevice === 'keys' ? Settings.hint('a') : Input.lastDevice === 'pad' ? 'A' : 'THE RELEASE BUTTON';
+      if (over) Font.draw(ctx, 'NOW RELEASE!  (' + key + ')', hx, 84, { font: 'small', color: '#9be38f', align: 'center', alpha: a, outline: PAL.k });
+      else {
+        Font.draw(ctx, 'STEER TO THE CHUTE  →', hx, 78, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
+        Font.draw(ctx, 'THEN PRESS ' + key + ' TO RELEASE', hx, 89, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
+        Font.draw(ctx, 'KEEP IT STEADY', hx, 100, { font: 'small', color: '#9be38f', align: 'center', alpha: a * 0.8, outline: PAL.k });
+      }
     }
     // first-time controls hint, inside the glass, until the player does anything
     if (!movedOnce && sim.state === 'idle' && Game.tokens === CONFIG.startTokens) {

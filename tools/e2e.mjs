@@ -97,7 +97,7 @@ const tests = {
     const b = await shot(page);
     assert(a.equals(b), 'the screen changed while paused: the clock kept running');
     // every way of acting on the fight: keys, and a click on the ZAP button behind the menu
-    await clickGame(page, 60, 219); await clickGame(page, 60, 235);
+    await clickGame(page, 60, 219); await clickGame(page, 60, 235); await clickGame(page, 60, 251); // ZAP, SPEED, RETREAT
     assert((await page.evaluate(() => Telemetry.c.zaps)) === zaps, 'ZAP worked while paused');
     assert(await page.evaluate(() => Engine.sceneName === 'battle'), 'RETREAT/leave worked while paused');
     await press(page, 'KeyP', 250);

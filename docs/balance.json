@@ -1,5 +1,5 @@
 {
- "fingerprint": "8af94c1ae332",
+ "fingerprint": "8fb3626fdf0a",
  "numbers": {
   "config": {
    "clawMoveSpeed": 70,
@@ -83,7 +83,8 @@
     "mat": "bone",
     "density": 1,
     "hp": 6,
-    "atk": 2
+    "atk": 2,
+    "set": "skeleton"
    },
    "wolfskull": {
     "name": "Wolf Skull",
@@ -94,7 +95,8 @@
     "density": 1,
     "hp": 8,
     "atk": 5,
-    "trait": "bite"
+    "trait": "bite",
+    "set": "beast"
    },
    "eyeball": {
     "name": "Big Eyeball",
@@ -109,7 +111,8 @@
     "shape": "circle",
     "alive": true,
     "restitution": 0.45,
-    "grip": 0.7
+    "grip": 0.7,
+    "set": "abyssal"
    },
    "demonskull": {
     "name": "Demon Skull",
@@ -120,7 +123,8 @@
     "density": 1.1,
     "hp": 10,
     "atk": 4,
-    "trait": "hellfire"
+    "trait": "hellfire",
+    "set": "abyssal"
    },
    "crownskull": {
     "name": "Crowned Skull",
@@ -132,7 +136,8 @@
     "hp": 14,
     "atk": 5,
     "trait": "royal",
-    "grip": 0.9
+    "grip": 0.9,
+    "set": "royal"
    },
    "ribcage": {
     "name": "Ribcage",
@@ -141,7 +146,8 @@
     "sprite": "p_ribcage",
     "mat": "bone",
     "density": 0.8,
-    "hp": 20
+    "hp": 20,
+    "set": "skeleton"
    },
    "stitched": {
     "name": "Stitched Torso",
@@ -161,7 +167,8 @@
     "density": 1.5,
     "hp": 24,
     "def": 2,
-    "trait": "plated"
+    "trait": "plated",
+    "set": "royal"
    },
    "ogregut": {
     "name": "Ogre Gut",
@@ -172,7 +179,8 @@
     "density": 1.1,
     "hp": 42,
     "trait": "hefty",
-    "grip": 0.8
+    "grip": 0.8,
+    "set": "ogre"
    },
    "bonearm": {
     "name": "Bony Arm",
@@ -182,7 +190,8 @@
     "mat": "bone",
     "density": 1,
     "atk": 3,
-    "alive": true
+    "alive": true,
+    "set": "skeleton"
    },
    "fleshArm": {
     "name": "Fleshy Arm",
@@ -204,7 +213,8 @@
     "density": 1,
     "atk": 5,
     "trait": "rend",
-    "alive": true
+    "alive": true,
+    "set": "beast"
    },
    "swordarm": {
     "name": "Sword Arm",
@@ -214,7 +224,8 @@
     "mat": "metal",
     "density": 1.2,
     "atk": 7,
-    "grip": 0.9
+    "grip": 0.9,
+    "set": "royal"
    },
    "tentacle": {
     "name": "Tentacle",
@@ -226,7 +237,8 @@
     "atk": 5,
     "trait": "reach",
     "alive": true,
-    "grip": 0.8
+    "grip": 0.8,
+    "set": "abyssal"
    },
    "ogrearm": {
     "name": "Ogre Arm",
@@ -238,7 +250,8 @@
     "atk": 11,
     "trait": "smash",
     "alive": true,
-    "grip": 0.85
+    "grip": 0.85,
+    "set": "ogre"
    },
    "boneleg": {
     "name": "Bony Leg",
@@ -247,7 +260,8 @@
     "sprite": "p_boneleg",
     "mat": "bone",
     "density": 1,
-    "spd": 3
+    "spd": 3,
+    "set": "skeleton"
    },
    "fleshLeg": {
     "name": "Fleshy Leg",
@@ -277,7 +291,8 @@
     "mat": "flesh",
     "density": 1,
     "spd": 5,
-    "trait": "nimble"
+    "trait": "nimble",
+    "set": "beast"
    },
    "heart": {
     "name": "Heart",
@@ -303,7 +318,8 @@
     "trait": "undying",
     "shape": "circle",
     "alive": true,
-    "grip": 0.8
+    "grip": 0.8,
+    "set": "abyssal"
    },
    "goldheart": {
     "name": "Heart of Gold",
@@ -315,7 +331,8 @@
     "hp": 20,
     "trait": "golden",
     "shape": "circle",
-    "grip": 0.85
+    "grip": 0.85,
+    "set": "royal"
    },
    "wings": {
     "name": "Bat Wings",
@@ -324,7 +341,8 @@
     "sprite": "p_wings",
     "mat": "flesh",
     "density": 0.6,
-    "trait": "flutter"
+    "trait": "flutter",
+    "set": "abyssal"
    },
    "tail": {
     "name": "Bone Tail",
@@ -336,7 +354,8 @@
     "atk": 2,
     "trait": "whip",
     "chain": 6,
-    "alive": true
+    "alive": true,
+    "set": "beast"
    }
   },
   "enemies": {
@@ -494,11 +513,11 @@
   "rows": {
    "1 creature, 3 parts": {
     "1": 100,
-    "2": 72,
-    "3": 18,
+    "2": 75,
+    "3": 22,
     "4": 10,
     "5": 3,
-    "6": 20,
+    "6": 17,
     "8": 0,
     "10": 0,
     "12": 0,
@@ -506,13 +525,13 @@
    },
    "1 creature, 5 parts": {
     "1": 100,
-    "2": 97,
-    "3": 72,
-    "4": 42,
-    "5": 30,
-    "6": 72,
+    "2": 100,
+    "3": 90,
+    "4": 45,
+    "5": 28,
+    "6": 77,
     "8": 3,
-    "10": 0,
+    "10": 2,
     "12": 0,
     "15": 0
    },
@@ -520,10 +539,10 @@
     "1": 100,
     "2": 100,
     "3": 85,
-    "4": 63,
-    "5": 35,
-    "6": 73,
-    "8": 2,
+    "4": 67,
+    "5": 28,
+    "6": 70,
+    "8": 0,
     "10": 0,
     "12": 0,
     "15": 0
@@ -533,12 +552,12 @@
     "2": 100,
     "3": 100,
     "4": 100,
-    "5": 92,
+    "5": 95,
     "6": 100,
-    "8": 60,
-    "10": 42,
-    "12": 10,
-    "15": 0
+    "8": 67,
+    "10": 45,
+    "12": 12,
+    "15": 3
    },
    "3 creatures, 7 parts": {
     "1": 100,
@@ -547,10 +566,10 @@
     "4": 100,
     "5": 100,
     "6": 100,
-    "8": 95,
-    "10": 78,
-    "12": 45,
-    "15": 5
+    "8": 97,
+    "10": 97,
+    "12": 57,
+    "15": 15
    }
   }
  },
@@ -577,8 +596,8 @@
     "6": 100,
     "8": 100,
     "10": 100,
-    "12": 98,
-    "15": 95
+    "12": 100,
+    "15": 97
    },
    "2 creatures, 8 parts, best of 3": {
     "1": 100,
@@ -589,8 +608,8 @@
     "6": 100,
     "8": 100,
     "10": 100,
-    "12": 88,
-    "15": 57
+    "12": 100,
+    "15": 80
    }
   }
  },
@@ -598,57 +617,57 @@
   "tank": {
    "wisps  x4": {
     "win": 100,
-    "hpLeft": 91
+    "hpLeft": 90
    },
    "shades x3": {
     "win": 100,
-    "hpLeft": 78
+    "hpLeft": 82
    },
    "wraith x1": {
     "win": 100,
-    "hpLeft": 53
+    "hpLeft": 55
    }
   },
   "plated": {
    "wisps  x4": {
     "win": 100,
-    "hpLeft": 84
+    "hpLeft": 83
    },
    "shades x3": {
-    "win": 23,
-    "hpLeft": 33
+    "win": 37,
+    "hpLeft": 34
    },
    "wraith x1": {
     "win": 73,
-    "hpLeft": 26
+    "hpLeft": 27
    }
   },
   "bruiser": {
    "wisps  x4": {
     "win": 100,
-    "hpLeft": 71
+    "hpLeft": 73
    },
    "shades x3": {
     "win": 98,
-    "hpLeft": 63
+    "hpLeft": 62
    },
    "wraith x1": {
     "win": 100,
-    "hpLeft": 74
+    "hpLeft": 75
    }
   },
   "skirmish": {
    "wisps  x4": {
     "win": 100,
-    "hpLeft": 65
+    "hpLeft": 74
    },
    "shades x3": {
-    "win": 0,
-    "hpLeft": 0
+    "win": 2,
+    "hpLeft": 17
    },
    "wraith x1": {
-    "win": 10,
-    "hpLeft": 30
+    "win": 18,
+    "hpLeft": 36
    }
   }
  },
@@ -656,62 +675,62 @@
   "careful": {
    "runs": 200,
    "finished": 98,
-   "in30": 80,
+   "in30": 91,
    "in60": 97,
    "in90": 98,
-   "medianMin": 25,
-   "reachedBoss1": 98,
+   "medianMin": 23,
+   "reachedBoss1": 99,
    "medianCleared": 15,
-   "grabs": 86.8,
-   "fightsLost": 2.6,
-   "retreats": 2,
+   "grabs": 75.9,
+   "fightsLost": 2.8,
+   "retreats": 2.1,
    "lostParts": 0,
-   "tokensPerMin": 7.28
+   "tokensPerMin": 7.99
   },
   "average": {
    "runs": 200,
-   "finished": 96,
-   "in30": 67,
-   "in60": 94,
-   "in90": 96,
-   "medianMin": 27,
-   "reachedBoss1": 97,
+   "finished": 97,
+   "in30": 80,
+   "in60": 97,
+   "in90": 97,
+   "medianMin": 25,
+   "reachedBoss1": 98,
    "medianCleared": 15,
-   "grabs": 96.5,
-   "fightsLost": 4,
-   "retreats": 2.9,
+   "grabs": 83.8,
+   "fightsLost": 2.9,
+   "retreats": 2.1,
    "lostParts": 0,
-   "tokensPerMin": 6.68
+   "tokensPerMin": 7.54
   },
   "masher": {
    "runs": 200,
-   "finished": 48,
-   "in30": 12,
-   "in60": 43,
-   "in90": 47,
-   "medianMin": 34,
-   "reachedBoss1": 81,
-   "medianCleared": 14,
-   "grabs": 149.1,
-   "fightsLost": 38.6,
-   "retreats": 30,
+   "finished": 53,
+   "in30": 21,
+   "in60": 51,
+   "in90": 53,
+   "medianMin": 32,
+   "reachedBoss1": 75,
+   "medianCleared": 15,
+   "grabs": 125.8,
+   "fightsLost": 33.9,
+   "retreats": 25.7,
    "lostParts": 0,
-   "tokensPerMin": 3.04
+   "tokensPerMin": 3.28
   },
   "assisted": {
    "runs": 200,
-   "finished": 66,
-   "in30": 35,
-   "in60": 65,
-   "in90": 66,
-   "medianMin": 29,
+   "finished": 74,
+   "in30": 48,
+   "in60": 73,
+   "in90": 74,
+   "medianMin": 26,
    "reachedBoss1": 89,
    "medianCleared": 15,
-   "grabs": 124.3,
-   "fightsLost": 24.4,
-   "retreats": 19,
+   "grabs": 103.6,
+   "fightsLost": 19.2,
+   "retreats": 14.5,
    "lostParts": 0,
-   "tokensPerMin": 3.94
+   "tokensPerMin": 4.59
   },
   "farm15": {
    "runs": 200,
@@ -726,7 +745,7 @@
    "fightsLost": 60,
    "retreats": 60,
    "lostParts": 0,
-   "tokensPerMin": 3.27
+   "tokensPerMin": 3.64
   },
   "farm50": {
    "runs": 200,
@@ -737,11 +756,11 @@
    "medianMin": 0,
    "reachedBoss1": 0,
    "medianCleared": 0,
-   "grabs": 74.2,
-   "fightsLost": 60.5,
-   "retreats": 60.4,
+   "grabs": 74.1,
+   "fightsLost": 60.9,
+   "retreats": 60.8,
    "lostParts": 0,
-   "tokensPerMin": 5.6
+   "tokensPerMin": 5.62
   }
  },
  "claw": {
@@ -861,27 +880,27 @@
   {
    "name": "An average player finishes a run (90% or more)",
    "ok": true,
-   "detail": "96%"
+   "detail": "97%"
   },
   {
    "name": "A masher can still finish (40% or more), an assisted player too",
    "ok": true,
-   "detail": "masher 48%, assisted 66%"
+   "detail": "masher 53%, assisted 74%"
   },
   {
    "name": "A run takes 18 to 35 minutes for careful and average players (bot time, faster than a human)",
    "ok": true,
-   "detail": "careful 25 min, average 27 min"
+   "detail": "careful 23 min, average 25 min"
   },
   {
    "name": "No early wall: 95% of average players clear the first boss",
    "ok": true,
-   "detail": "97%"
+   "detail": "98%"
   },
   {
    "name": "Farming cannot beat playing: retreating at the first scratch earns less per minute than honest play",
    "ok": true,
-   "detail": "honest 6.68/min, farm15 3.27, farm50 5.6"
+   "detail": "honest 7.54/min, farm15 3.64, farm50 5.62"
   },
   {
    "name": "Nothing is wasted: no part physically leaves the machine in a real-physics run",
@@ -896,12 +915,12 @@
   {
    "name": "Build for the graveyard (2): a specialised build can be unable to beat an enemy at all (under 25%)",
    "ok": true,
-   "detail": "plated vs shades x3 23%; skirmish vs shades x3 0%; skirmish vs wraith x1 10%"
+   "detail": "skirmish vs shades x3 2%; skirmish vs wraith x1 18%"
   },
   {
    "name": "A full party built from good picks beats stage 5 reliably and the final stage more often than not",
    "ok": true,
-   "detail": "stage 5: 100%, stage 15: 95%"
+   "detail": "stage 5: 100%, stage 15: 97%"
   }
  ]
 }

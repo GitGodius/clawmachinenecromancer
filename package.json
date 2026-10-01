@@ -13,6 +13,8 @@
     "tune": "node tools/tune.mjs",
     "rigcheck": "node tools/rig_check.mjs",
     "runs": "node tools/run_sim.mjs",
+    "play": "node tools/play.mjs",
+    "battle": "node tools/battle_sim.mjs",
     "verify": "node tools/build.mjs && node tools/test.mjs && node tools/rig_check.mjs && node tools/balance.mjs --check && node tools/e2e.mjs"
   },
   "devDependencies": {
