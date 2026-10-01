@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "tune": "node tools/tune.mjs",
-    "shots": "node tools/shots.mjs"
+    "play": "node tools/play.mjs",
+    "battle": "node tools/battle_sim.mjs"
   },
   "devDependencies": {
     "planck": "1.5.0",

@@ -2,7 +2,7 @@
 
 **Collect · Reanimate · Conquer.** A claw-machine necromancer prototype that runs in the browser.
 
-A hooded Reaper runs a claw machine full of body parts. Grab parts with a physics claw, stitch them into mismatched monsters on the slab, and send them to fight the shades in the graveyard. Winning earns more tokens, and the graveyard restocks the machine. Creatures that die go back into the pile.
+A hooded Reaper runs a claw machine full of body parts. Grab parts with a physics claw, stitch them into mismatched monsters on the slab, and send them to fight the shades in the graveyard. Winning earns more tokens, and the graveyard restocks the machine. Creatures that die go back into the pile with their names attached. Matching parts (three skeleton bits, a full royal set) give a creature a bonus, which is a reason to chase one particular part.
 
 ![scenes: shop · claw · slab · graveyard](docs/screens.png)
 
@@ -16,6 +16,7 @@ Controls:
 - **Claw:** ← → move, Space to drop, steer to the chute, Space to release, Esc to go back.
 - **Everything else:** mouse (touch works too). Gamepad works on the claw.
 - **Shortcuts:** M to mute, ` for the tuning panel, P for the playtest report.
+- **Battle:** SPEED x1/x2 in the menu. The panel at the top shows what winning pays.
 
 ## What this prototype is testing
 
@@ -29,11 +30,11 @@ Is the claw grab fun enough to be the core of a monster-building game? [PROTOTYP
 ## Build and tools
 
 ```sh
-npm install                     # dev tools only: planck (vendored copy is in vendor/), playwright-core
+npm install                     # dev tools only: playwright-core for play.mjs/shot.mjs (the sims fall back to the vendored planck)
 node tools/build.mjs            # -> index.html + dev.html
 node tools/tune.mjs 300         # headless claw bot: grab/slip odds per part
 node tools/battle_sim.mjs 60    # headless battle balance per stage
-node tools/play.mjs "dev.html?scene=claw" out '[{"hold":"ArrowLeft","ms":800},{"press":"Space"},{"wait":6000},{"shot":"grab"}]'
+DSF=2 node tools/play.mjs "dev.html?scene=claw" out '[{"hold":"ArrowLeft","ms":800},{"press":"Space"},{"wait":6000},{"clip":[0,0,480,270],"shot":"grab"}]'   # clip crops in game pixels; DSF sharpens
 ```
 
 ## Credits

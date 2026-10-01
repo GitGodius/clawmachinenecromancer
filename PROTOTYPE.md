@@ -20,9 +20,9 @@ Open `index.html` in any modern browser. It's one self-contained file and works 
 | Where | Controls |
 |---|---|
 | Shop (hub) | Click the signs: **COLLECT** (claw), **COMBINE** (slab), **COMMAND** (graveyard). Keyboard: ↑↓ and Space. |
-| Claw | **← →** move (or **hold the mouse or a finger on the glass** to steer toward the pointer) · **Space/Enter/Z** drop (press again mid-drop to stop early) · steer to the chute · **Space** releases · **Esc/X** back. There are on-screen buttons for mouse and touch, and a gamepad works too (d-pad, A, B). |
-| Slab | Click a part to stitch it on. Click a slot to take it off. **BRING TO LIFE** when you're ready. You can have up to 3 creatures; click a portrait twice to unstitch it. |
-| Graveyard | **FIGHT**, then **ZAP** (heals 30% and hastes, on a cooldown). **RETREAT** keeps survivors but earns no reward. |
+| Claw | **← →** move (or **hold the mouse or a finger on the glass** to steer toward the pointer) · **Space/Enter/Z** drop (press again mid-drop to stop early) · steer to the chute · **Space** releases · **Esc/X** back. Dropping while the claw is over the chute is refused (no token spent), and dropping while moving makes the claw stop and settle first, so it lands where the guide was. There are on-screen buttons for mouse and touch, and a gamepad works too (d-pad, A, B). The controls box shows SPACE and ESC for keyboard players, and the first two carries print a steer-to-the-chute hint. |
+| Slab | Click a part to stitch it on. Click a slot to take it off. **BRING TO LIFE** when you're ready. Tooltips show set progress and who a part used to be. You can have up to 3 creatures; click a portrait twice to unstitch it. |
+| Graveyard | **FIGHT**, then **ZAP** (heals 30% and hastes, on a cooldown). **SPEED x1/x2** speeds the fight up and is remembered. The panel at the top shows exactly what winning pays. **RETREAT** keeps survivors but earns no reward. |
 | Anywhere | **M** mutes · **F** goes fullscreen · **`** (backquote) or the ⚙ button opens the tuning panel · **P** opens the playtest report. |
 
 **The loop:** tokens pay for grabs, grabs give parts, parts become creatures, creatures win battles, and battles pay tokens and drop new parts into the machine. Dead creatures go back into the pile too.
@@ -39,6 +39,7 @@ Handy URL flags for testing:
 
 - One machine, one graveyard lane, one enemy family. It has three sizes: Wisp, Shade, and a Wraith boss every 5 stages.
 - 24 part types filling 8 attachment points (head, torso, 2 arms, 2 legs, heart, back). There are 4 rarities and 15 traits, such as Wolf Skull *Bite*, Tentacle *Reach*, Black Heart *Undying* and Heart of Gold *+1 token per kill*.
+- **5 part sets** (Skeleton, Beast, Abyssal, Royal, Ogre): three matching parts on one creature (two for the Ogre set) give a bonus: +2 DEF, +30% ATK, hits burn, +20% ATK and +2 DEF, +25% HP and ATK. Aim decides *which* part you get (§6.5), so sets are what makes one particular part worth chasing.
 - Any combination of parts is a valid creature. No legs means it crawls, no arms means it bites, no torso means it's mostly stitches. Names come from the parts ("Barnaby No-Legs", "Gus the Tentacular").
 - **No save system, on purpose.** Refreshing starts a new run. No meta-progression and no shop upgrades.
 
@@ -58,12 +59,18 @@ Handy URL flags for testing:
   - **Win:** the chute catch hit-pauses, the bulbs chase, and the prize flies into your bag. Rare catches get slow-mo; legendaries get a gold flash.
   - **Life in the pile:** eyeballs follow the claw, hearts pulse, and legendaries sparkle.
   - **The Reaper** comments on everything.
+- **Fair, fast retries.**
+  - **No wasted tokens:** DROP over the chute is refused with a nudge, and the claw settles before the cable pays out. Measured headless, dropping at full speed used to land about 33 px past the guide; now it lands within about 3–5 px, same as dropping at rest.
+  - **Misses are quick:** an empty claw releases at the top instead of waiting for a pointless carry (and rides up faster after a pure air grab), and the miss line plays right away.
+  - **Near misses:** a part that slips within a claw-length of the chute gets SO CLOSE!, a short slow-mo and a matching line, and is counted in the playtest report. A slip over the chute is a win, not a slip.
+- **Carry feedback.** A STEADY bar under the carry timer shows the slip chance per second right now. The held part's outline goes yellow then red, a creak plays when it goes red, and the Reaper's slip line names the cause (strain, the jolt at the top, a twitch, or swinging). *Strain* is the speed changes of the carriage while carrying (a full-speed start or stop is about 1, a reversal about 2, an end-stop slam is instant; it calms down over 0.6 s) and adds slip chance above a safe margin. `strainSlip = 0` is the old game. See §6b for how much it changes.
+- **Things to chase.** The graveyard shows its loot before you fight (the exact parts that will drop into the machine). Parts from a creature that died keep its name: they announce themselves when they fall in, the claw labels them ("Knuckles' Wolf Skull"), the Reaper welcomes them home when you win one back, and the slab tooltip says who they used to be.
 
 ## 5. Tools for finding the fun
 
 - **In-game tuning panel** (the **`** key). Every number in `src/js/01_config.js` gets a live slider: claw speeds and torques, slip odds, twitchiness, pile size, economy and battle multipliers, and juice amounts. **Copy values** puts your changes on the clipboard so you can paste them back into the config. It also has cheats: +5 tokens, refill the machine, drop in a legendary, +6 parts, win the battle.
 - **Playtest report** (the **P** key). It logs grabs, wins, slips (with the reason), misses and doubles. It also counts **one-more-try retries**, meaning the player drops again within 6 seconds of a fail, versus leaving the machine after a fail. Plus creatures made, battles, stages reached, and time spent per scene. Copy it after watching someone play.
-- **`tools/tune.mjs`** runs the *real* claw simulation headless in Node, with a bot that aims with human-like noise. Example: `node tools/tune.mjs 300 '{"gripAssist":0.2}' gripTorque=40,60,80` sweeps any setting.
+- **`tools/tune.mjs`** runs the *real* claw simulation headless in Node, with a bot that aims with human-like noise. `STYLE=careful|normal|keys|masher|feather|jerky` picks how the bot carries the part to the chute. Example: `node tools/tune.mjs 300 '{"gripAssist":0.2}' gripTorque=40,60,80` sweeps any setting.
 - **`tools/battle_sim.mjs`** runs the real battle code headless against random parties to check the difficulty curve.
 - **`tools/physdebug.html`** draws a grab as a filmstrip of physics shapes. That's how the grip problems in §6 were found.
 
@@ -86,7 +93,7 @@ These tests were automated (bots and headless simulation), not human playtests. 
    | Win the exact part aimed at | ~25–28% |
 
    Aim decides *which* part you get more than *whether* you get one.
-6. **Carry skill doesn't matter yet.** Gentle and jerky steering bots win about the same (52% vs 50%). The slip risk is dominated by the part wobbling inside the prongs, and with digital input there's no way to steer gently. *This is an open design problem* (see §8).
+6. **Carry skill doesn't matter yet.** Gentle and jerky steering bots win about the same (52% vs 50%). The slip risk is dominated by the part wobbling inside the prongs, and with digital input there's no way to steer gently. *This is an open design problem* (see §8). §6b has the follow-up measurements.
 7. **Battle curve** (headless, Zap used on cooldown). The Stage 5 boss is a deliberate wall that needs a full party of three.
 
    | Party | S1 | S2 | S3 | S4 | S5 (boss) | S8 | S10 |
@@ -105,6 +112,34 @@ These tests were automated (bots and headless simulation), not human playtests. 
    - Parts spilled into the chute on their own. The guard was raised.
    - A part-roll bug put skulls where hearts or torsos should be.
 
+### 6b. After the polish pass
+
+Headless again, same caveat: these tune the machine and answer nothing about fun.
+
+1. **Baseline held.** 300 bot grabs, 5 px aim noise: win ~52%, lift ~63%, slip ~11% (was ~50 / 63 / 12). The new fast-miss and settle-before-drop logic doesn't change the odds, it changes how long a miss takes (about 5 s per grab on average).
+2. **Carry skill is real but small.** 400 grabs per row, 2.5 px aim noise:
+
+   | Carry style | Wins | Slips |
+   |---|---|---|
+   | careful (smooth, slow, analog) | 52% | 10% |
+   | normal (full speed, proportional braking) | 52% | 10% |
+   | keys (hold, then let go to coast to the chute) | 53% | 9% |
+   | gentle start (eased over 1.5 s) | 55% | 8% |
+   | masher (nervous taps, reversals) | 41% | 21% |
+
+   Panicking costs about 11 points; carrying well gains about 1–3. Losses during a carry come from the *start jerk* (about 40% of carries lose the part within the first second of steering, whichever style) and the jolt at the top (about 13% of carries); waiting for the sway to settle doesn't help, because the jerk happens whenever you start moving. The strain term doesn't change these numbers: the swing hazard already punishes rough steering, so strain mostly relabels those losses (swing becomes strain) and gives the STEADY bar an instant leading indicator. **Making carry a real skill needs variable-speed input** (hold-to-ramp, or analog speed from the pointer), see §8.
+3. **Sets barely move the random-build curve** (a few points at Stage 4 and Stage 10) and keep the Stage 5 wall for small parties, because random draws rarely complete a set. They reward deliberate stitching. Re-measured (60 runs, Zap on cooldown):
+
+   | Party | S1 | S2 | S3 | S4 | S5 (boss) | S8 | S10 |
+   |---|---|---|---|---|---|---|---|
+   | 1 creature, 3 parts | 100% | 93% | 48% | 25% | 2% | 0% | 0% |
+   | 1 creature, 5 parts | 100% | 100% | 100% | 88% | 8% | 8% | 0% |
+   | 2 creatures, 4 parts | 100% | 100% | 100% | 87% | 15% | 2% | 0% |
+   | 3 creatures, 5 parts | 100% | 100% | 100% | 100% | 98% | 82% | 25% |
+   | 3 creatures, 7 parts | 100% | 100% | 100% | 100% | 100% | 97% | 87% |
+4. **Soak test.** Three bots mashing random keys and clicks for 60 seconds each (the source build, the single-file `index.html`, and a pre-filled bag and party): no script errors.
+5. **Bugs found on the way:** a normal release never emitted `slip` (only slips in mid-carry do), the title screen's prompt sat on the taller Reaper's head, and Tail Whip used a real-time `setTimeout` (it ignored battle speed and never fired in `battle_sim`).
+
 ## 7. How to playtest it (the real test)
 
 Don't explain anything. Hand over the laptop and watch. Afterwards press **P** and copy the report.
@@ -112,10 +147,11 @@ Don't explain anything. Hand over the laptop and watch. Afterwards press **P** a
 Watch for:
 
 - **The first 60 seconds.** Do they find the claw, understand move → drop → steer → release, and see that the chute is the goal?
-- **One more try.** After a slip or miss, do they drop again immediately? The report's *retried within 6s* counts this, and *left the machine* counts giving up. Watch for leaning in and any reaction when a part slips at the top.
-- **Wanting specific parts.** Do they chase the glowing rare or legendary part, or grab whatever is closest? Do they talk about a *specific* part they want?
+- **One more try.** After a slip or miss, do they drop again immediately? The report's *retried within 6s* counts this, and *left the machine* counts giving up. Watch for leaning in and any reaction when a part slips at the top or to SO CLOSE!. Does a miss (now quick) make them drop again?
+- **Wanting specific parts.** Do they chase the glowing rare or legendary part, or grab whatever is closest? Do they talk about a *specific* part they want, or a set they're building? Do they react to the loot panel in the graveyard, or to a dead creature's part coming back?
 - **Attachment.** Do they read their creature's name out loud? Do they rebuild or unstitch? Do they react when a creature falls apart?
 - **Where the time goes.** Check the report's time per scene. If the slab and graveyard feel like chores between grabs, that's useful information too.
+- **Battles as a chore.** The report counts SPEED toggles and seconds at x2. If most fights run at x2, the graveyard is a toll booth.
 - **The ending.** Do they ask to keep going after the Stage 5 Wraith, or after losing?
 
 Log each session with this template:
@@ -126,12 +162,15 @@ Log each session with this template:
 
 ## 8. Next steps
 
+**Already done in the polish pass:** sets, loot preview, named remains, fair retries, the STEADY bar, SPEED x2, a bigger Reaper (see §4 and §6b).
+
 **If the answer is yes**, meaning people retry and chase parts:
 
-- Make carrying a skill. Tie the slip risk to carriage acceleration, not wobble. Or give the carriage momentum so holding a direction speeds it up and tapping is gentle. Or show a wobble meter.
-- Give parts from the same creature a set bonus (e.g. a full ogre), so players chase *specific* parts.
-- Let players see the next restock falling into the machine before they fight, to set up "I want that".
-- Only then look at meta-progression: claw upgrades, more machines, more enemy families.
+- Make carrying a real skill with variable-speed input: holding a direction ramps the carriage up and tapping creeps (a gentle start), or analog speed from the pointer distance or the gamepad stick. §6b shows the start jerk is where the risk is, so that is where the control has to be.
+- Let the restock rain into the machine's window in the shop while the player is there, not only when they open the claw.
+- A run summary after the Stage 5 Wraith (minutes, grabs, win rate, creatures, who died), so the ending lands.
+- Abilities built from part traits (the old ABILITIES slot is now SPEED), so battles have a decision beyond ZAP.
+- Only then look at meta-progression: claw upgrades bought with tokens, a second machine with a different mix, more enemy families, saves.
 
 **If the answer is no**, stop. Kill signals:
 
@@ -146,10 +185,10 @@ Plain JavaScript files with no framework. `node tools/build.mjs` joins `src/js/*
 | File | What it does |
 |---|---|
 | `01_config.js` | every tunable number, and the metadata the panel's sliders are built from |
-| `03_palette.js` `04_sprites_core.js` `05_sprites_parts.js` `06_sprites_world.js` | pixel-art palette, sprite system, body parts and claw, characters, props and icons |
+| `03_palette.js` `04_sprites_core.js` `05_sprites_parts.js` `06_sprites_reaper.js` `06_sprites_world.js` | pixel-art palette, sprite system, body parts and claw, the shopkeeper (built procedurally at load time), characters, props and icons |
 | `07_font.js` | hand-made bitmap fonts |
 | `08_audio.js` | all sound effects and 4 music loops, synthesized with WebAudio (no audio files) |
-| `10_parts.js` | the part list, traits and rarity |
+| `10_parts.js` | the part list, traits, rarity and the five part sets |
 | `11_clawsim.js` | the machine: physics, claw state machine, grip and slip model (runs headless) |
 | `20_engine.js` | canvas, input, scenes, shake, hit-pause, slow-mo, particles, UI |
 | `21_backgrounds.js` | shop, lab and graveyard backgrounds |
