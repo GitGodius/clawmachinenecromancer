@@ -15,6 +15,8 @@ Scenes.claw = (() => {
   let lastBumpSfx = 0;
   let neonOff = 0;
   let turnWins = 0;
+  let toggleDir = 0; // steering mode 'toggle': tap a direction to start, tap again to stop
+  let toggleTarget = null; // ...and with a pointer: tap the glass and the claw goes there and stops
   const btn = {};
   const toScreen = (x, y) => [(x + GX) * 2, (y + GY) * 2];
   const say = (text, hold) => Game.talk.say(text, hold);
@@ -108,6 +110,7 @@ Scenes.claw = (() => {
   // ---------------------------------------------------------------- scene api
   const S = {
     enter() {
+      toggleDir = 0; toggleTarget = null;
       if (!buf) { [buf, g] = mk(BW, BH); buildGlass(); buildFrame(); }
       Music.play('claw');
       idleT = 0;
@@ -129,13 +132,35 @@ Scenes.claw = (() => {
       t += dt;
       const sim = Game.sim;
       let move = 0;
-      if (Input.held('left') || btn.left.held) move -= 1;
-      if (Input.held('right') || btn.right.held) move += 1;
+      const tog = Settings.v.steering === 'toggle';
+      if (tog) {
+        if (picker || (sim.state !== 'idle' && sim.state !== 'carry')) { toggleDir = 0; toggleTarget = null; }
+        else {
+          if (Input.hit('left')) toggleDir = toggleDir === -1 ? 0 : -1;
+          if (Input.hit('right')) toggleDir = toggleDir === 1 ? 0 : 1;
+          if (Input.hit('a')) toggleDir = 0; // dropping or releasing stops the carriage first
+        }
+        move = toggleDir;
+      } else toggleDir = 0;
+      if (!tog && (Input.held('left') || btn.left.held)) move -= 1;
+      if (!tog && (Input.held('right') || btn.right.held)) move += 1;
       // hold the mouse / a finger on the glass to steer the claw toward the pointer
       const mp = Input.mouse;
-      if (!move && !picker && mp.down && mp.x >= 14 && mp.x < 374 && mp.y >= 14 && mp.y < 258 && (sim.state === 'idle' || sim.state === 'carry')) {
-        const d = mp.x / 2 - GX - sim.carX;
-        if (Math.abs(d) > 2) move = clamp(d / 10, -1, 1);
+      const onGlass = !picker && mp.x >= 14 && mp.x < 374 && mp.y >= 14 && mp.y < 258 && (sim.state === 'idle' || sim.state === 'carry');
+      if (tog) {
+        // tap-to-toggle with a pointer: tap the glass and the claw goes there and stops; tap the arrows to toggle
+        if (mp.pressed && onGlass) toggleTarget = mp.x / 2 - GX;
+        if (toggleTarget != null && !move) {
+          const d = toggleTarget - sim.carX;
+          if (Math.abs(d) < 2 || (sim.state !== 'idle' && sim.state !== 'carry')) toggleTarget = null; else move = clamp(d / 10, -1, 1);
+        }
+        if (toggleDir) toggleTarget = null;
+      } else {
+        toggleTarget = null;
+        if (!move && mp.down && onGlass) {
+          const d = mp.x / 2 - GX - sim.carX;
+          if (Math.abs(d) > 2) move = clamp(d / 10, -1, 1);
+        }
       }
       if (picker) move = 0; // arrows move the menu selection, not the claw
       if (move) { movedOnce = true; idleT = 0; } else idleT += dt;
@@ -184,9 +209,9 @@ Scenes.claw = (() => {
       }
       // legendary sparkle
       for (const p of sim.parts) {
-        if (p.won || p.def.rarity !== 'legendary' || !chance(dt * 3)) continue;
+        if (p.won || p.def.rarity !== 'legendary' || !vchance(dt * 3)) continue;
         const [x, y] = sim.partPos(p);
-        fxW.add({ x: x + rand(-8, 8), y: y + rand(-8, 8), vy: -6, life: 0.6, color: pick([PAL.l, PAL.L, PAL.j]) });
+        fxW.add({ x: x + vrand(-8, 8), y: y + vrand(-8, 8), vy: -6, life: 0.6, color: vpick([PAL.l, PAL.L, PAL.j]) });
       }
 
       fxW.update(dt); fxS.update(dt);
@@ -195,7 +220,7 @@ Scenes.claw = (() => {
       bagBump = Math.max(0, bagBump - dt * 3);
       tokenBump = Math.max(0, tokenBump - dt * 3);
       noTokenT = Math.max(0, noTokenT - dt);
-      neonOff = neonOff > 0 ? neonOff - dt : chance(dt * 0.25) ? rand(0.05, 0.25) : 0;
+      neonOff = neonOff > 0 ? neonOff - dt : vchance(dt * 0.25) ? vrand(0.05, 0.25) : 0;
       for (const f of flying) f.t += dt;
       flying = flying.filter((f) => {
         if (f.t < f.dur) return true;
@@ -229,10 +254,11 @@ Scenes.claw = (() => {
           }
           Sfx.play('ui_deny');
           noTokenT = 2;
-          say(pick(['Out of tokens. Go stitch something. Or someone.', 'No token, no grab. Your creations can earn you more.']), 3);
+          say(vpick(['Out of tokens. Go stitch something. Or someone.', 'No token, no grab. Your creations can earn you more.']), 3);
           return;
         }
         Game.tokens--;
+        Game.tally('grabs');
         tokenBump = 1;
         turnWins = 0;
         slowmoDone = new Set();
@@ -258,7 +284,7 @@ Scenes.claw = (() => {
         case 'drop':
           Sfx.play('claw_drop');
           if (d.iron) { ironFlash = 0.6; fxW.burst(hx, hy + 14, 10, { speed: 34, life: 0.5, color: ['#fff1a6', '#f6c64b'] }); Engine.flash('#f6c64b', 0.12); }
-          if (chance(0.35)) say(pick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
+          if (vchance(0.35)) say(vpick(['Steady...', 'Ooh, bold.', 'Down she goes.', 'Mind the fingers.', 'Come to papa.']), 1.4);
           break;
         case 'land':
           Sfx.play('claw_land', { intensity: d.intensity });
@@ -302,8 +328,8 @@ Scenes.claw = (() => {
             const best = d.grips.slice().sort((a, b) => RARITY[b.def.rarity].order - RARITY[a.def.rarity].order)[0];
             Sfx.play('grab');
             const r = RARITY[best.def.rarity].order;
-            if (r >= 2) say(pick(['Oh, that\'s a good part.', 'Don\'t. Drop. It.', 'Careful. That one\'s precious.']), 2);
-            else if (chance(0.6)) say(pick(['Got something!', 'Ooh.', 'Hold it... hold it...', 'Easy does it.']), 1.6);
+            if (r >= 2) say(vpick(['Oh, that\'s a good part.', 'Don\'t. Drop. It.', 'Careful. That one\'s precious.']), 2);
+            else if (vchance(0.6)) say(vpick(['Got something!', 'Ooh.', 'Hold it... hold it...', 'Easy does it.']), 1.6);
           }
           break;
         case 'top': Sfx.play('claw_top'); Engine.shake(1, 0.1); break;
@@ -315,22 +341,23 @@ Scenes.claw = (() => {
           const [px, py] = sim.partPos(d.part);
           fxW.burst(px, py, 6, { speed: 25, ay: 60, life: 0.4, color: ['#fff6e3', '#cdb892'] });
           const why = d.part.twitchT && sim.time - d.part.twitchT < 0.6;
-          say(why ? pick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
-            pick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
+          say(why ? vpick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
+            vpick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
           break;
         }
         case 'release': Sfx.play('claw_open'); break;
         case 'win': onWin(d); break;
         case 'turnEnd': {
           Telemetry.grabEnd(d.result, d.won);
+          Save.soon();
           Rig.onTurnEnd(d); // bad luck fills the Luck meter
           if (Rig.on && d.result !== 'win') {
             if (!Game.seen.luckHint) { Game.seen.luckHint = true; luckHint = 5; setTimeout(() => { if (Engine.sceneName === 'claw') say('Bad luck is worth something here. Watch the LUCK meter.', 3.4); }, 250); }
-            else if (d.redo && Rig.luck >= Rig.cost('redo') && !Game.seen.redoHint) { Game.seen.redoHint = true; cellPulse.redo = 7; setTimeout(() => { if (Engine.sceneName === 'claw') say('Want that one back? REDO turns back time. Press 4.', 3.4); }, 250); }
+            else if (d.redo && Rig.luck >= Rig.cost('redo') && !Game.seen.redoHint) { Game.seen.redoHint = true; cellPulse.redo = 7; setTimeout(() => { if (Engine.sceneName === 'claw') say('Want that one back? REDO turns back time. Press ' + Settings.hint('redo') + '.', 3.4); }, 250); }
           }
           if (d.result === 'miss') {
             Sfx.play('miss');
-            if (!Game.talk.visible() || chance(0.5)) say(pick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
+            if (!Game.talk.visible() || vchance(0.5)) say(vpick(['Nothing. Very zen.', 'You grabbed air. Air is free, by the way.', 'The pile says no.', 'Close. Ish.', 'Aim for the middle of it.']), 2.2);
           }
           if (d.won.length > 1) say('Two for one! The machine likes you.', 2.4);
           topUp();
@@ -346,7 +373,7 @@ Scenes.claw = (() => {
         }
         case 'clank': if (Engine.realT - lastBumpSfx > 0.05) { lastBumpSfx = Engine.realT; Sfx.play('bump', { material: 'metal', intensity: d.intensity * 0.6 }); } break;
         case 'twitch': {
-          if (d.held || chance(0.5)) Sfx.play('twitch', { intensity: d.held ? 0.9 : 0.4 });
+          if (d.held || vchance(0.5)) Sfx.play('twitch', { intensity: d.held ? 0.9 : 0.4 });
           const [px, py] = sim.partPos(d.part);
           if (d.held) { fxW.burst(px, py, 4, { speed: 20, life: 0.3, color: ['#e8405a', '#fff6e3'] }); if (!Game.talk.visible()) say('It\'s squirming!', 1.2); }
           break;
@@ -364,6 +391,7 @@ Scenes.claw = (() => {
   function onWin(d) {
     const p = d.part, def = p.def, r = RARITY[def.rarity];
     Game.addPart(p.type);
+    Game.tally('parts');
     turnWins++;
     Telemetry.c.wonRarity[def.rarity]++;
     if (!d.inTurn) Telemetry.c.freebies++;
@@ -380,7 +408,7 @@ Scenes.claw = (() => {
     if (order >= 3) {
       Engine.flash('#f6c64b', 0.4);
       Music.duck(0.8, 2.5);
-      for (let i = 0; i < 40; i++) fxW.add({ x: rand(10, 170), y: rand(-10, 20), vx: rand(-20, 20), vy: rand(10, 40), ay: 40, life: rand(1.2, 2.2), color: pick([PAL.l, PAL.L, PAL.W, PAL.R]), size: pick([1, 2]) });
+      for (let i = 0; i < 40; i++) fxW.add({ x: vrand(10, 170), y: vrand(-10, 20), vx: vrand(-20, 20), vy: vrand(10, 40), ay: 40, life: vrand(1.2, 2.2), color: vpick([PAL.l, PAL.L, PAL.W, PAL.R]), size: vpick([1, 2]) });
     } else if (order >= 2) Engine.flash('#6fd3ff', 0.2);
     const [sx, sy] = toScreen(cx, M.floor - 20);
     fxS.text(sx, sy - 10, def.name.toUpperCase(), r.color, { font: 'main', life: 1.6, vy: -20, outline: PAL.k });
@@ -392,18 +420,13 @@ Scenes.claw = (() => {
       [`A ${def.name}! Someone's getting spoiled.`, `${def.name}! Oh, that's a GOOD part.`],
       ['...I was saving that one.', `The ${def.name}. You absolute ghoul.`],
     ][order];
-    say(pick(lines), 2.6);
+    say(vpick(lines), 2.6);
     if (!d.inTurn) say('Free part! Don\'t tell the manager. I\'m the manager.', 2.6);
   }
 
-  // the machine never runs dry: below 5 parts the Reaper fetches more from the back room
+  // the machine never runs dry (rule lives in Game.topUpMachine); the Reaper just announces it
   function topUp() {
-    const sim = Game.sim;
-    const left = sim.parts.filter((p) => !p.won).length + sim.pending.length;
-    if (left >= 5) return;
-    for (let i = 0; i < 7; i++) sim.queueSpawn(randomPartType({ boost: 1 + Game.stage * 0.1 }), i * 0.25);
-    Telemetry.log('topup', { left });
-    setTimeout(() => say('Running low! Let me fetch more from the back room.', 3), 900);
+    if (Game.topUpMachine()) setTimeout(() => say('Running low! Let me fetch more from the back room.', 3), 900);
   }
 
   // ---------------------------------------------------------------- the Rig
@@ -428,7 +451,7 @@ Scenes.claw = (() => {
     for (const l of T.tip) lines.push({ t: l, c: '#ecdcbc' });
     const why = { luck: 'Not enough Luck.', tilt: 'The machine is tilted.', busy: 'Not right now.', none: 'Only after a missed or slipped grab.' }[c.why];
     if (!c.ok && why) lines.push({ t: why, c: '#e8405a' });
-    lines.push({ t: 'key ' + T.key, c: '#7a6a9a' });
+    lines.push({ t: 'key ' + Settings.hint(id), c: '#7a6a9a' }); // whatever the player bound it to
     return lines;
   }
 
@@ -524,8 +547,9 @@ Scenes.claw = (() => {
   }
 
   function buildButtons() {
-    btn.left = { id: 'cl', x: 398, y: 219, w: 18, h: 16, label: '', hidden: false, silent: true, onClick() {} };
-    btn.right = { id: 'cr', x: 418, y: 219, w: 18, h: 16, label: '', silent: true, onClick() {} };
+    const tap = (d) => () => { if (Settings.v.steering === 'toggle' && (Game.sim.state === 'idle' || Game.sim.state === 'carry')) { toggleDir = toggleDir === d ? 0 : d; toggleTarget = null; } };
+    btn.left = { id: 'cl', x: 398, y: 219, w: 18, h: 16, label: '', hidden: false, silent: true, onClick: tap(-1) };
+    btn.right = { id: 'cr', x: 418, y: 219, w: 18, h: 16, label: '', silent: true, onClick: tap(1) };
     btn.drop = { id: 'ca', x: 398, y: 236, w: 76, h: 14, label: 'DROP', silent: true, onClick: () => S.pressA() };
     btn.back = { id: 'cb', x: 398, y: 251, w: 76, h: 14, label: 'BACK', silent: true, onClick: () => S.back() };
     for (const [id, col, row] of CELLS) {
@@ -555,7 +579,7 @@ Scenes.claw = (() => {
     // chute interior
     g.fillStyle = 'rgba(111,211,255,0.07)'; g.fillRect(M.chuteX0, M.lipY, M.chuteX1 - M.chuteX0, 122 - M.lipY);
     g.fillStyle = '#0e0b16'; g.fillRect(M.chuteX0, 116, M.chuteX1 - M.chuteX0, 6);
-    const chuteGlow = winFx > 0 ? (Math.sin(t * 30) > 0 ? 0.5 : 0.2) : 0.12 + 0.05 * Math.sin(t * 3);
+    const chuteGlow = winFx > 0 ? (blinkOn(t, 5) ? 0.5 : 0.2) : 0.12 + 0.05 * Math.sin(t * 3);
     g.fillStyle = `rgba(111,211,255,${chuteGlow})`; g.fillRect(M.chuteX0 + 2, 114, M.chuteX1 - M.chuteX0 - 4, 2);
     // down-arrow painted on the chute's back wall
     g.fillStyle = sim.state === 'carry' && Math.sin(t * 8) > 0 ? '#6fd3ff' : '#2e4f78';
@@ -596,7 +620,7 @@ Scenes.claw = (() => {
     const iron = sim.iron || (sim.turn && sim.turn.iron);
     if (iron) Draw.glow(g, P.hubX, P.hubY + 12, 24 + ironFlash * 14, '#f6c64b', 0.3 + 0.1 * Math.sin(t * 6) + ironFlash * 0.3);
     // blinking status light on the claw head
-    g.fillStyle = iron ? (Math.sin(t * 10) > 0 ? '#fff1a6' : '#f6c64b') : sim.state === 'idle' ? (Math.sin(t * 5) > 0 ? '#9be38f' : '#274536') : sim.grips.length ? '#f6c64b' : '#e8405a';
+    g.fillStyle = iron ? (blinkOn(t, 1.6) ? '#fff1a6' : '#f6c64b') : sim.state === 'idle' ? (Math.sin(t * 5) > 0 ? '#9be38f' : '#274536') : sim.grips.length ? '#f6c64b' : '#e8405a';
     const la = P.hubA;
     g.fillRect(Math.round(P.hubX + Math.cos(la) * 7 - Math.sin(la) * -1), Math.round(P.hubY + Math.sin(la) * 7 + Math.cos(la) * -1), 1, 1);
 
@@ -606,7 +630,7 @@ Scenes.claw = (() => {
       const a = 0.14 + 0.06 * Math.sin(t * 5);
       g.fillStyle = `rgba(111,211,255,${a})`; g.fillRect(M.guardX, 0, M.guardW, M.lipY);
       g.fillStyle = `rgba(194,245,255,${a + 0.22})`;
-      for (let y = Math.floor(t * 28) % 7; y < M.lipY; y += 7) g.fillRect(M.guardX, y, M.guardW, 2);
+      for (let y = Math.floor(t * (Settings.v.reduceFlash ? 7 : 28)) % 7; y < M.lipY; y += 7) g.fillRect(M.guardX, y, M.guardW, 2);
     }
     // chute front: acrylic guard + prize plate
     g.fillStyle = 'rgba(194,245,255,0.18)'; g.fillRect(M.guardX, M.lipY, M.guardW, M.floor - M.lipY);
@@ -628,7 +652,7 @@ Scenes.claw = (() => {
   function drawPart(p, held, P) {
     const def = p.def;
     const rar = RARITY[def.rarity];
-    const glow = rar.glow ? 0.55 + 0.45 * Math.sin(t * 4 + p.glowT) : 0;
+    const glow = rar.glow ? 0.55 + 0.45 * Math.sin(t * [0, 2, 4, 6][rar.order] + p.glowT) : 0; // a faster pulse means rarer, so the pile never relies on colour alone
     for (let i = 0; i < p.bodies.length; i++) {
       const b = p.bodies[i];
       const q = b.getPosition(), a = b.getAngle();
@@ -637,7 +661,7 @@ Scenes.claw = (() => {
       g.save();
       g.translate(q.x * PPM, q.y * PPM);
       g.rotate(a);
-      if (held && Math.sin(t * 16) > 0) { g.drawImage(SPR.outline(name, '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
+      if (held && blinkOn(t, 2.5)) { g.drawImage(SPR.outline(name, '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
       else if (glow > 0) { g.globalAlpha = glow; g.drawImage(SPR.outline(name, rar.glow), -s.w / 2 - 1, -s.h / 2 - 1); g.globalAlpha = 1; }
       g.drawImage(s.c, -s.w / 2, -s.h / 2);
       g.restore();
@@ -655,11 +679,11 @@ Scenes.claw = (() => {
     for (let i = 0; i < n; i++) {
       const [x, y] = spots[i];
       let on, col;
-      const sim = Game.sim;
-      if (sim.lockWhy === 'tilt' && sim.lockT > 0) { on = Math.sin(t * 9 + i * 0.4) > -0.2; col = '#ff5a5a'; }
-      else if (sim.quakeS) { on = Math.sin(t * 41 + i * 12.9898) > 0.1; col = PAL.A; }
-      else if (winFx > 0) { on = Math.sin(t * 20 + i * 1.3) > 0; col = pick([PAL.l, PAL.r, PAL.C, PAL.p]); }
-      else { on = (i + Math.floor(t * 7)) % 4 === 0 || (i + Math.floor(t * 7)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
+      const sim = Game.sim, calm = Settings.v.reduceFlash;
+      if (sim.lockWhy === 'tilt' && sim.lockT > 0) { on = calm ? blinkOn(t, 1.2) : Math.sin(t * 9 + i * 0.4) > -0.2; col = '#ff5a5a'; }
+      else if (sim.quakeS) { on = calm ? (i + Math.floor(t * 1.4)) % 2 === 0 : Math.sin(t * 41 + i * 12.9898) > 0.1; col = PAL.A; } // reduceFlash: a slow alternation
+      if (winFx > 0) { on = Settings.v.reduceFlash ? (i + Math.floor(t * 1.5)) % 2 === 0 : Math.sin(t * 20 + i * 1.3) > 0; col = Settings.v.reduceFlash ? [PAL.l, PAL.r, PAL.C, PAL.p][i % 4] : vpick([PAL.l, PAL.r, PAL.C, PAL.p]); }
+      else { const sp = Settings.v.reduceFlash ? 1.2 : 7; on = (i + Math.floor(t * sp)) % 4 === 0 || (i + Math.floor(t * sp)) % 4 === 1 && Game.sim.state !== 'idle'; col = PAL.l; }
       g.fillStyle = on ? col : '#6b3a1c';
       g.fillRect(x, y, 1, 1);
       if (on) { g.fillStyle = on ? 'rgba(255,241,166,0.35)' : ''; g.fillRect(x - 1, y, 3, 1); g.fillRect(x, y - 1, 1, 3); }
@@ -671,7 +695,7 @@ Scenes.claw = (() => {
     // Their text and icons are drawn crisp at 1x in drawOverlay.
     const sim = Game.sim, tilted = sim.lockWhy === 'tilt' && sim.lockT > 0;
     Draw.panel(g, 197, 3 - Math.round(tokenBump * 1), 42, 22, 'slate');
-    Draw.panel(g, 197, LAY.luck[0] / 2, 42, LAY.luck[1] / 2, noLuckT > 0 && Math.sin(t * 24) > 0 ? 'red' : 'dark');
+    Draw.panel(g, 197, LAY.luck[0] / 2, 42, LAY.luck[1] / 2, noLuckT > 0 && blinkOn(t, 3.8) ? 'red' : 'dark');
     Draw.panel(g, 197, LAY.talk[0] / 2, 42, LAY.talk[1] / 2, 'neon');
     if (!Game.talk.visible()) { // the neon sign, until the Reaper has something to say
       const dim = neonOff > 0;
@@ -693,14 +717,14 @@ Scenes.claw = (() => {
       Font.draw(ctx, 'RIG OFF', 470, y + 5, { font: 'small', color: '#5b4a78', align: 'right' });
       return;
     }
-    const low = noLuckT > 0 && Math.sin(t * 24) > 0;
+    const low = noLuckT > 0 && blinkOn(t, 3.8);
     Font.draw(ctx, 'LUCK', 402, y + 5, { font: 'small', color: low ? '#e8405a' : '#f6c64b' });
     Font.draw(ctx, Rig.luck + '/' + CONFIG.luckMax, 470, y + 5, { font: 'small', color: '#ecdcbc', align: 'right' });
     const n = CONFIG.luckMax, step = Math.min(9, Math.floor(72 / n));
     for (let i = 0; i < n; i++) {
       const pop = pipPop[i] > 0, px = 406 + i * step;
       SPR.draw(ctx, i < Rig.luck ? 'ico_luck' : 'ico_luck_e', px, y + 18 - (pop ? 2 : 0));
-      if (pop && Math.sin(t * 40 + i) > 0) Draw.rect(ctx, px - 1, y + 13, 2, 2, '#fff6e3'); // glint on a fresh pip
+      if (pop && blinkOn(t + i * 0.16, 6.4)) Draw.rect(ctx, px - 1, y + 13, 2, 2, '#fff6e3'); // glint on a fresh pip
     }
     if (luckHint > 0 && Math.sin(t * 6) > 0) Draw.frame(ctx, CX - 1, y - 1, CW + 2, LAY.luck[1] + 2, '#f6c64b');
   }
@@ -745,7 +769,8 @@ Scenes.claw = (() => {
     if (cellPulse[id] > 0 && Math.sin(t * 7) > 0) Draw.frame(ctx, x - 2, y - 2, b.w + 4, b.h + 4, '#ff8ac6'); // first-time hint
     if (armed && Math.sin(t * 8) > -0.3) Draw.frame(ctx, x - 1, y - 1, b.w + 2, b.h + 2, '#f6c64b');
     if (id === 'redo' && c.ok && Math.sin(t * 5) > 0) Draw.frame(ctx, x - 1, y - 1, b.w + 2, b.h + 2, '#e7a6f0'); // a redo is on offer
-    Font.draw(ctx, T.key, x + 3, y + 3, { font: 'small', color: ok ? '#8a7aa8' : '#4b4466' });
+    const kn = Settings.hint(id); // the player's key (a long name like SPACE is cut to fit; the tooltip has it whole)
+    Font.draw(ctx, kn.length > 3 ? kn.slice(0, 3) : kn, x + 3, y + 3, { font: 'small', color: ok ? '#8a7aa8' : '#4b4466' });
     if (cost > 0) {
       Font.draw(ctx, String(cost), x + b.w - 11, y + 3, { font: 'small', color: Rig.luck >= cost ? '#f6c64b' : '#e8405a' });
       SPR.draw(ctx, 'ico_luck_s', x + b.w - 5, y + 5);
@@ -778,7 +803,7 @@ Scenes.claw = (() => {
     const sim = Game.sim;
     ctx.fillStyle = 'rgba(111,211,255,0.10)'; ctx.fillRect(14, 14, 360, 244);
     ctx.fillStyle = 'rgba(255,255,255,0.07)';
-    for (let y = 14 + (Math.floor(t * 50) % 4); y < 258; y += 4) ctx.fillRect(14, y, 360, 1);
+    for (let y = 14 + (Math.floor(t * (Settings.v.reduceFlash ? 6 : 50)) % 4); y < 258; y += 4) ctx.fillRect(14, y, 360, 1);
     ctx.fillStyle = 'rgba(194,245,255,0.12)'; ctx.fillRect(14, Math.round(14 + ((t * 160) % 238)), 360, 6); // a rolling glitch band
     if (Math.sin(t * 8) > -0.3) Font.draw(ctx, '◀◀ REWIND', 24, 22, { scale: 2, color: '#c2f5ff', outline: PAL.k });
     if (sim.rw) {
@@ -805,7 +830,26 @@ Scenes.claw = (() => {
       Font.draw(ctx, 'OWN ' + counts[c.slot], c.x + 36, c.y + 18, { font: 'small', color: '#a6aec2' });
       if (need && c.slot === need) Font.draw(ctx, 'NEEDED', c.x + 36, c.y + 27, { font: 'small', color: '#9be38f' });
     }
-    Font.draw(ctx, '1-6 OR CLICK TO ORDER  ·  ESC TO CANCEL', PK.x + PK.w / 2, PK.y + PK.h - 12, { font: 'small', color: '#7a6a9a', align: 'center' });
+    Font.draw(ctx, '1-6 OR CLICK TO ORDER  ·  ' + Settings.hint('b') + ' TO CANCEL', PK.x + PK.w / 2, PK.y + PK.h - 12, { font: 'small', color: '#7a6a9a', align: 'center' });
+  }
+
+  // The carry meter: how hard the load is swaying, so a slip is never a mystery. The word, the length of the
+  // bar and its texture all say the same thing (steady / swaying / slipping), so colour is a bonus, not the message.
+  function drawSway(ctx, cx, y) {
+    const sw = Game.sim.swayInfo();
+    if (!sw) return;
+    const lvl = sw.ratio <= 1 ? 0 : sw.ratio <= 1.5 ? 1 : 2;
+    const col = ['#9be38f', '#f6c64b', '#e8405a'][lvl];
+    const x0 = cx - 21, w = 42, fill = Math.round(clamp(sw.ratio / 2, 0, 1) * (w - 2));
+    Draw.rect(ctx, x0, y, w, 5, PAL.k);
+    for (let i = 0; i < fill; i++) {
+      if (lvl === 1 && i % 2) continue; // swaying: dotted
+      if (lvl === 2 && i % 3 === 2) continue; // slipping: striped
+      Draw.rect(ctx, x0 + 1 + i, y + 1, 1, 3, col);
+    }
+    Draw.rect(ctx, x0 + 1 + Math.round((w - 2) / 2), y - 1, 1, 7, '#fff6e3'); // the line between steady and swaying
+    const word = ['STEADY', 'SWAYING', 'SLIPPING!'][lvl];
+    if (lvl < 2 || blinkOn(t, 3)) Font.draw(ctx, word, cx, y + 7, { font: 'small', color: col, align: 'center', outline: PAL.k });
   }
 
   function drawOverlay(ctx) {
@@ -813,7 +857,7 @@ Scenes.claw = (() => {
     // TOKENS, with the bag folded in underneath
     Font.draw(ctx, 'TOKENS', 436, 9 - Math.round(tokenBump * 2), { font: 'small', color: '#a6aec2', align: 'center' });
     const tk = String(Game.tokens);
-    Font.draw(ctx, tk, 436, 15 - Math.round(tokenBump * 2), { scale: 3, color: Game.tokens > 0 ? '#fff6e3' : noTokenT > 0 && Math.sin(t * 16) > 0 ? '#e8405a' : '#7a6a9a', align: 'center', shadow: PAL.k });
+    Font.draw(ctx, tk, 436, 15 - Math.round(tokenBump * 2), { scale: 3, color: Game.tokens > 0 ? '#fff6e3' : noTokenT > 0 && blinkOn(t, 2.5) ? '#e8405a' : '#7a6a9a', align: 'center', shadow: PAL.k });
     Draw.rect(ctx, 400, 40, 76, 1, '#3b3654');
     Font.draw(ctx, 'BAG', 402, 43 + Math.round(bagBump), { font: 'small', color: '#a6aec2' });
     Font.draw(ctx, String(Game.inventory.length), 470, 43 + Math.round(bagBump), { font: 'small', color: '#ecdcbc', align: 'right' });
@@ -833,7 +877,7 @@ Scenes.claw = (() => {
     Font.draw(ctx, 'MOVE', 442, 224, { color: '#ecdcbc' });
     for (const b of [btn.drop, btn.back]) {
       const hot = b.hover || b.held;
-      const pulse = b === btn.back && noTokenT > 0 && Math.sin(t * 10) > 0;
+      const pulse = b === btn.back && noTokenT > 0 && blinkOn(t, 1.6);
       if (hot || pulse) Draw.rect(ctx, b.x, b.y, b.w, b.h, pulse ? '#5a1834' : '#2b2d3d');
       ico(b === btn.drop ? 'btn_a' : 'btn_b', b.x + 9, b.y + 7, b === btn.drop ? 'A' : 'B');
       Font.draw(ctx, b.label, b.x + 20, b.y + 4, { color: b === btn.drop && (Game.tokens <= 0 || sim.lockT > 0) && sim.state === 'idle' ? '#7a6a9a' : '#ecdcbc' });
@@ -849,21 +893,24 @@ Scenes.claw = (() => {
       const r = RARITY[gp.def.rarity];
       const txt = gp.def.name + (r.order ? ' · ' + r.name : '');
       Font.draw(ctx, txt, clamp(sx, 60, 330), sy + 26, { color: r.color, align: 'center', outline: PAL.k });
+      drawSway(ctx, clamp(sx, 60, 330), sy + 38);
     }
     if (sim.state === 'carry' && CONFIG.carryTime > 0) {
       const k = 1 - sim.stateT / CONFIG.carryTime;
       const [cx] = toScreen(sim.carX, 0);
       Draw.rect(ctx, cx - 16, 44, 32, 3, PAL.k);
-      Draw.rect(ctx, cx - 15, 45, Math.max(0, 30 * k), 1, k < 0.3 && Math.sin(t * 20) > 0 ? PAL.R : PAL.d);
+      Draw.rect(ctx, cx - 15, 45, Math.max(0, 30 * k), 1, k < 0.3 && blinkOn(t, 3) ? PAL.R : PAL.d);
+      const left = Math.max(0, Math.ceil(CONFIG.carryTime - sim.stateT));
+      if (left <= 3) Font.draw(ctx, String(left), cx, 36, { font: 'small', color: '#fff6e3', align: 'center', outline: PAL.k }); // the number, not just the colour
     }
     // first-time controls hint, inside the glass, until the player does anything
     if (!movedOnce && sim.state === 'idle' && Game.tokens === CONFIG.startTokens) {
       const a = 0.55 + 0.25 * Math.sin(t * 3);
-      Font.draw(ctx, '← →  or  HOLD MOUSE ON THE GLASS TO STEER', 190, 96, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
-      Font.draw(ctx, 'THEN  DROP', 190, 108, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
+      Font.draw(ctx, Settings.v.steering === 'toggle' ? `${Settings.hint('left')} ${Settings.hint('right')} TO START AND STOP  or  TAP THE GLASS` : `${Settings.hint('left')} ${Settings.hint('right')}  or  HOLD MOUSE ON THE GLASS TO STEER`, 190, 96, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
+      Font.draw(ctx, `THEN  DROP (${Settings.hint('a')})`, 190, 108, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
     }
     // first-time nudge: flash the controls if the player hasn't moved yet
-    if (!movedOnce && idleT > 5 && Math.sin(t * 6) > 0) Draw.frame(ctx, 396, 217, 80, 49, '#ff8ac6');
+    if (!movedOnce && idleT > 5 && blinkOn(t, 1)) Draw.frame(ctx, 396, 217, 80, 49, '#ff8ac6');
 
     drawLens(ctx);
     // TILT: the machine is sulking

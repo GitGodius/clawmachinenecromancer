@@ -10,19 +10,20 @@
 // ---------------------------------------------------------------------------
 const ORDER_SLOTS = ['head', 'torso', 'arm', 'leg', 'heart', 'back'];
 
-// Presentation metadata for the UI. `cost` names the CONFIG key (null = free).
+// Presentation metadata for the UI. `cost` names the CONFIG key (null = free). The keys are the player's
+// own (KEY_ACTIONS in 09_store.js: Q E nudge, 1-4 the levers by default), so the UI asks Settings.hint(id).
 const RIG_TRICKS = {
-  quake: { name: 'Earthquake', label: 'QUAKE', key: '1', cost: 'costQuake', color: '#ffb070',
+  quake: { name: 'Earthquake', label: 'QUAKE', cost: 'costQuake', color: '#ffb070',
     tip: ['Shake the whole machine.', 'The pile churns into a new layout.', 'Drops lock until it settles.'] },
-  nudgeL: { name: 'Nudge left', label: 'NUDGE', key: 'Q', cost: null, color: '#ecdcbc',
+  nudgeL: { name: 'Nudge left', label: 'NUDGE', cost: null, color: '#ecdcbc',
     tip: ['Bump the glass to the left.', 'Loosens the pile around the claw.', 'Nudge too fast and it TILTs.'] },
-  nudgeR: { name: 'Nudge right', label: 'NUDGE', key: 'E', cost: null, color: '#ecdcbc',
+  nudgeR: { name: 'Nudge right', label: 'NUDGE', cost: null, color: '#ecdcbc',
     tip: ['Bump the glass to the right.', 'Loosens the pile around the claw.', 'Nudge too fast and it TILTs.'] },
-  grip: { name: 'Iron Grip', label: 'GRIP', key: '2', cost: 'costGrip', color: '#f6c64b',
+  grip: { name: 'Iron Grip', label: 'GRIP', cost: 'costGrip', color: '#f6c64b',
     tip: ['Hex the claw for the next drop.', 'Stronger hold, far fewer slips.', 'Press again to take it back.'] },
-  order: { name: 'Special Order', label: 'ORDER', key: '3', cost: 'costOrder', color: '#6fd3ff',
+  order: { name: 'Special Order', label: 'ORDER', cost: 'costOrder', color: '#6fd3ff',
     tip: ['Pick a slot. The Reaper drops', 'one in from the back room.', 'Rarity is still the luck of the draw.'] },
-  redo: { name: 'Redo', label: 'REDO', key: '4', cost: 'costRedo', color: '#e7a6f0',
+  redo: { name: 'Redo', label: 'REDO', cost: 'costRedo', color: '#e7a6f0',
     tip: ['Turn back time after a missed or', 'slipped grab: same pile, token back,', 'fresh dice.'] },
 };
 

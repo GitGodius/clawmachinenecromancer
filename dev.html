@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>The Good Parts</title>
-<meta name="description" content="A claw machine necromancer prototype: grab body parts, stitch monsters, fight for more tokens.">
+<meta name="description" content="A claw machine necromancer game: win body parts from the claw, stitch them into monsters, send them to fight, and get the parts back.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27 shape-rendering=%27crispEdges%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%230e0b16%27/%3E%3Cpath fill=%27%23fff6e3%27 d=%27M4 2h8v2h2v6h-2v2h-1v2H5v-2H4v-2H2V4h2z%27/%3E%3Cpath fill=%27%230e0b16%27 d=%27M5 6h2v2H5zM9 6h2v2H9zM7 10h2v2H7z%27/%3E%3C/svg%3E">
 <style>
 /* The Good Parts: one deliberate dark world (a night-time arcade), so no light theme.
    Layout: a single canvas centred in the viewport; overlays (tuning panel, report) slide over it. */
@@ -21,7 +22,19 @@ body { background: var(--bg); color: var(--ink); overflow: hidden; box-sizing: b
 #game { image-rendering: pixelated; image-rendering: crisp-edges; display: block; touch-action: none; cursor: default; outline: none; flex: none;
   box-shadow: 0 0 0 1px #000, 0 20px 80px rgba(0, 0, 0, .6); }
 #game:focus-visible { box-shadow: 0 0 0 2px var(--accent), 0 20px 80px rgba(0, 0, 0, .6); }
-#hint { flex: none; margin: 0; color: var(--muted); text-align: center; font-size: 11px; max-width: 100%; }
+#under { flex: none; display: flex; gap: 10px; align-items: center; justify-content: center; max-width: 100%; }
+#hint { margin: 0; color: var(--muted); text-align: center; font-size: 11px; }
+#menuBtn { flex: none; background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); font: inherit; padding: 4px 9px; cursor: pointer; border-radius: 3px; min-height: 28px; }
+#menuBtn:hover { border-color: var(--accent); }
+#menuBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+#crash { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 9; display: none; background: #3a1424ee; border: 1px solid #e8405a; color: var(--ink); padding: 7px 10px; border-radius: 3px; }
+#crash.open { display: block; }
+#crash button, #copybox { font: inherit; }
+#crash button { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); padding: 3px 8px; margin-left: 4px; cursor: pointer; border-radius: 3px; }
+#crash button:hover, #crash button:focus-visible { border-color: var(--accent); }
+#copybox { position: fixed; left: 8px; right: 8px; bottom: 8px; height: 30vh; z-index: 10; display: none; background: var(--bg); color: var(--ink); border: 1px solid var(--accent); }
+#copybox.open { display: block; }
 #hint kbd { font: inherit; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
 #dbgToggle { position: fixed; left: 8px; bottom: 8px; z-index: 5; background: #1b1526cc; color: var(--muted); border: 1px solid var(--line);
   font: inherit; padding: 3px 7px; cursor: pointer; border-radius: 3px; opacity: .55; }
@@ -51,10 +64,14 @@ body { background: var(--bg); color: var(--ink); overflow: hidden; box-sizing: b
 </head>
 <body>
 <div id="boot">loading…</div>
-<canvas id="game" width="480" height="270" tabindex="0" aria-label="The Good Parts, a claw machine necromancer game"></canvas>
+<canvas id="game" width="480" height="270" tabindex="0" role="application" aria-label="The Good Parts, a claw machine necromancer game. Menus and the Reaper's lines are read out."></canvas>
+<div id="under"><p id="hint"></p><button id="menuBtn" type="button" title="Pause and settings">☰ Menu</button></div>
+<div id="sr" class="sr-only" aria-live="polite" role="status"></div>
 <button id="dbgToggle" title="Tuning panel ( ` )">⚙ tune</button>
 <div id="debug"></div>
+<script>window.__DEV__ = true;</script>
 <script src="vendor/planck.min.js"></script>
+<script src="src/js/00_build.js"></script>
 <script src="src/js/01_config.js"></script>
 <script src="src/js/02_util.js"></script>
 <script src="src/js/03_palette.js"></script>
@@ -63,9 +80,12 @@ body { background: var(--bg); color: var(--ink); overflow: hidden; box-sizing: b
 <script src="src/js/06_sprites_world.js"></script>
 <script src="src/js/07_font.js"></script>
 <script src="src/js/08_audio.js"></script>
+<script src="src/js/09_store.js"></script>
 <script src="src/js/10_parts.js"></script>
 <script src="src/js/11_clawsim.js"></script>
 <script src="src/js/12_clawrig.js"></script>
+<script src="src/js/12_stages.js"></script>
+<script src="src/js/13_battlesim.js"></script>
 <script src="src/js/20_engine.js"></script>
 <script src="src/js/21_backgrounds.js"></script>
 <script src="src/js/29_rig.js"></script>
@@ -75,9 +95,12 @@ body { background: var(--bg); color: var(--ink); overflow: hidden; box-sizing: b
 <script src="src/js/33_scene_slab.js"></script>
 <script src="src/js/34_scene_battle.js"></script>
 <script src="src/js/35_scene_shop.js"></script>
+<script src="src/js/36_menu.js"></script>
+<script src="src/js/37_scene_end.js"></script>
+<script src="src/js/39_crashlog.js"></script>
 <script src="src/js/40_telemetry.js"></script>
 <script src="src/js/41_debug.js"></script>
-<script src="src/js/98_fallbacks.js"></script>
+<script src="src/js/42_dom.js"></script>
 <script src="src/js/99_main.js"></script>
 </body>
 </html>

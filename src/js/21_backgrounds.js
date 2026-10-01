@@ -1358,7 +1358,7 @@ const BG = (() => {
       ctx.fillRect(LANTERN.x - 1, 27, 3, 4);
       ctx.fillStyle = S.cols.f1; ctx.fillRect(LANTERN.x, 25, 1, 5);
       ctx.fillStyle = S.cols.f0; ctx.fillRect(LANTERN.x, 28, 1, 2);
-      ctx.fillStyle = S.cols.f1; ctx.fillRect(LANTERN.x + ((Math.floor(t * 8) % 3) - 1), 24, 1, 1);
+      ctx.fillStyle = S.cols.f1; ctx.fillRect(LANTERN.x + ((Math.floor(t * (Settings.v.reduceFlash ? 1.4 : 8)) % 3) - 1), 24, 1, 1);
       for (let i = 0; i < S.flames.length; i++) drawFlame(ctx, S, S.flames[i][0], S.flames[i][1], t, i, false);
       // dust drifting through the lantern light
       ctx.fillStyle = S.cols.mote;

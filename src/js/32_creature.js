@@ -47,10 +47,14 @@ class Creature {
     const legs = [S.legL, S.legR].filter(Boolean).map(D);
     const head = D(S.head);
     let hp = 8 + all.reduce((a, d) => a + (d.hp || 0), 0);
-    let atk = arms.reduce((a, d) => a + (d.atk || 0), 0);
-    if (head) atk += arms.length ? (head.atk || 0) * 0.4 : head.atk || 0; // no arms? it bites
-    if (S.back && D(S.back).atk) atk += D(S.back).atk;
-    if (atk <= 0) atk = 1; // it flops at them, aggressively
+    // Each arm is its own strike, so armour is applied to every arm on its own: two small arms are worth much
+    // less against a Shade than one big one (docs/DESIGN.md, pillar 4). The head's bite and a back part's
+    // attack are shared out across the arms. No arms? It bites: one strike.
+    const extra = (head ? (arms.length ? (head.atk || 0) * 0.4 : head.atk || 0) : 0) + (S.back && D(S.back).atk ? D(S.back).atk : 0);
+    const hits = arms.length ? arms.map((d) => (d.atk || 0) + extra / arms.length) : [extra];
+    let atk = hits.reduce((a, b) => a + b, 0);
+    if (atk <= 0) { atk = 1; hits.length = 0; hits.push(1); } // it flops at them, aggressively
+    this.hits = hits.map((h) => Math.round(h * 100) / 100);
     const spd = legs.reduce((a, d) => a + (d.spd || 0), 0);
     this.traits = [...new Set(all.map((d) => d.trait).filter(Boolean))];
     this.maxHp = Math.round(hp);
@@ -82,7 +86,7 @@ class Creature {
     else if ((S.legL === 'pegleg') !== (S.legR === 'pegleg') && S.legL && S.legR) title = 'the Lopsided';
     else if (count((d) => d.mat === 'bone') >= 4) title = 'the Rattly';
     else if (!S.heart && t.length >= 5) title = 'the Heartless';
-    return pick(CREATURE_NAMES) + ' ' + (title || pick(TITLE_FALLBACK));
+    return vpick(CREATURE_NAMES) + ' ' + (title || vpick(TITLE_FALLBACK));
   }
 }
 

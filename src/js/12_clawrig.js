@@ -45,6 +45,11 @@ Object.assign(ClawSim.prototype, {
     this.iron = !!on;
     this.emit('iron', { on: this.iron });
   },
+  // Is an Iron Grip paid for and not used up? Armed, or riding on a drop still in flight (a save refunds that drop),
+  // or coming back with a rewind. What a saved run must keep.
+  ironPaid() {
+    return !!(this.iron || (this.state === 'rewind' && this.rw && this.rw.H.iron) || (this.state !== 'idle' && this.turn && this.turn.iron));
+  },
 
   // ------------------------------------------------------------ chute lid
   // The moment the machine is shaken, the guard grows an invisible wall up to the glass ceiling.

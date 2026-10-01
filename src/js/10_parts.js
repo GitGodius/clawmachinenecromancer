@@ -15,7 +15,7 @@ const PART_DEFS = {
   ribcage:    { name: 'Ribcage',        slot: 'torso', rarity: 'common',   sprite: 'p_ribcage',  mat: 'bone',  density: 0.8, hp: 20 },
   stitched:   { name: 'Stitched Torso', slot: 'torso', rarity: 'common',   sprite: 'p_stitched', mat: 'flesh', density: 1.0, hp: 26 },
   armor:      { name: 'Rusty Cuirass',  slot: 'torso', rarity: 'uncommon', sprite: 'p_armor',    mat: 'metal', density: 1.5, hp: 24, def: 2, trait: 'plated' },
-  ogregut:    { name: 'Ogre Gut',       slot: 'torso', rarity: 'rare',     sprite: 'p_ogregut',  mat: 'flesh', density: 1.1, hp: 50, trait: 'hefty', grip: 0.8 },
+  ogregut:    { name: 'Ogre Gut',       slot: 'torso', rarity: 'rare',     sprite: 'p_ogregut',  mat: 'flesh', density: 1.1, hp: 42, trait: 'hefty', grip: 0.8 },
   // arms
   bonearm:    { name: 'Bony Arm',   slot: 'arm', rarity: 'common',   sprite: 'p_bonearm',  mat: 'bone',   density: 1.0, atk: 3, alive: true },
   fleshArm:   { name: 'Fleshy Arm', slot: 'arm', rarity: 'common',   sprite: 'p_fleshArm', mat: 'flesh',  density: 1.0, atk: 4, hp: 2, alive: true },

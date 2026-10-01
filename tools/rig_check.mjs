@@ -21,18 +21,20 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
+import { sourceFiles } from './lib/headless.mjs';
 const require = createRequire(import.meta.url);
 const planck = require('planck');
 
 // ------------------------------------------------------------------ load the game (no DOM)
 const dir = new URL('../src/js/', import.meta.url);
-const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js') && !['99_main.js', '41_debug.js'].includes(f)).sort();
+const files = sourceFiles(); // every file a headless run can load, in filename order (tools/lib/headless.mjs)
 const src = files.map((f) => fs.readFileSync(new URL(f, dir), 'utf8')).join('\n') +
   '\n;globalThis.__api = { CONFIG, CONFIG_DEFAULTS, Game, Rig, Telemetry, ClawSim, MACHINE, PART_DEFS, RIGSIM, ORDER_SLOTS, PPM, setRNG: (r) => { RNG = r; }, mulberry32, clamp };';
 const ctx = { planck, console, performance, setTimeout, window: {}, navigator: {} };
 ctx.window = ctx;
 vm.createContext(ctx);
 vm.runInContext(src, ctx);
+vm.runInContext('Save.enabled = false', ctx); // a check never writes a save
 const { CONFIG, CONFIG_DEFAULTS, Game, Rig, Telemetry, ClawSim, MACHINE, PART_DEFS, RIGSIM, ORDER_SLOTS, PPM, setRNG, mulberry32, clamp } = ctx.__api;
 
 const SEEDS = +(process.argv[2] || 40);

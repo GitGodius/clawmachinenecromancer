@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
-// DEBUG PANEL — press ` (backquote) or the wrench to tune CONFIG live.
-// "Copy values" puts the current CONFIG (diff from defaults) on the clipboard.
-// Also: cheats for fast iteration and the playtest report (P).
+// DEBUG PANEL — dev.html only (the shipped page does not include this file). Press ` (backquote) or the
+// button to tune CONFIG live. "Copy values" puts the current CONFIG (diff from defaults) on the clipboard.
+// Also: cheats for fast iteration and the playtest report. Anything here a player could want (shake, the
+// drop guide, the carry timer, auto-carry) is a real setting in Settings, not a slider.
 // ---------------------------------------------------------------------------
 const Debug = {
   el: null, open: false, reportEl: null,
@@ -45,9 +46,6 @@ const Debug = {
     window.addEventListener('keydown', (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return; // Ctrl+F (find), Ctrl+P (print), Cmd+M (minimize) are not ours
       if (e.code === 'Backquote') { this.toggle(); e.preventDefault(); }
-      if (e.code === 'KeyP' && !(e.target && e.target.tagName === 'INPUT')) this.showReport();
-      if (e.code === 'KeyM') AudioSys.toggleMute();
-      if (e.code === 'KeyF' && !(e.target && e.target.tagName === 'INPUT')) this.fullscreen();
     });
   },
   toggle() { this.open = !this.open; this.el.classList.toggle('open', this.open); },

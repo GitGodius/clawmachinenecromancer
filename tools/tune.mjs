@@ -1,96 +1,76 @@
-// Headless claw tuner: runs the real ClawSim in Node with a bot player and
-// reports grab odds per part type. Use it to tune CONFIG before playtesting.
+// Headless claw tuner: plays real grabs on the real ClawSim with bots of different carry style and reports
+// the odds. Use it to tune CONFIG (or to see what a change did) before a human ever touches it.
+//
 //   node tools/tune.mjs [trials=200] [overridesJSON] [sweep key=v1,v2,...]
-//   e.g. node tools/tune.mjs 300 '{"gripAssist":0.2}' gripTorque=20,30,45
-import fs from 'node:fs';
-import vm from 'node:vm';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
-const planck = require('planck');
-
-const files = ['01_config.js', '02_util.js', '03_palette.js', '04_sprites_core.js', '05_sprites_parts.js', '10_parts.js', '11_clawsim.js', '12_clawrig.js'];
-const src = files.map((f) => fs.readFileSync(new URL('../src/js/' + f, import.meta.url), 'utf8')).join('\n') +
-  '\n;globalThis.__api = { CONFIG, CONFIG_DEFAULTS, ClawSim, MACHINE, PART_DEFS, setRNG: (r) => { RNG = r; }, mulberry32, clamp };';
-const ctx = { planck, console };
-vm.createContext(ctx);
-vm.runInContext(src, ctx);
-const { CONFIG, CONFIG_DEFAULTS, ClawSim, MACHINE, PART_DEFS, setRNG, mulberry32, clamp } = ctx.__api;
+//   node tools/tune.mjs 300 '{"gripAssist":0.2}' swingSlip=0.2,0.4,0.6
+//   AIM_NOISE=4 node tools/tune.mjs 100
+//
+// Each trial: a fresh pile, aim at a random reachable part (Gaussian aim error), drop, carry, release.
+// Carry styles: gentle (feathers to a steady cruise), jerky (holds the key, lets go on arrival), auto (the assist).
+// The gap between gentle and jerky is what pillar 3 ("the carry is the skill") is made of.
+import { loadGame } from './lib/headless.mjs';
+import { playGrab, exposedParts } from './lib/clawbot.mjs';
+import { pct, ci95, mean } from './lib/stats.mjs';
+import { PROFILES } from './lib/runbot.mjs';
 
 const trials = +(process.argv[2] || 200);
-const overrides = process.argv[3] ? JSON.parse(process.argv[3]) : {};
-const sweepArg = process.argv[4];
+const overrides = process.argv[3] && process.argv[3][0] === '{' ? JSON.parse(process.argv[3]) : {};
+const sweepArg = process.argv.find((a, i) => i > 2 && /^\w+=[-\d.,]+$/.test(a));
 const AIM_NOISE = +(process.env.AIM_NOISE || 2.5);
-const MODE = process.env.MODE || 'manual'; // manual: bot steers to the chute
+const STYLES = (process.env.STYLES || 'gentle,okay,jerky,auto').split(',');
+const PROFILE_MODE = process.argv.includes('--profiles');
 
-function runTrial(seed) {
-  const rng = mulberry32(seed * 7919 + 13);
-  setRNG(mulberry32(seed));
-  let ended = null, slips = 0, grabs = 0, info = null, gripLost = 0, nGrips = 0, why = [], gripT = [];
-  const sim = new ClawSim({ onEvent: (t, d) => {
-    if (t === 'turnEnd') ended = d; if (t === 'slip') slips++; if (t === 'grab') grabs++;
-    if (t === 'lift') { info = sim.grabInfo; nGrips = d.grips.length; gripT = d.grips.map((p) => p.type); } if (t === 'gripLost') { gripLost++; why.push(d.why); }
-  } });
-  sim.fillPile(CONFIG.partCount);
-  const cand = sim.parts.filter((p) => { const [x] = sim.partPos(p); return !p.won && x > 14 && x < 132; });
-  const exposed = cand.filter((p) => {
-    const [x, y] = sim.partPos(p);
-    return !cand.some((q) => q !== p && Math.abs(sim.partPos(q)[0] - x) < 8 && sim.partPos(q)[1] < y - 4);
-  });
-  const pool = exposed.length ? exposed : cand;
-  const target = pool[Math.floor(rng() * pool.length)];
-  const [tx] = sim.partPos(target);
-  const gauss = () => { let u = 0, v = 0; while (!u) u = rng(); while (!v) v = rng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
-  sim.teleportClaw(clamp(tx + gauss() * AIM_NOISE, MACHINE.carMin, MACHINE.carMax));
-  for (let i = 0; i < 30; i++) sim.step(1 / 60);
-  sim.startDrop();
-  let t = 0;
-  while (!ended && t < 30) {
-    if (sim.state === 'carry') {
-      const d = MACHINE.home - sim.carX;
-      if (process.env.JERKY) { // a human mashing the stick: full speed, release as soon as it's over the chute
-        sim.input.move = Math.abs(d) < 4 ? 0 : Math.sign(d);
-        if (Math.abs(d) < 8) sim.press();
-      } else {
-        sim.input.move = Math.abs(d) < 1.5 ? 0 : Math.sign(d) * Math.min(1, Math.abs(d) / 12);
-        if (Math.abs(d) < 2 && Math.abs(sim.carV) < 5) sim.press();
-      }
-    }
-    sim.step(1 / 60);
-    t += 1 / 60;
-  }
-  const won = ended ? ended.won : [];
-  return {
-    type: target.type, rarity: PART_DEFS[target.type].rarity,
-    result: ended ? ended.result : 'timeout',
-    target: won.includes(target), any: won.length > 0, multi: won.length > 1,
-    grabbed: ended ? ended.grabbed.length > 0 : false, slips, time: t,
-    nCand: info ? info.cand.length : 0, open: info ? info.open : 1, chance: info && info.cand[0] ? info.cand[0].chance : 0,
-    gripped: nGrips > 0, gripLost, why, gripTarget: gripT.includes(target.type),
-  };
-}
-
-function runSet(label, extra) {
-  Object.assign(CONFIG, CONFIG_DEFAULTS, overrides, extra || {});
-  if (MODE === 'auto') CONFIG.carryManual = 0;
-  const t0 = Date.now();
+export function measure(game, { trials, style, aimNoise = AIM_NOISE, config = {} }) {
+  const M = game.get('MACHINE'), CONFIG = game.get('CONFIG');
+  game.resetConfig({ ...overrides, ...config, ...(style === 'auto' ? { carryManual: 0 } : {}) });
   const rs = [];
-  for (let i = 0; i < trials; i++) rs.push(runTrial(1000 + i));
-  if (process.env.VERBOSE) rs.forEach((r, i) => console.log(i, r.type, r.result, 'cand', r.nCand, 'open', r.open.toFixed(2), 'chance', r.chance.toFixed(2), 'gripped', r.gripped, 'lost', r.gripLost));
-  const pct = (a) => ((100 * a) / Math.max(1, rs.length)).toFixed(0).padStart(3) + '%';
-  const byType = {};
-  for (const r of rs) (byType[r.type] ||= []).push(r);
-  console.log(`\n== ${label}  (${trials} trials, ${((Date.now() - t0) / 1000).toFixed(1)}s, aim noise ${AIM_NOISE}px, ${MODE})`);
-  console.log(`  win(any) ${pct(rs.filter((r) => r.any).length)}  target ${pct(rs.filter((r) => r.target).length)}  lifted ${pct(rs.filter((r) => r.grabbed).length)}  slipped ${pct(rs.filter((r) => r.result === 'slip').length)}  miss ${pct(rs.filter((r) => r.result === 'miss').length)}  multi ${pct(rs.filter((r) => r.multi).length)}  timeouts ${rs.filter((r) => r.result === 'timeout').length}  avg ${(rs.reduce((a, r) => a + r.time, 0) / rs.length).toFixed(1)}s`);
-  const avg = (f) => (rs.reduce((a, r) => a + f(r), 0) / rs.length).toFixed(2);
-  console.log(`  grab: no-candidate ${pct(rs.filter((r) => !r.nCand).length)}  avg open ${avg((r) => r.open)}  avg chance ${avg((r) => r.chance)}  gripped ${pct(rs.filter((r) => r.gripped).length)}  grip lost ${pct(rs.filter((r) => r.gripLost).length)}`);
-  const whys = {}; rs.forEach((r) => r.why.forEach((w) => (whys[w] = (whys[w] || 0) + 1)));
-  console.log(`  lost reasons ${JSON.stringify(whys)}  gripped-the-target ${pct(rs.filter((r) => r.gripTarget).length)}`);
-  const rows = Object.entries(byType).sort((a, b) => b[1].length - a[1].length);
-  console.log('  ' + rows.map(([k, v]) => `${k}:${v.length}→${Math.round((100 * v.filter((r) => r.target).length) / v.length)}%`).join('  '));
-  return rs;
+  const whys = {};
+  for (let i = 0; i < trials; i++) {
+    game.seed(1000 + i);
+    const sim = game.run('new ClawSim({})');
+    sim.fillPile(CONFIG.partCount);
+    let s = 7919 * (i + 1) + 13;
+    const u = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return (s + 1) / 4294967297; };
+    const pool = exposedParts(sim, M);
+    const target = pool[Math.floor(u() * pool.length)];
+    const r = playGrab(sim, M, { target, aimNoise, carry: style === 'auto' ? 'gentle' : style, u, cfg: CONFIG, hooks: { onEvent: (t, d) => { if (t === 'gripLost') whys[d.why] = (whys[d.why] || 0) + 1; } } });
+    rs.push({ ...r, target: r.won.includes(target.type) && r.wonParts.includes(target) });
+  }
+  return { rs, whys };
 }
 
-if (sweepArg) {
-  const [key, vals] = sweepArg.split('=');
-  for (const v of vals.split(',')) runSet(`${key}=${v}`, { [key]: +v });
-} else runSet('current config');
+export function summarize(rs) {
+  const n = rs.length, win = rs.filter((r) => r.won.length).length;
+  return { n, win: pct(win, n), winCI: ci95(win, n), lifted: pct(rs.filter((r) => r.lifted).length, n), slip: pct(rs.filter((r) => r.result === 'slip').length, n),
+    miss: pct(rs.filter((r) => r.result === 'miss').length, n), multi: pct(rs.filter((r) => r.won.length > 1).length, n),
+    exact: pct(rs.filter((r) => r.target).length, n), timeouts: rs.filter((r) => r.result === 'timeout').length, seconds: +mean(rs.map((r) => r.time)).toFixed(1),
+    // of the parts that were lifted, how many made it to the chute: the number the carry skill moves
+    kept: pct(rs.filter((r) => r.won.length).length, Math.max(1, rs.filter((r) => r.lifted).length)) };
+}
+
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()) && PROFILE_MODE) {
+  // the grab odds of each bot profile, with its own aim noise: the numbers the no-physics economy model uses
+  const game = loadGame();
+  console.log(`grab odds by bot profile (${trials} trials each)`);
+  for (const [name, P] of Object.entries(PROFILES)) {
+    if (process.env.PROFILE && process.env.PROFILE !== name) continue;
+    const { rs } = measure(game, { trials, style: P.carry === 'auto' ? 'auto' : P.carry, aimNoise: P.aimNoise });
+    const S = summarize(rs);
+    console.log(`  ${name.padEnd(9)} aim ${P.aimNoise}px  ${P.carry.padEnd(6)}  win ${S.win}% ±${S.winCI}   kept-when-lifted ${S.kept}%   (model uses p=${P.p})`);
+  }
+} else if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
+  const game = loadGame();
+  const sets = sweepArg ? sweepArg.split('=')[1].split(',').map((v) => ({ label: sweepArg.split('=')[0] + '=' + v, config: { [sweepArg.split('=')[0]]: +v } })) : [{ label: 'current config', config: {} }];
+  for (const set of sets) {
+    console.log(`\n== ${set.label}  (${trials} trials per style, aim noise ${AIM_NOISE}px)`);
+    console.log('  style     win%   ±   lifted  kept-when-lifted  slipped  miss  multi  exact-target  avg s  slip causes');
+    let gentle = null, jerky = null;
+    for (const style of STYLES) {
+      const { rs, whys } = measure(game, { trials, style, config: set.config });
+      const S = summarize(rs);
+      if (style === 'gentle') gentle = S; if (style === 'jerky') jerky = S;
+      console.log(`  ${style.padEnd(8)} ${String(S.win).padStart(4)}%  ${String(S.winCI).padStart(2)}  ${String(S.lifted).padStart(5)}%  ${String(S.kept).padStart(12)}%  ${String(S.slip).padStart(7)}%  ${String(S.miss).padStart(3)}%  ${String(S.multi).padStart(4)}%  ${String(S.exact).padStart(9)}%  ${String(S.seconds).padStart(6)}  ${JSON.stringify(whys)}${S.timeouts ? '  TIMEOUTS ' + S.timeouts : ''}`);
+    }
+    if (gentle && jerky) console.log(`  skill gap (gentle - jerky): ${gentle.win - jerky.win} points of win%, ${gentle.kept - jerky.kept} points of kept-when-lifted`);
+  }
+}

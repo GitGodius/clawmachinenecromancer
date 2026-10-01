@@ -1,0 +1,907 @@
+{
+ "fingerprint": "8af94c1ae332",
+ "numbers": {
+  "config": {
+   "clawMoveSpeed": 70,
+   "clawAccel": 200,
+   "dropSpeed": 55,
+   "liftSpeed": 34,
+   "closeTorque": 150,
+   "gripTorque": 60,
+   "closeSpeed": 3.2,
+   "closeTime": 0.7,
+   "closeFriction": 0.08,
+   "prongFriction": 1,
+   "grabChance": 0.9,
+   "slipBase": 0.02,
+   "swingSlip": 1,
+   "swingSafe": 28,
+   "carryAccel": 60,
+   "carryBrake": 30,
+   "assistSpeed": 0.6,
+   "topSlip": 0.12,
+   "twitchSlip": 0.4,
+   "slipOpen": 0.5,
+   "gripFade": 0.8,
+   "gripSpring": 6,
+   "gripAssist": 0.3,
+   "hubMass": 3,
+   "swayDamping": 0.35,
+   "clawStiffness": 90,
+   "partCount": 22,
+   "gravity": 30,
+   "partFriction": 0.55,
+   "partDensity": 0.6,
+   "partRestitution": 0.12,
+   "twitchRate": 0.45,
+   "twitchForce": 1,
+   "rareBoost": 1,
+   "startTokens": 7,
+   "winTokens": 4,
+   "restockParts": 3,
+   "pityTokens": 3,
+   "partialPay": 0.7,
+   "ladderMax": 4,
+   "rigOn": 1,
+   "rigFree": 0,
+   "lens": 1,
+   "luckStart": 3,
+   "luckMax": 8,
+   "luckMiss": 1,
+   "luckSlip": 2,
+   "luckBattle": 1,
+   "luckDefeat": 1,
+   "costQuake": 3,
+   "costGrip": 2,
+   "costOrder": 4,
+   "costRedo": 3,
+   "quakeTime": 1.8,
+   "quakePower": 1,
+   "quakeSettle": 0.5,
+   "nudgePower": 1,
+   "nudgeRadius": 42,
+   "tiltAt": 3,
+   "heatDecay": 0.45,
+   "tiltLock": 3.2,
+   "tiltPenalty": 1,
+   "ironBoost": 1.4,
+   "ironSlip": 0.12,
+   "redoSpeed": 3.5,
+   "enemyGrowth": 0.14,
+   "enemyHp": 1,
+   "enemyAtk": 1,
+   "allyAtk": 1,
+   "battleSpeed": 1,
+   "zapCooldown": 10
+  },
+  "parts": {
+   "skull": {
+    "name": "Skull",
+    "slot": "head",
+    "rarity": "common",
+    "sprite": "p_skull",
+    "mat": "bone",
+    "density": 1,
+    "hp": 6,
+    "atk": 2
+   },
+   "wolfskull": {
+    "name": "Wolf Skull",
+    "slot": "head",
+    "rarity": "uncommon",
+    "sprite": "p_wolfskull",
+    "mat": "bone",
+    "density": 1,
+    "hp": 8,
+    "atk": 5,
+    "trait": "bite"
+   },
+   "eyeball": {
+    "name": "Big Eyeball",
+    "slot": "head",
+    "rarity": "rare",
+    "sprite": "p_eyeball",
+    "mat": "squish",
+    "density": 0.9,
+    "hp": 5,
+    "atk": 1,
+    "trait": "keen",
+    "shape": "circle",
+    "alive": true,
+    "restitution": 0.45,
+    "grip": 0.7
+   },
+   "demonskull": {
+    "name": "Demon Skull",
+    "slot": "head",
+    "rarity": "rare",
+    "sprite": "p_demonskull",
+    "mat": "bone",
+    "density": 1.1,
+    "hp": 10,
+    "atk": 4,
+    "trait": "hellfire"
+   },
+   "crownskull": {
+    "name": "Crowned Skull",
+    "slot": "head",
+    "rarity": "legendary",
+    "sprite": "p_crownskull",
+    "mat": "metal",
+    "density": 1.5,
+    "hp": 14,
+    "atk": 5,
+    "trait": "royal",
+    "grip": 0.9
+   },
+   "ribcage": {
+    "name": "Ribcage",
+    "slot": "torso",
+    "rarity": "common",
+    "sprite": "p_ribcage",
+    "mat": "bone",
+    "density": 0.8,
+    "hp": 20
+   },
+   "stitched": {
+    "name": "Stitched Torso",
+    "slot": "torso",
+    "rarity": "common",
+    "sprite": "p_stitched",
+    "mat": "flesh",
+    "density": 1,
+    "hp": 26
+   },
+   "armor": {
+    "name": "Rusty Cuirass",
+    "slot": "torso",
+    "rarity": "uncommon",
+    "sprite": "p_armor",
+    "mat": "metal",
+    "density": 1.5,
+    "hp": 24,
+    "def": 2,
+    "trait": "plated"
+   },
+   "ogregut": {
+    "name": "Ogre Gut",
+    "slot": "torso",
+    "rarity": "rare",
+    "sprite": "p_ogregut",
+    "mat": "flesh",
+    "density": 1.1,
+    "hp": 42,
+    "trait": "hefty",
+    "grip": 0.8
+   },
+   "bonearm": {
+    "name": "Bony Arm",
+    "slot": "arm",
+    "rarity": "common",
+    "sprite": "p_bonearm",
+    "mat": "bone",
+    "density": 1,
+    "atk": 3,
+    "alive": true
+   },
+   "fleshArm": {
+    "name": "Fleshy Arm",
+    "slot": "arm",
+    "rarity": "common",
+    "sprite": "p_fleshArm",
+    "mat": "flesh",
+    "density": 1,
+    "atk": 4,
+    "hp": 2,
+    "alive": true
+   },
+   "clawarm": {
+    "name": "Ghoul Claw",
+    "slot": "arm",
+    "rarity": "uncommon",
+    "sprite": "p_clawarm",
+    "mat": "flesh",
+    "density": 1,
+    "atk": 5,
+    "trait": "rend",
+    "alive": true
+   },
+   "swordarm": {
+    "name": "Sword Arm",
+    "slot": "arm",
+    "rarity": "uncommon",
+    "sprite": "p_swordarm",
+    "mat": "metal",
+    "density": 1.2,
+    "atk": 7,
+    "grip": 0.9
+   },
+   "tentacle": {
+    "name": "Tentacle",
+    "slot": "arm",
+    "rarity": "rare",
+    "sprite": "p_tentacle",
+    "mat": "squish",
+    "density": 0.9,
+    "atk": 5,
+    "trait": "reach",
+    "alive": true,
+    "grip": 0.8
+   },
+   "ogrearm": {
+    "name": "Ogre Arm",
+    "slot": "arm",
+    "rarity": "rare",
+    "sprite": "p_ogrearm",
+    "mat": "flesh",
+    "density": 1.2,
+    "atk": 11,
+    "trait": "smash",
+    "alive": true,
+    "grip": 0.85
+   },
+   "boneleg": {
+    "name": "Bony Leg",
+    "slot": "leg",
+    "rarity": "common",
+    "sprite": "p_boneleg",
+    "mat": "bone",
+    "density": 1,
+    "spd": 3
+   },
+   "fleshLeg": {
+    "name": "Fleshy Leg",
+    "slot": "leg",
+    "rarity": "common",
+    "sprite": "p_fleshLeg",
+    "mat": "flesh",
+    "density": 1,
+    "spd": 3,
+    "hp": 3
+   },
+   "pegleg": {
+    "name": "Peg Leg",
+    "slot": "leg",
+    "rarity": "common",
+    "sprite": "p_pegleg",
+    "mat": "wood",
+    "density": 0.9,
+    "spd": 1,
+    "hp": 6
+   },
+   "goatleg": {
+    "name": "Goat Leg",
+    "slot": "leg",
+    "rarity": "uncommon",
+    "sprite": "p_goatleg",
+    "mat": "flesh",
+    "density": 1,
+    "spd": 5,
+    "trait": "nimble"
+   },
+   "heart": {
+    "name": "Heart",
+    "slot": "heart",
+    "rarity": "common",
+    "sprite": "p_heart",
+    "mat": "squish",
+    "density": 1,
+    "hp": 10,
+    "trait": "regen",
+    "shape": "circle",
+    "alive": true,
+    "grip": 0.8
+   },
+   "blackheart": {
+    "name": "Black Heart",
+    "slot": "heart",
+    "rarity": "rare",
+    "sprite": "p_blackheart",
+    "mat": "squish",
+    "density": 1,
+    "hp": 8,
+    "trait": "undying",
+    "shape": "circle",
+    "alive": true,
+    "grip": 0.8
+   },
+   "goldheart": {
+    "name": "Heart of Gold",
+    "slot": "heart",
+    "rarity": "legendary",
+    "sprite": "p_goldheart",
+    "mat": "metal",
+    "density": 2,
+    "hp": 20,
+    "trait": "golden",
+    "shape": "circle",
+    "grip": 0.85
+   },
+   "wings": {
+    "name": "Bat Wings",
+    "slot": "back",
+    "rarity": "rare",
+    "sprite": "p_wings",
+    "mat": "flesh",
+    "density": 0.6,
+    "trait": "flutter"
+   },
+   "tail": {
+    "name": "Bone Tail",
+    "slot": "back",
+    "rarity": "uncommon",
+    "sprite": "p_vert",
+    "mat": "bone",
+    "density": 1.2,
+    "atk": 2,
+    "trait": "whip",
+    "chain": 6,
+    "alive": true
+   }
+  },
+  "enemies": {
+   "wisp": {
+    "name": "Wisp",
+    "hp": 10,
+    "atk": 3,
+    "def": 0,
+    "atkTime": 0.8,
+    "speed": 34,
+    "range": 24,
+    "dodge": 0.1,
+    "spr": "wisp",
+    "hover": 10,
+    "w": 14,
+    "tag": "swarm",
+    "ask": "Swarms in. Many small hits: armour and health answer it."
+   },
+   "shade": {
+    "name": "Shade",
+    "hp": 24,
+    "atk": 4,
+    "def": 3,
+    "atkTime": 1.25,
+    "speed": 22,
+    "range": 28,
+    "dodge": 0.05,
+    "spr": "shade",
+    "hover": 3,
+    "w": 22,
+    "tag": "armoured",
+    "ask": "Armoured. Small hits barely scratch it: big hits answer it."
+   },
+   "wraith": {
+    "name": "Wraith",
+    "hp": 50,
+    "atk": 8,
+    "def": 3,
+    "atkTime": 1.6,
+    "speed": 15,
+    "range": 38,
+    "dodge": 0,
+    "spr": "wraith",
+    "hover": 4,
+    "w": 36,
+    "boss": true,
+    "tag": "boss",
+    "ask": "A boss. Huge and slow: staying power and burst answer it."
+   }
+  },
+  "stages": {
+   "1": [
+    "wisp",
+    "wisp"
+   ],
+   "2": [
+    "wisp",
+    "shade"
+   ],
+   "3": [
+    "shade",
+    "shade"
+   ],
+   "4": [
+    "shade",
+    "wisp",
+    "shade"
+   ],
+   "5": [
+    "wraith"
+   ],
+   "6": [
+    "wisp",
+    "wisp",
+    "wisp",
+    "wisp"
+   ],
+   "7": [
+    "shade",
+    "wisp",
+    "shade",
+    "wisp"
+   ],
+   "8": [
+    "shade",
+    "shade",
+    "wisp",
+    "shade"
+   ],
+   "9": [
+    "wisp",
+    "wisp",
+    "wisp",
+    "wisp",
+    "wisp"
+   ],
+   "10": [
+    "wisp",
+    "wraith",
+    "wisp"
+   ],
+   "11": [
+    "shade",
+    "wisp",
+    "shade",
+    "wisp"
+   ],
+   "12": [
+    "shade",
+    "shade",
+    "shade",
+    "shade"
+   ],
+   "13": [
+    "wisp",
+    "wisp",
+    "shade",
+    "wisp",
+    "wisp"
+   ],
+   "14": [
+    "shade",
+    "shade",
+    "wisp",
+    "shade",
+    "shade"
+   ],
+   "15": [
+    "shade",
+    "wraith",
+    "shade"
+   ]
+  },
+  "rarity": {
+   "common": 60,
+   "uncommon": 26,
+   "rare": 11,
+   "legendary": 3
+  },
+  "final": 15
+ },
+ "battles": {
+  "stages": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   8,
+   10,
+   12,
+   15
+  ],
+  "rows": {
+   "1 creature, 3 parts": {
+    "1": 100,
+    "2": 72,
+    "3": 18,
+    "4": 10,
+    "5": 3,
+    "6": 20,
+    "8": 0,
+    "10": 0,
+    "12": 0,
+    "15": 0
+   },
+   "1 creature, 5 parts": {
+    "1": 100,
+    "2": 97,
+    "3": 72,
+    "4": 42,
+    "5": 30,
+    "6": 72,
+    "8": 3,
+    "10": 0,
+    "12": 0,
+    "15": 0
+   },
+   "2 creatures, 4 parts": {
+    "1": 100,
+    "2": 100,
+    "3": 85,
+    "4": 63,
+    "5": 35,
+    "6": 73,
+    "8": 2,
+    "10": 0,
+    "12": 0,
+    "15": 0
+   },
+   "3 creatures, 5 parts": {
+    "1": 100,
+    "2": 100,
+    "3": 100,
+    "4": 100,
+    "5": 92,
+    "6": 100,
+    "8": 60,
+    "10": 42,
+    "12": 10,
+    "15": 0
+   },
+   "3 creatures, 7 parts": {
+    "1": 100,
+    "2": 100,
+    "3": 100,
+    "4": 100,
+    "5": 100,
+    "6": 100,
+    "8": 95,
+    "10": 78,
+    "12": 45,
+    "15": 5
+   }
+  }
+ },
+ "battlesBestOf": {
+  "stages": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   8,
+   10,
+   12,
+   15
+  ],
+  "rows": {
+   "3 creatures, 8 parts, best of 3": {
+    "1": 100,
+    "2": 100,
+    "3": 100,
+    "4": 100,
+    "5": 100,
+    "6": 100,
+    "8": 100,
+    "10": 100,
+    "12": 98,
+    "15": 95
+   },
+   "2 creatures, 8 parts, best of 3": {
+    "1": 100,
+    "2": 100,
+    "3": 100,
+    "4": 100,
+    "5": 100,
+    "6": 100,
+    "8": 100,
+    "10": 100,
+    "12": 88,
+    "15": 57
+   }
+  }
+ },
+ "matchups": {
+  "tank": {
+   "wisps  x4": {
+    "win": 100,
+    "hpLeft": 91
+   },
+   "shades x3": {
+    "win": 100,
+    "hpLeft": 78
+   },
+   "wraith x1": {
+    "win": 100,
+    "hpLeft": 53
+   }
+  },
+  "plated": {
+   "wisps  x4": {
+    "win": 100,
+    "hpLeft": 84
+   },
+   "shades x3": {
+    "win": 23,
+    "hpLeft": 33
+   },
+   "wraith x1": {
+    "win": 73,
+    "hpLeft": 26
+   }
+  },
+  "bruiser": {
+   "wisps  x4": {
+    "win": 100,
+    "hpLeft": 71
+   },
+   "shades x3": {
+    "win": 98,
+    "hpLeft": 63
+   },
+   "wraith x1": {
+    "win": 100,
+    "hpLeft": 74
+   }
+  },
+  "skirmish": {
+   "wisps  x4": {
+    "win": 100,
+    "hpLeft": 65
+   },
+   "shades x3": {
+    "win": 0,
+    "hpLeft": 0
+   },
+   "wraith x1": {
+    "win": 10,
+    "hpLeft": 30
+   }
+  }
+ },
+ "econ": {
+  "careful": {
+   "runs": 200,
+   "finished": 98,
+   "in30": 80,
+   "in60": 97,
+   "in90": 98,
+   "medianMin": 25,
+   "reachedBoss1": 98,
+   "medianCleared": 15,
+   "grabs": 86.8,
+   "fightsLost": 2.6,
+   "retreats": 2,
+   "lostParts": 0,
+   "tokensPerMin": 7.28
+  },
+  "average": {
+   "runs": 200,
+   "finished": 96,
+   "in30": 67,
+   "in60": 94,
+   "in90": 96,
+   "medianMin": 27,
+   "reachedBoss1": 97,
+   "medianCleared": 15,
+   "grabs": 96.5,
+   "fightsLost": 4,
+   "retreats": 2.9,
+   "lostParts": 0,
+   "tokensPerMin": 6.68
+  },
+  "masher": {
+   "runs": 200,
+   "finished": 48,
+   "in30": 12,
+   "in60": 43,
+   "in90": 47,
+   "medianMin": 34,
+   "reachedBoss1": 81,
+   "medianCleared": 14,
+   "grabs": 149.1,
+   "fightsLost": 38.6,
+   "retreats": 30,
+   "lostParts": 0,
+   "tokensPerMin": 3.04
+  },
+  "assisted": {
+   "runs": 200,
+   "finished": 66,
+   "in30": 35,
+   "in60": 65,
+   "in90": 66,
+   "medianMin": 29,
+   "reachedBoss1": 89,
+   "medianCleared": 15,
+   "grabs": 124.3,
+   "fightsLost": 24.4,
+   "retreats": 19,
+   "lostParts": 0,
+   "tokensPerMin": 3.94
+  },
+  "farm15": {
+   "runs": 200,
+   "finished": 0,
+   "in30": 0,
+   "in60": 0,
+   "in90": 0,
+   "medianMin": 0,
+   "reachedBoss1": 0,
+   "medianCleared": 0,
+   "grabs": 74.1,
+   "fightsLost": 60,
+   "retreats": 60,
+   "lostParts": 0,
+   "tokensPerMin": 3.27
+  },
+  "farm50": {
+   "runs": 200,
+   "finished": 0,
+   "in30": 0,
+   "in60": 0,
+   "in90": 0,
+   "medianMin": 0,
+   "reachedBoss1": 0,
+   "medianCleared": 0,
+   "grabs": 74.2,
+   "fightsLost": 60.5,
+   "retreats": 60.4,
+   "lostParts": 0,
+   "tokensPerMin": 5.6
+  }
+ },
+ "claw": {
+  "careful": {
+   "profile": "careful",
+   "trials": 300,
+   "win": 42,
+   "lifted": 51,
+   "kept": 82,
+   "seconds": 7.8
+  },
+  "average": {
+   "profile": "average",
+   "trials": 300,
+   "win": 36,
+   "lifted": 53,
+   "kept": 68,
+   "seconds": 7.2
+  },
+  "masher": {
+   "profile": "masher",
+   "trials": 300,
+   "win": 33,
+   "lifted": 55,
+   "kept": 61,
+   "seconds": 5.9
+  },
+  "assisted": {
+   "profile": "assisted",
+   "trials": 300,
+   "win": 45,
+   "lifted": 55,
+   "kept": 82,
+   "seconds": 9.5
+  }
+ },
+ "econPhysics": {
+  "careful": {
+   "runs": 12,
+   "finished": 92,
+   "in30": 42,
+   "in60": 75,
+   "in90": 83,
+   "medianMin": 32,
+   "reachedBoss1": 92,
+   "medianCleared": 15,
+   "grabs": 104.2,
+   "fightsLost": 13.1,
+   "retreats": 9,
+   "lostParts": 0,
+   "tokensPerMin": 4.92
+  },
+  "average": {
+   "runs": 12,
+   "finished": 92,
+   "in30": 33,
+   "in60": 92,
+   "in90": 92,
+   "medianMin": 31,
+   "reachedBoss1": 92,
+   "medianCleared": 15,
+   "grabs": 106.8,
+   "fightsLost": 7.3,
+   "retreats": 5.4,
+   "lostParts": 0,
+   "tokensPerMin": 5.43
+  },
+  "masher": {
+   "runs": 12,
+   "finished": 67,
+   "in30": 17,
+   "in60": 58,
+   "in90": 67,
+   "medianMin": 43,
+   "reachedBoss1": 75,
+   "medianCleared": 15,
+   "grabs": 156.3,
+   "fightsLost": 27.5,
+   "retreats": 21.5,
+   "lostParts": 0,
+   "tokensPerMin": 3.7
+  },
+  "assisted": {
+   "runs": 12,
+   "finished": 50,
+   "in30": 33,
+   "in60": 50,
+   "in90": 50,
+   "medianMin": 28,
+   "reachedBoss1": 58,
+   "medianCleared": 15,
+   "grabs": 111.8,
+   "fightsLost": 36.4,
+   "retreats": 30.7,
+   "lostParts": 0,
+   "tokensPerMin": 2.96
+  }
+ },
+ "version": "0.9.0",
+ "generated": "2026-10-01",
+ "targets": [
+  {
+   "name": "The carry is a skill: a careful carrier wins at least 8 points more grabs than a masher",
+   "ok": true,
+   "detail": "careful 42% vs masher 33% (gap 9)"
+  },
+  {
+   "name": "The assist is a fair helper: better than mashing, no better than careful play",
+   "ok": true,
+   "detail": "masher 33% < assisted 45% <= careful 42% (+5 noise)"
+  },
+  {
+   "name": "A careful player finishes a run (95% or more)",
+   "ok": true,
+   "detail": "98%"
+  },
+  {
+   "name": "An average player finishes a run (90% or more)",
+   "ok": true,
+   "detail": "96%"
+  },
+  {
+   "name": "A masher can still finish (40% or more), an assisted player too",
+   "ok": true,
+   "detail": "masher 48%, assisted 66%"
+  },
+  {
+   "name": "A run takes 18 to 35 minutes for careful and average players (bot time, faster than a human)",
+   "ok": true,
+   "detail": "careful 25 min, average 27 min"
+  },
+  {
+   "name": "No early wall: 95% of average players clear the first boss",
+   "ok": true,
+   "detail": "97%"
+  },
+  {
+   "name": "Farming cannot beat playing: retreating at the first scratch earns less per minute than honest play",
+   "ok": true,
+   "detail": "honest 6.68/min, farm15 3.27, farm50 5.6"
+  },
+  {
+   "name": "Nothing is wasted: no part physically leaves the machine in a real-physics run",
+   "ok": true,
+   "detail": "careful 0, average 0, masher 0, assisted 0"
+  },
+  {
+   "name": "Build for the graveyard (1): at final-stage strength the best build is not the same against every enemy",
+   "ok": true,
+   "detail": "wisps  x4: tank; shades x3: tank; wraith x1: bruiser"
+  },
+  {
+   "name": "Build for the graveyard (2): a specialised build can be unable to beat an enemy at all (under 25%)",
+   "ok": true,
+   "detail": "plated vs shades x3 23%; skirmish vs shades x3 0%; skirmish vs wraith x1 10%"
+  },
+  {
+   "name": "A full party built from good picks beats stage 5 reliably and the final stage more often than not",
+   "ok": true,
+   "detail": "stage 5: 100%, stage 15: 95%"
+  }
+ ]
+}
