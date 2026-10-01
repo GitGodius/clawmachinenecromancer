@@ -32,6 +32,8 @@ class ClawSim {
     this.turn = null;
     this.turnCount = 0;
     this.grips = [];
+    this.strain = 0; // how roughly the part is being carried (see driveCarriage)
+    this.risk = 0; // slip chance per second right now (the scene draws it as the steady meter)
     this.build();
   }
 
@@ -224,6 +226,7 @@ class ClawSim {
     this.turn = { won: [], grabbed: new Set(), slips: 0, startT: this.time, n: ++this.turnCount };
     this.landed = false;
     this.slackT = 0;
+    this.strain = 0;
     this.emit('drop');
     return true;
   }
@@ -242,10 +245,15 @@ class ClawSim {
 
   driveCarriage(target, h, accelMul = 1) {
     const M = MACHINE;
+    const v0 = this.carV;
     this.carV = approach(this.carV, target, CONFIG.clawAccel * accelMul * h);
     let nx = this.carX + this.carV * h;
     if (nx < M.carMin) { nx = M.carMin; this.carV = 0; }
     if (nx > M.carMax) { nx = M.carMax; this.carV = 0; }
+    // Strain: every change of carriage speed jolts the part in the claw. A full-speed start or stop adds ~1, a
+    // reversal ~2, slamming into the end stop is instant; it calms down over strainDecay. Steady steering stays
+    // under the safe margin, nervous tapping and reversing does not (see updateGrips).
+    if (this.state === 'carry' || this.state === 'return') this.strain += Math.abs(this.carV - v0) / CONFIG.clawMoveSpeed;
     this.carriage.setLinearVelocity(planck.Vec2((nx - this.carX) / h / PPM, 0));
     this.carX = nx;
   }
@@ -280,6 +288,7 @@ class ClawSim {
     this.stateT += h;
     this.world.setGravity(planck.Vec2(0, CONFIG.gravity));
     this.hub.setLinearDamping(CONFIG.swayDamping);
+    this.strain *= Math.exp(-h / Math.max(0.05, CONFIG.strainDecay));
     const pressed = this.pressed;
     this.pressed = false;
     const move = clamp(this.input.move || 0, -1, 1);
@@ -463,6 +472,7 @@ class ClawSim {
   // Slip model: explicit, tunable odds (physics supplies the swing you can see).
   updateGrips(h) {
     const hv = this.hub.getLinearVelocity();
+    let risk = 0;
     for (const g of this.grips.slice()) {
       g.t += h;
       const gp = g.part.def.grip || 1;
@@ -474,11 +484,14 @@ class ClawSim {
       let lose = null;
       if (stretch > 9) lose = 'stuck'; // still wedged in the pile: it tears free of the claw
       else if (g.t > 0.4 && this.state !== 'lift') { // swinging only counts once the player is steering
-        const hazard = CONFIG.slipBase / gp + CONFIG.swingSlip * Math.max(0, vrel - CONFIG.swingSafe) / 30;
-        if (RNG() < hazard * h) lose = 'swing';
+        const rough = (CONFIG.strainSlip * Math.max(0, this.strain - CONFIG.strainSafe)) / gp; // yanked around by the player
+        const hazard = CONFIG.slipBase / gp + CONFIG.swingSlip * Math.max(0, vrel - CONFIG.swingSafe) / 30 + rough;
+        risk = Math.max(risk, hazard);
+        if (RNG() < hazard * h) lose = rough > hazard / 2 ? 'strain' : 'swing';
       }
       if (lose) this.loseGrip(g, lose);
     }
+    this.risk = risk;
   }
 
   loseGrip(g, why) {
@@ -496,6 +509,7 @@ class ClawSim {
   }
 
   dropGrips() {
+    this.risk = 0;
     for (const g of this.grips) { this.world.destroyJoint(g.joint); this.unclamp(g.part); }
     this.grips = [];
   }

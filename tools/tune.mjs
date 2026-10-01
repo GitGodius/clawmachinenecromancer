@@ -21,6 +21,33 @@ const overrides = process.argv[3] ? JSON.parse(process.argv[3]) : {};
 const sweepArg = process.argv[4];
 const AIM_NOISE = +(process.env.AIM_NOISE || 2.5);
 const MODE = process.env.MODE || 'manual'; // manual: bot steers to the chute
+// How the bot carries the part to the chute (MACHINE.home):
+//   careful  smooth analog steering at moderate speed (a mouse player)
+//   normal   full speed, proportional braking near the chute (the original bot)
+//   keys     digital hold, then let go so the coast lands on the chute (a keyboard player)
+//   masher   digital and nervous: re-decides every 0.12 s, often taps the wrong way, releases as soon as it is roughly there
+//   jerky    full speed, release as soon as it is over the chute (also JERKY=1)
+const STYLE = process.env.STYLE || (process.env.JERKY ? 'jerky' : 'normal');
+function carry(sim, rng, st) {
+  const d = MACHINE.home - sim.carX, v = sim.carV;
+  if (STYLE === 'careful') { sim.input.move = Math.abs(d) < 1.5 ? 0 : Math.sign(d) * Math.min(0.5, Math.abs(d) / 25); if (Math.abs(d) < 2 && Math.abs(v) < 5) sim.press(); }
+  else if (STYLE === 'feather') { // a skilled player easing the stick: starts gently, then goes, brakes near the chute
+    st.t = (st.t || 0) + 1 / 60;
+    const ease = Math.min(1, 0.2 + st.t / (+process.env.EASE || 0.6));
+    sim.input.move = Math.abs(d) < 1.5 ? 0 : Math.sign(d) * Math.min(ease, Math.abs(d) / 12);
+    if (Math.abs(d) < 2 && Math.abs(v) < 5) sim.press();
+  } else if (STYLE === 'keys') {
+    const left = d - (v * Math.abs(v)) / (2 * CONFIG.clawAccel); // where the coast would end up, relative to the chute
+    sim.input.move = Math.abs(left) < 2 ? 0 : Math.sign(left);
+    if (Math.abs(d) < 5 && Math.abs(v) < 8) sim.press();
+  } else if (STYLE === 'masher') {
+    st.t = (st.t || 0) - 1 / 60;
+    if (st.t <= 0) { st.t = 0.12; st.move = rng() < 0.3 ? -Math.sign(d) : rng() < 0.75 ? Math.sign(d) : 0; }
+    sim.input.move = st.move;
+    if (Math.abs(d) < 10) sim.press();
+  } else if (STYLE === 'jerky') { sim.input.move = Math.abs(d) < 4 ? 0 : Math.sign(d); if (Math.abs(d) < 8) sim.press(); }
+  else { sim.input.move = Math.abs(d) < 1.5 ? 0 : Math.sign(d) * Math.min(1, Math.abs(d) / 12); if (Math.abs(d) < 2 && Math.abs(v) < 5) sim.press(); }
+}
 
 function runTrial(seed) {
   const rng = mulberry32(seed * 7919 + 13);
@@ -44,17 +71,9 @@ function runTrial(seed) {
   for (let i = 0; i < 30; i++) sim.step(1 / 60);
   sim.startDrop();
   let t = 0;
+  const botState = {};
   while (!ended && t < 30) {
-    if (sim.state === 'carry') {
-      const d = MACHINE.home - sim.carX;
-      if (process.env.JERKY) { // a human mashing the stick: full speed, release as soon as it's over the chute
-        sim.input.move = Math.abs(d) < 4 ? 0 : Math.sign(d);
-        if (Math.abs(d) < 8) sim.press();
-      } else {
-        sim.input.move = Math.abs(d) < 1.5 ? 0 : Math.sign(d) * Math.min(1, Math.abs(d) / 12);
-        if (Math.abs(d) < 2 && Math.abs(sim.carV) < 5) sim.press();
-      }
-    }
+    if (sim.state === 'carry') carry(sim, rng, botState);
     sim.step(1 / 60);
     t += 1 / 60;
   }
@@ -79,7 +98,7 @@ function runSet(label, extra) {
   const pct = (a) => ((100 * a) / Math.max(1, rs.length)).toFixed(0).padStart(3) + '%';
   const byType = {};
   for (const r of rs) (byType[r.type] ||= []).push(r);
-  console.log(`\n== ${label}  (${trials} trials, ${((Date.now() - t0) / 1000).toFixed(1)}s, aim noise ${AIM_NOISE}px, ${MODE})`);
+  console.log(`\n== ${label}  (${trials} trials, ${((Date.now() - t0) / 1000).toFixed(1)}s, aim noise ${AIM_NOISE}px, ${MODE}, carry style ${STYLE})`);
   console.log(`  win(any) ${pct(rs.filter((r) => r.any).length)}  target ${pct(rs.filter((r) => r.target).length)}  lifted ${pct(rs.filter((r) => r.grabbed).length)}  slipped ${pct(rs.filter((r) => r.result === 'slip').length)}  miss ${pct(rs.filter((r) => r.result === 'miss').length)}  multi ${pct(rs.filter((r) => r.multi).length)}  timeouts ${rs.filter((r) => r.result === 'timeout').length}  avg ${(rs.reduce((a, r) => a + r.time, 0) / rs.length).toFixed(1)}s`);
   const avg = (f) => (rs.reduce((a, r) => a + f(r), 0) / rs.length).toFixed(2);
   console.log(`  grab: no-candidate ${pct(rs.filter((r) => !r.nCand).length)}  avg open ${avg((r) => r.open)}  avg chance ${avg((r) => r.chance)}  gripped ${pct(rs.filter((r) => r.gripped).length)}  grip lost ${pct(rs.filter((r) => r.gripLost).length)}`);

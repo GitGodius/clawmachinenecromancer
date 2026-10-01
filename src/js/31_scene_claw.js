@@ -9,7 +9,7 @@ Scenes.claw = (() => {
   let buf, g, glassBG, frameImg;
   const fxW = new Particles(); // world space (in the buffer, 2x on screen)
   const fxS = new Particles(); // screen space (1x)
-  let t = 0, winFx = 0, bagBump = 0, tokenBump = 0, noTokenT = 0, idleT = 0, movedOnce = false, chuteWarnT = 0, missShown = false;
+  let t = 0, winFx = 0, bagBump = 0, tokenBump = 0, noTokenT = 0, idleT = 0, movedOnce = false, chuteWarnT = 0, missShown = false, riskV = 0, hot = false, lastLoss = null;
   let flying = [];
   let slowmoDone = new Set();
   let lastBumpSfx = 0;
@@ -117,6 +117,10 @@ Scenes.claw = (() => {
       }
       if (move) { movedOnce = true; idleT = 0; } else if (sim.state === 'idle') idleT += dt;
       chuteWarnT = Math.max(0, chuteWarnT - dt);
+      const carrying = sim.state === 'carry' || sim.state === 'return';
+      const risk = carrying ? sim.risk : 0;
+      riskV += (risk - riskV) * Math.min(1, dt * (risk > riskV ? 14 : 3)); // jumps up fast, calms down slowly
+      if (riskV > 0.6 && !hot) { hot = true; Sfx.play('bump', { material: 'metal', intensity: 0.5 }); } else if (riskV < 0.4) hot = false;
       sim.input.move = move;
       if (Input.hit('a')) S.pressA();
       if (Input.hit('b')) S.back();
@@ -235,6 +239,7 @@ Scenes.claw = (() => {
           }
           break;
         case 'gripLost':
+          lastLoss = d.why;
           Telemetry.c.bySlipWhy[d.why] = (Telemetry.c.bySlipWhy[d.why] || 0) + 1;
           break;
         case 'slip': {
@@ -251,9 +256,13 @@ Scenes.claw = (() => {
             say(pick(['SO close. The chute was RIGHT there.', 'Inches. Literal inches.', 'The chute felt that.', 'Ohh. Ohh no. So close.']), 2.4);
             break;
           }
-          const why = d.part.twitchT && sim.time - d.part.twitchT < 0.6;
-          say(why ? pick(['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.']) :
-            pick(['Butterfingers. Literally.', 'It wanted to stay. Respect that.', 'Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.', 'Gravity: undefeated.', 'Swing it less. It gets dizzy.']), 2.4);
+          const quips = {
+            twitch: ['It squirmed out! They do that.', 'Wriggly one. Hold tighter next time.'],
+            strain: ['You yanked it. Gently does it.', 'Too much stick, too fast. Watch the bar.', 'Easy on the controls. It bruises.'],
+            jolt: ['The top always gets them.', 'The jolt at the top. Every time.', 'So close to the top. Rude.'],
+            swing: ['Swing it less. It gets dizzy.', 'It wanted to stay. Respect that.', 'Gravity: undefeated.', 'Butterfingers. Literally.'],
+          };
+          say(pick(quips[lastLoss] || ['Almost. Almost is a whole genre here.', 'The claw is weak. Like the flesh.']), 2.4);
           break;
         }
         case 'release':
@@ -441,7 +450,7 @@ Scenes.claw = (() => {
       g.save();
       g.translate(q.x * PPM, q.y * PPM);
       g.rotate(a);
-      if (held && Math.sin(t * 16) > 0) { g.drawImage(SPR.outline(name, '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
+      if (held && Math.sin(t * (16 + riskV * 10)) > 0) { g.drawImage(SPR.outline(name, riskV > 0.6 ? '#e8405a' : riskV > 0.25 ? '#f6c64b' : '#fff6e3'), -s.w / 2 - 1, -s.h / 2 - 1); }
       else if (glow > 0) { g.globalAlpha = glow; g.drawImage(SPR.outline(name, rar.glow), -s.w / 2 - 1, -s.h / 2 - 1); g.globalAlpha = 1; }
       g.drawImage(s.c, -s.w / 2, -s.h / 2);
       g.restore();
@@ -546,15 +555,23 @@ Scenes.claw = (() => {
       Draw.rect(ctx, cx - 16, 44, 32, 3, PAL.k);
       Draw.rect(ctx, cx - 15, 45, Math.max(0, 30 * k), 1, k < 0.3 && Math.sin(t * 20) > 0 ? PAL.R : PAL.d);
     }
+    if ((sim.state === 'carry' || sim.state === 'return') && sim.grips.length) { // how likely the part is to drop right now
+      const [cx] = toScreen(sim.carX, 0), f = clamp(riskV / 1.2, 0, 1), shake = f > 0.7 ? Math.round(Math.sin(t * 50)) : 0;
+      Draw.rect(ctx, cx - 16 + shake, 50, 32, 4, PAL.k);
+      Draw.rect(ctx, cx - 15 + shake, 51, Math.max(1, Math.round(30 * f)), 2, f > 0.5 ? PAL.R : f > 0.2 ? PAL.L : PAL.d);
+      Font.draw(ctx, 'STEADY', cx - 19 + shake, 49, { font: 'small', color: f > 0.5 ? '#e8405a' : '#7a6a9a', align: 'right', outline: PAL.k });
+    }
     // the first two carries: spell out steer -> chute -> release (nothing else teaches it).
     // The text sits on the side of the glass away from the claw so it never covers the held part.
     if (sim.state === 'carry' && (sim.grips.length || sim.held.size) && (Game.seen.carries || 0) <= 2) {
-      const over = sim.carX > M.chuteX0 + 4, a = 0.75 + 0.2 * Math.sin(t * 6), hx = sim.carX < 80 ? 262 : 118;
+      const over = sim.carX > M.chuteX0 + 4, a = 0.75 + 0.2 * Math.sin(t * 6), cgx = (sim.carX + GX) * 2;
+      const hx = cgx < 190 ? Math.min(cgx + 100, 296) : Math.max(cgx - 100, 100); // keep ~100 px clear of the claw
       const key = Input.lastDevice === 'keys' ? 'SPACE' : Input.lastDevice === 'pad' ? 'A' : 'THE RELEASE BUTTON';
       if (over) Font.draw(ctx, 'NOW RELEASE!  (' + key + ')', hx, 84, { font: 'small', color: '#9be38f', align: 'center', alpha: a, outline: PAL.k });
       else {
         Font.draw(ctx, 'STEER TO THE CHUTE  →', hx, 78, { font: 'small', color: '#e7d6ff', align: 'center', alpha: a, outline: PAL.k });
         Font.draw(ctx, 'THEN PRESS ' + key + ' TO RELEASE', hx, 89, { font: 'small', color: '#ff8ac6', align: 'center', alpha: a, outline: PAL.k });
+        Font.draw(ctx, 'KEEP THE BAR GREEN', hx, 100, { font: 'small', color: '#9be38f', align: 'center', alpha: a * 0.8, outline: PAL.k });
       }
     }
     // first-time controls hint, inside the glass, until the player does anything
