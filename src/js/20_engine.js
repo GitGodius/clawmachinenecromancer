@@ -468,7 +468,15 @@ class Talker {
     if (pop < 1) y += 1;
     Draw.panel(ctx, x, y, w, h, 'paper');
     // tail
-    if (tx != null) {
+    if (tx != null && opts.side === 'left') { // bubble beside the speaker: little tail on its left edge
+      const by = Math.round(clamp(ty, y + 5, y + h - 6));
+      ctx.fillStyle = '#efe3c8'; ctx.fillRect(x, by - 2, 1, 4); // open a gap in the border
+      for (let i = 0; i < 4; i++) {
+        const xx = x - 1 - i, hh = 3 - i;
+        ctx.fillStyle = '#43382a'; ctx.fillRect(xx, by - hh - 1, 1, hh * 2 + 2);
+        ctx.fillStyle = '#efe3c8'; if (hh > 0) ctx.fillRect(xx, by - hh, 1, hh * 2);
+      }
+    } else if (tx != null) {
       const bx = clamp(tx, x + 6, x + w - 8);
       const below = ty > y + h;
       ctx.fillStyle = '#efe3c8';

@@ -8,7 +8,7 @@ Scenes.shop = (() => {
   let t = 0, titleT = 0, opened = false, zoom = null, blinkT = 0, chatT = 8, catT = 0, catMood = 0, lean = 0, tokenPop = 0;
   const MX = 6, MY = 4, MW = 194; // cabinet
   const GLX = MX + 7, GLY = 52; // glass (180x122 mini world)
-  const REAPER_X = 300, COUNTER_Y = 196;
+  const REAPER_X = 300, REAPER_Y = 192, COUNTER_Y = 196; // body anchor: his robe stops at the counter's far edge (y 189)
   const say = (x, h, force = true) => Game.talk.say(x, h, force);
   const IDLE_LINES = [
     'Everything\'s used. Nothing\'s cheap. That\'s the deal.',
@@ -91,7 +91,7 @@ Scenes.shop = (() => {
     ].map((b) => Object.assign({ x: 398, w: 76, h: 16, style: 'wood', kind: 'sign', pulse: h === b.id }, b));
     signs.push({ id: 'machine', x: MX, y: MY, w: MW, h: 214, label: '', kind: 'hot', silent: true, onClick: goClaw, tip: 'Play the claw machine' });
     signs.push({ id: 'cat', x: 424, y: 176, w: 24, h: 20, label: '', kind: 'hot', silent: true, onClick: () => { catMood = 1.5; Sfx.play('meow'); say(pick(['The cat is not for sale.', 'He bites. Affectionately.', 'That\'s Mr. Whiskers. He\'s been dead for years. Don\'t tell him.']), 2.4); } });
-    signs.push({ id: 'reaper', x: REAPER_X - 22, y: 150, w: 44, h: 46, label: '', kind: 'hot', silent: true, onClick: () => { say(pick(IDLE_LINES), 3); chatT = 18; } });
+    signs.push({ id: 'reaper', x: REAPER_X - 46, y: 116, w: 92, h: 78, label: '', kind: 'hot', silent: true, onClick: () => { say(pick(IDLE_LINES), 3); chatT = 18; } });
     S.signs = signs;
     UI.set(signs);
     const sg = signs.filter((b) => b.kind === 'sign');
@@ -157,6 +157,30 @@ Scenes.shop = (() => {
     for (let i = 0; i < 4; i++) Draw.rect(ctx, MX + 124, ly + 11 + i * 6, 42, 2, '#34101f');
   }
 
+  // The shopkeeper: robe behind the counter (clipped at its far edge), glowing eyes that follow the pointer, hands on the counter.
+  function drawReaper(ctx) {
+    const talking = Game.talk.talking() && Math.sin(t * 24) > 0;
+    const breathe = Math.round(Math.sin(t * 1.6));
+    const by = REAPER_Y + breathe + Math.round(lean * 2); // leans in while he talks
+    const body = SPR.get(talking ? 'reaper_talk' : 'reaper_idle');
+    ctx.save();
+    ctx.beginPath(); ctx.rect(REAPER_X - 60, 100, 120, COUNTER_Y - 7 - 100); ctx.clip();
+    SPR.draw(ctx, talking ? 'reaper_talk' : 'reaper_idle', REAPER_X, by);
+    if (blinkT >= 0) { // pupils: 2x2 embers that look at the pointer (or the cat when it's being poked)
+      const tx = catMood > 0 ? 436 : Input.mouse.x >= 0 ? Input.mouse.x : REAPER_X, ty = catMood > 0 ? 190 : Input.mouse.x >= 0 ? Input.mouse.y : 150;
+      const pulse = 0.22 + 0.06 * Math.sin(t * 3.1);
+      for (const [ex, ey] of [body.pts.eyeL, body.pts.eyeR]) {
+        const cx = REAPER_X - body.ax + ex, cy = by - body.ay + ey;
+        const lx = Math.round(clamp((tx - cx) / 70, -1, 1) * 2), ly = Math.round(clamp((ty - cy) / 50, -1, 1) * 1.5);
+        Draw.glow(ctx, cx, cy, 8, '#ff4040', pulse);
+        Draw.rect(ctx, cx - 1 + lx, cy - 1 + ly, 2, 2, PAL.a);
+        Draw.rect(ctx, cx - 1 + lx, cy - 1 + ly, 1, 1, PAL.A);
+      }
+    }
+    ctx.restore();
+    SPR.draw(ctx, 'reaper_hands', REAPER_X, COUNTER_Y);
+  }
+
   S.draw = function (ctx) {
     ctx.save();
     if (zoom) {
@@ -166,14 +190,7 @@ Scenes.shop = (() => {
       ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy);
     }
     BG.shop(ctx, t, { layer: 'back' });
-    // the reaper behind the counter
-    const talking = Game.talk.talking() && Math.sin(t * 24) > 0;
-    let rs = 'reaper_idle';
-    if (talking && SPR.has('reaper_talk')) rs = 'reaper_talk';
-    else if (blinkT < 0 && SPR.has('reaper_blink')) rs = 'reaper_blink';
-    if (lean > 0.5 && !talking && SPR.has('reaper_lean') && catMood <= 0) rs = 'reaper_lean';
-    const breathe = Math.round(Math.sin(t * 1.6) * 1);
-    if (SPR.has(rs)) SPR.draw(ctx, rs, REAPER_X, 202 + breathe);
+    drawReaper(ctx);
     BG.shop(ctx, t, { layer: 'front' }); // counter in front of him
     drawCabinet(ctx);
     // cat with swishing tail
@@ -204,16 +221,16 @@ Scenes.shop = (() => {
     Font.draw(ctx, 'PARTY ' + Game.party.length, 270, 9, { font: 'small', color: '#a6aec2', align: 'right' });
     if (Game.bestStage) Font.draw(ctx, 'BEST ' + Game.bestStage, 308, 9, { font: 'small', color: '#9be38f', align: 'right' });
     // speech bubble
-    if (Game.talk.visible()) Game.talk.drawBubble(ctx, REAPER_X - 70, 150, 170, REAPER_X - 8, 158, { anchorBottom: true });
+    if (Game.talk.visible()) Game.talk.drawBubble(ctx, REAPER_X + 36, 122, 116, REAPER_X + 31, 143, { side: 'left' });
     fx.draw(ctx);
     ctx.restore();
     // title overlay
     if (!opened) {
       ctx.fillStyle = 'rgba(14,11,22,0.45)'; ctx.fillRect(0, 0, W, H);
       const k = clamp(titleT / 0.8, 0, 1);
-      Font.draw(ctx, 'THE GOOD PARTS', 240, 92 - Math.round((1 - easeOutBack(k)) * 30), { scale: 4, color: '#fff1d6', outline: '#3a0c20', shadow: '#b0224a', align: 'center', alpha: k });
-      Font.draw(ctx, 'a claw machine necromancer prototype', 240, 132, { color: '#cdb892', align: 'center', alpha: k, outline: PAL.k });
-      if (Math.sin(t * 4) > -0.2) Font.draw(ctx, Input.lastDevice === 'touch' ? 'TAP TO OPEN THE SHOP' : 'CLICK OR PRESS ANY KEY', 240, 176, { color: '#ff8ac6', align: 'center', outline: PAL.k });
+      Font.draw(ctx, 'THE GOOD PARTS', 240, 58 - Math.round((1 - easeOutBack(k)) * 30), { scale: 4, color: '#fff1d6', outline: '#3a0c20', shadow: '#b0224a', align: 'center', alpha: k });
+      Font.draw(ctx, 'a claw machine necromancer prototype', 240, 94, { color: '#cdb892', align: 'center', alpha: k, outline: PAL.k });
+      if (Math.sin(t * 4) > -0.2) Font.draw(ctx, Input.lastDevice === 'touch' ? 'TAP TO OPEN THE SHOP' : 'CLICK OR PRESS ANY KEY', 240, 108, { color: '#ff8ac6', align: 'center', outline: PAL.k });
       Font.draw(ctx, '← →  MOVE    SPACE  DROP    ESC  BACK    M  MUTE    F  FULLSCREEN', 240, 252, { font: 'small', color: '#7a6a9a', align: 'center' });
     }
   };
